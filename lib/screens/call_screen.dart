@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
-import 'package:permission_handler/permission_handler.dart';
-import '../services/agora_service.dart';
+import '../providers/call_provider.dart';
 
-class CallScreen extends StatefulWidget {
+class CallScreen extends ConsumerStatefulWidget {
   final String remoteUserName;
   final String channelId;
   final bool isVideo;
@@ -16,107 +16,35 @@ class CallScreen extends StatefulWidget {
   });
 
   @override
-  State<CallScreen> createState() => _CallScreenState();
+  ConsumerState<CallScreen> createState() => _CallScreenState();
 }
 
-class _CallScreenState extends State<CallScreen> {
-  final AgoraService _agoraService = AgoraService();
-  RtcEngine? _engine;
-  
-  bool _localUserJoined = false;
-  int? _remoteUid;
-  bool _isMicOn = true;
-  bool _isCameraOn = true;
-  bool _isLoading = true;
-
+class _CallScreenState extends ConsumerState<CallScreen> {
   @override
   void initState() {
     super.initState();
-    _initAgora();
-  }
-
-  Future<void> _initAgora() async {
-    // 1. Demander les permissions
-    List<Permission> permissions = [Permission.microphone];
-    if (widget.isVideo) {
-      permissions.add(Permission.camera);
-    }
-    await permissions.request();
-
-    try {
-      // 2. Récupérer le token et l'App ID depuis le backend
-      final tokenData = await _agoraService.fetchToken(widget.channelId);
-      final String token = tokenData['token'];
-      final String appId = tokenData['app_id'];
-
-      // 3. Initialiser le moteur
-      _engine = await _agoraService.getEngine(appId, isVideo: widget.isVideo);
-
-      // 4. Définir les handlers d'événements
-      _engine!.registerEventHandler(
-        RtcEngineEventHandler(
-          onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
-            debugPrint("Local user joined: ${connection.localUid}");
-            setState(() {
-              _localUserJoined = true;
-              _isLoading = false;
-            });
-          },
-          onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
-            debugPrint("Remote user joined: $remoteUid");
-            setState(() {
-              _remoteUid = remoteUid;
-            });
-          },
-          onUserOffline: (RtcConnection connection, int remoteUid, UserOfflineReasonType reason) {
-            debugPrint("Remote user offline: $remoteUid");
-            setState(() {
-              _remoteUid = null;
-            });
-            // Si c'est un appel 1:1, on peut fermer l'écran si l'autre part
-            Navigator.pop(context);
-          },
-          onLeaveChannel: (RtcConnection connection, RtcStats stats) {
-            debugPrint("Local user left channel");
-            setState(() {
-              _localUserJoined = false;
-              _remoteUid = null;
-            });
-          },
-        ),
-      );
-
-      // 5. Rejoindre le canal
-      await _agoraService.joinChannel(token, widget.channelId, 0, isVideo: widget.isVideo);
-
-    } catch (e) {
-      debugPrint("Erreur initialisation Agora: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Erreur d'appel: $e")),
-        );
-        Navigator.pop(context);
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _agoraService.leaveChannel();
-    super.dispose();
+    // On initialise l'appel au lancement via le provider
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(callProvider.notifier).initCall(widget.channelId, widget.isVideo);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(callProvider);
+
+    // Auto-pop si l'appel est terminé à distance (géré par le notifier qui met de remoteUid à null)
+    // Note: Dans une app réelle, on pourrait vouloir un timeout ou une confirmation.
+    
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
           // Remote Video ou Avatar
-          _buildRemoteVideo(),
+          _buildRemoteVideo(state),
 
           // Local Video (Overlay)
-          if (widget.isVideo && _localUserJoined)
+          if (widget.isVideo && state.localUserJoined && state.engine != null)
             Positioned(
               right: 20,
               top: 40,
@@ -137,10 +65,10 @@ class _CallScreenState extends State<CallScreen> {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: _isCameraOn 
+                  child: state.isCameraOn 
                     ? AgoraVideoView(
                         controller: VideoViewController(
-                          rtcEngine: _engine!,
+                          rtcEngine: state.engine!,
                           canvas: const VideoCanvas(uid: 0),
                         ),
                       )
@@ -150,9 +78,20 @@ class _CallScreenState extends State<CallScreen> {
             ),
 
           // Loading indicator
-          if (_isLoading)
+          if (state.isLoading)
             const Center(
               child: CircularProgressIndicator(color: Color(0xFF004D40)),
+            ),
+
+          // Error handling
+          if (state.errorMessage != null)
+            Center(
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                margin: const EdgeInsets.symmetric(horizontal: 24),
+                decoration: BoxDecoration(color: Colors.redAccent, borderRadius: BorderRadius.circular(12)),
+                child: Text(state.errorMessage!, style: const TextStyle(color: Colors.white)),
+              ),
             ),
 
           // Header (Nom du correspondant)
@@ -167,7 +106,7 @@ class _CallScreenState extends State<CallScreen> {
                   style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 Text(
-                  _remoteUid != null ? "En communication" : "Appel en cours...",
+                  state.remoteUid != null ? "En communication" : "Appel en cours...",
                   style: const TextStyle(color: Colors.white70, fontSize: 14),
                 ),
               ],
@@ -183,12 +122,9 @@ class _CallScreenState extends State<CallScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _buildCallAction(
-                  icon: _isMicOn ? Icons.mic : Icons.mic_off,
-                  color: _isMicOn ? Colors.white24 : Colors.redAccent,
-                  onPressed: () {
-                    _engine?.muteLocalAudioStream(_isMicOn);
-                    setState(() => _isMicOn = !_isMicOn);
-                  },
+                  icon: state.isMicOn ? Icons.mic : Icons.mic_off,
+                  color: state.isMicOn ? Colors.white24 : Colors.redAccent,
+                  onPressed: () => ref.read(callProvider.notifier).toggleMic(),
                 ),
                 _buildCallAction(
                   icon: Icons.call_end,
@@ -197,12 +133,9 @@ class _CallScreenState extends State<CallScreen> {
                 ),
                 if (widget.isVideo)
                   _buildCallAction(
-                    icon: _isCameraOn ? Icons.videocam : Icons.videocam_off,
-                    color: _isCameraOn ? Colors.white24 : Colors.redAccent,
-                    onPressed: () {
-                      _engine?.muteLocalVideoStream(_isCameraOn);
-                      setState(() => _isCameraOn = !_isCameraOn);
-                    },
+                    icon: state.isCameraOn ? Icons.videocam : Icons.videocam_off,
+                    color: state.isCameraOn ? Colors.white24 : Colors.redAccent,
+                    onPressed: () => ref.read(callProvider.notifier).toggleCamera(),
                   ),
               ],
             ),
@@ -212,12 +145,12 @@ class _CallScreenState extends State<CallScreen> {
     );
   }
 
-  Widget _buildRemoteVideo() {
-    if (_remoteUid != null && widget.isVideo) {
+  Widget _buildRemoteVideo(dynamic state) {
+    if (state.remoteUid != null && widget.isVideo && state.engine != null) {
       return AgoraVideoView(
         controller: VideoViewController.remote(
-          rtcEngine: _engine!,
-          canvas: VideoCanvas(uid: _remoteUid),
+          rtcEngine: state.engine!,
+          canvas: VideoCanvas(uid: state.remoteUid),
           connection: RtcConnection(channelId: widget.channelId),
         ),
       );
