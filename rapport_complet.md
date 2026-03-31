@@ -1,75 +1,71 @@
-# Rapport d'Avancement Exécutif - Projet Corporate Connect
+# Rapport Exécutif d'Avancement - Projet Corporate Connect
 
-**Date :** 30 Mars 2026
-**Statut actuel :** Phase de développement MVP finalisée — *Production Ready*
-**Version :** 1.0.0 (Release Candidate)
+*Dernière mise à jour : Mars 2026*
 
----
-
-## 1. Résumé Exécutif
-
-**Corporate Connect** est une plateforme de communication d'entreprise souveraine, moderne et sécurisée. Conçue pour remplacer ou compléter les solutions tierces (Teams, Slack, WhatsApp), elle garantit un contrôle total sur les données de l'entreprise tout en offrant une expérience utilisateur (UX) fluide et premium.
-
-L'application est aujourd'hui **entièrement fonctionnelle**. L'architecture logicielle a été conçue pour supporter une charge importante (scalabilité cloud) tout en garantissant une résilience maximale grâce à une gestion intelligente du mode "hors-ligne".
+Ce document constitue le rapport détaillé sur l'état actuel de l'application **Corporate Connect**, résumant l'architecture logicielle, les stacks technologiques utilisés, la gestion d'état centralisée et les fonctionnalités critiques déployées lors des dernières phases de modernisation.
 
 ---
 
-## 2. Piliers Techniques et Sécurité (Niveau Entreprise)
+## 1. Architecture Globale et Technologies
 
-Le socle technique a été audité et durci pour répondre aux exigences d'une isolation des communications d'entreprise :
+L'application **Corporate Connect** est pensée comme une plateforme de communication d'entreprise robuste, sécurisée par E2EE (Chiffrement de Bout en Bout) et performante même en zone de faible connectivité.
 
-*   **Sécurité et Chiffrement** : Protection point à point (E2E) des messages textuels. Les connexions à l'API et aux WebSockets sont protégées par des jetons de session courts (JWT Access/Refresh).
-*   **Protection Serveur** : Intégration de pare-feux applicatifs (Middleware CORS strict, Headers `nosniff`, `XSS-Protection`) et d'un limiteur de trafic (Max 60 requêtes/minute/utilisateur) pour prévenir les attaques DDoS.
-*   **Architecture Haute Performance** : Backend asynchrone ultra-rapide en **Python (FastAPI)**, couplé à une base de données cloud **PostgreSQL (Neon)**. L'application mobile (iOS/Android) est développée en **Flutter** garantissant des performances natives 60FPS.
+### Frontend (Flutter)
+- **Framework** : Flutter (Dart) respectant les standards Material Design 3.
+- **State Management** : Migration complète vers **Riverpod 3.x** (`NotifierProvider`, `AsyncNotifierProvider`) pour une isolation parfaite de la logique métier et de l'interface utilisateur.
+- **Base de données Hors-ligne** : Intégration de **SQLite** (`sqflite`) pour mettre en cache l'historique complet, permettant un affichage "zéro latence".
+- **Communication & Appels** : 
+  - `web_socket_channel` pour le chat en temps réel.
+  - `agora_rtc_engine` pour maintenir des sessions WebRTC voix et vidéo.
+- **Média et Partage** : Upload de fichiers et manipulation grâce à `image_picker`, `file_picker` et l'ouverture native via `url_launcher`.
+- **Sécurité** : Module `cryptography` avec le standard X25519 asymétrique pour garantir la stricte confidentialité des échanges textuels (1:1).
 
----
-
-## 3. Périmètre Fonctionnel (Ce qui est livré)
-
-L'application couvre l'intégralité du cycle de vie de la communication interne :
-
-| Catégorie | Fonctionnalités Clés |
-| :--- | :--- |
-| **Temps Réel** | WebSockets bidirectionnelles instantanées. Indicateur de frappe ("*En train d'écrire...*"), accusés de lecture fluides, et citations de messages (Reply To). |
-| **Appels A/V** | **Visioconférence & Audio P2P** : Intégration du moteur Agora RTC. Signalisation temps réel, gestion dynamique des permissions (caméra/micro), et coupure automatique des flux non nécessaires. |
-| **Résilience** | **Mode Offline-First** : Synchronisation transparente. Les messages envoyés sans réseau sont mis en attente et envoyés automatiquement au retour d'Internet. Historique lisible hors-ligne (SQLite). |
-| **Multimédia** | Envoi d'images compressées, partage de fichiers lourds (PDF, Excel) et dictaphone natif intégré (notes vocales fluides). |
-| **Notifications** | **Push Intelligent (Firebase)** : Réveille les collaborateurs absents lors de messages importants. Le clic redirige instantanément vers le bon salon de discussion. |
-| **Gouvernance** | **Dashboard Administrateurs** : Accès privilégié permettant de surveiller l'engagement (Stats messages/salons) et d'exclure instantanément des utilisateurs malveillants de la plateforme. Gestion des droits *Admin* au sein des groupes de projet. |
-| **Vie d'Entreprise** | **Annuaire** global des employés interconnecté, et système de **Stories (Statuts éphémères de 24h)** pour annoncer un télétravail ou un déplacement professionnel. |
+### Backend Connecté
+L'API en Python (via Ngrok) gère la persistance cloud, le routage temps réel via WebSocket, l'authentification JWT, et l'enregistrement des jetons de notification Push Firebase (FCM).
 
 ---
 
-## 4. Bilan du Code Produit (Inventaire des Modules)
+## 2. Fonctionnalités Déployées
 
-Le développement a suivi une méthodologie "Clean Architecture", séparant strictement l'interface utilisateur experte de la logique métier.
+Les récentes implémentations propulsent Corporate Connect au rang de véritable outil professionnel :
 
-### Application Mobile (Vues Utilisateur)
-*   **Hub Central** (`home_screen`) : Accueil consolidant les discussions récentes, l'annuaire et le profil.
-*   **Moteur de Messagerie** (`chat_screen`) : Vue ultra-dynamique gérant medias, text input complexe, et statut des messages.
-*   **Moteur de Recherche** (`search_screen`) : Recherche globale indexée.
-*   **Interfaces de Modération** (`new_group`, `admin_dashboard`) : Outils de création d'équipes et console de gestion.
-*   **Identité** (`register`, `login`, `profile`, `story`) : Vues premium des comptes collaborateurs.
+### A. Communication et Confidentialité (E2EE)
+- **Chiffrement de Bout en Bout** : Maintien et refonte de l'interface Profil affichant visuellement le statut de la clé privée locale et l'option de régénération de la clé E2EE.
+- **Stockage Indépendant** : Les messages chiffrés sont stockés dans SQLite (`chat_cache.db`), garantissant la rémanence des conversations hors-ligne et la vitesse de navigation (No-Lag).
 
-### Serveur (Micro-services Backend)
-*   **Temps Réel & Distribution** (`routes_chat.py`) : Pilote la charge des WebSockets et dispatch les notifications en arrière-plan.
-*   **Persistance Multimédia** (`routes_media.py`) : Autorise le stockage et nettoyage asynchrone sécurisé de fichiers.
-*   **Droits d'Accès** (`routes_auth.py`, `routes_admin.py`) : Verrous de sécurité d'entreprise et lecture de données abstraites (KPI).
-*   **Gestion Hiérarchique** (`routes_rooms.py`, `routes_profiles.py`) : Gestion des autorisations en sous-groupes de projet.
+### B. Outils de Partage (Médias et Fichiers)
+- **Interface Premium de Pièces Jointes** : Menu modernisé pour l'upload depuis la Galerie, l'appareil photo, l'envoi de PDF/Documents avec indicateur de progression fluide.
+- **Lecteur Audio Sophistiqué** : Les notes vocales ont une interface dédiée avec chronomètre et suivi de position en temps réel de lecture.
+- **Ouverture native** : Les clics sur les URL ou les documents ouvrent l'application système idéale (ex. lecteur PDF natif) pour préserver l'ergonomie mobile.
+
+### C. Profil du Salon et Exploration (Data Listing)
+- Un tout nouvel écran de **Détails de Conversation** a vu le jour, abandonnant les simples menus déroulants pour une vue structurée par onglets :
+  - **Membres** : Visualisation claire des participants et des rôles d'administration.
+  - **Médias** : Galerie de photos complète de la conversation.
+  - **Documents** : Liste chronologique des fichiers échangés, parés de leurs icônes de formats et tailles, prêts à être ouverts.
+  - **Vocaux** : L'historique des notes vocales archivées.
+- *Force Numérique* : Cet écran est propulsé par des requêtes filtrées SQLite. Son chargement est instinctif et ne requiert pas de connexion.
+
+### D. Appels WebRTC Fiabilisés
+- Toutes les opérations logiques liées au SDK Agora (Instanciation de l'Engine, Demande de permissions Caméra/Micro, Rejoindre le canal) ont été externalisées dans le composant `CallNotifier` de Riverpod. Ceci a corrigé les potentielles déconnexions dues aux cycles de vie rudimentaires de `StatefulWidget`.
+
+### E. Paramètres et Personnalisation
+Un centre de contrôle permet aux utilisateurs d'adapter Corporate Connect :
+- **Thème Visuel** : Capacité à forcer le Mode Clair ou Sombre. L'interface réagit en temps réel à ce basculement.
+- **Gestion du Cache** : Un moniteur surveille le poids exact de la base de données SQL et offre l'opportunité de *vider le cache* en cas de besoin d'espace disque.
+- **Bascules Push** : Un commutateur conserve l'opt-in de réception des alertes notifications.
 
 ---
 
-## 5. Feuille de Route de la Semaine — Objectifs de Pré-production
+## 3. Qualité et Pistes d'Améliorations (Roadmap)
 
-L'application ayant atteint son MVP (Minimum Viable Product) avec l'ensemble des modules de communication fonctionnels (Textes & WebRTC), voici les axes budgétés pour cette semaine afin de lancer l'application en conditions réelles :
+La base du code (Clean Architecture) est maintenant résolument saine et testable.
+Néanmoins, pour passer de la phase Beta à la "Release", quelques jalons de sécurité restent recommandés :
 
-1. **🔐 Sécurité OTP (Vérification par SMS)** :
-   *   Remplacement de l'inscription "Email/Mot de passe" traditionnelle par une vérification stricte du numéro de téléphone (via Twilio ou Firebase Phone Auth) pour certifier l'identité des collaborateurs.
-2. **🧪 Phase de Tests (QA - Quality Assurance)** :
-   *   Création de comptes de test en simultané sur différents terminaux physiques (iOS et Android) sortis des simulateurs.
-   *   Analyse de la fluidité des flux vidéo Agora sur des connexions grand public (4G).
-3. **🚀 Déploiement Cloud & Packaging (Go-Live)** :
-   *   **Infrastructure** : Containerisation du Backend FastAPI (via Docker) et hébergement robuste sur un serveur Cloud professionnel (AWS EC2, GCP ou VPS privé), remplaçant l'URL temporaire de développement.
-   *   **Distribution** : Compilation finale du frontend en APK pour les utilisateurs Android locaux et publication via *TestFlight* pour iOS.
+1. **Sécurisation des Clés (Keystore System)** : Remplacer l'actuel package `shared_preferences` par `flutter_secure_storage` afin de placer la clé d'encryption `E2EE` (`X25519`) dans le coffre-fort cryptographique matériel d'Android/iOS.
+2. **E2EE Étendu aux Pièces Jointes** : Implémenter le chiffrement symétrique (AES) à la volée avant upload des médias, et partager cette clé AES protégée via le canal X25519 existant pour assurer la totale non-ingérence du serveur.
+3. **Appels en Background** : S'appuyer sur la centralisation permise par Riverpod pour basculer Agora en Floating/Picture-in-picture.
 
-**Conclusion :** Le fondement technologique est aujourd'hui sain, solide et répond à 100% des exigences de communication d'une entreprise moderne. Nous passons de la phase de R&D à la phase de déploiement et d'audit en conditions réelles.
+---
+*Fin du rapport.* 
+`Généré automatiquement suite au cycle d'intégration en Phase 3.`
