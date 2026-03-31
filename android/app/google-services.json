@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "26056002141",
+    "project_id": "labconnect-b02c4",
+    "storage_bucket": "labconnect-b02c4.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:26056002141:android:7477635751f9ab59681bb4",
+        "android_client_info": {
+          "package_name": "com.monentreprise.connect.connect_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDuM2e25RDSWhyrA-NBOU3GYZETLJFjFX4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
