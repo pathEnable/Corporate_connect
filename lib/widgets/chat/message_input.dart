@@ -32,6 +32,7 @@ class _MessageInputState extends ConsumerState<MessageInput> {
 
   bool _isTyping = false;
   bool _isRecording = false;
+  bool _isUploading = false;
   Timer? _typingDebounce;
 
   @override
@@ -77,6 +78,13 @@ class _MessageInputState extends ConsumerState<MessageInput> {
     }
   }
 
+  Future<void> _takePhoto() async {
+    final XFile? image = await _picker.pickImage(source: ImageSource.camera);
+    if (image != null) {
+      _uploadAndSend(File(image.path), 'image');
+    }
+  }
+
   Future<void> _pickFile() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles();
     if (result != null) {
@@ -85,6 +93,7 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   }
 
   Future<void> _uploadAndSend(File file, String type) async {
+    setState(() => _isUploading = true);
     try {
       final result = await _mediaService.uploadFile(file);
       ref.read(chatProvider(widget.roomId).notifier).sendMessage(result['url'], type);
@@ -92,6 +101,8 @@ class _MessageInputState extends ConsumerState<MessageInput> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erreur d'envoi : $e")));
       }
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
     }
   }
 
@@ -124,15 +135,25 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -2))
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (_isUploading)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8.0),
+              child: LinearProgressIndicator(minHeight: 2, color: Color(0xFF004D40), backgroundColor: Colors.transparent),
+            ),
           Row(
             children: [
               IconButton(
-                icon: const Icon(Icons.add, color: Color(0xFF004D40)),
+                icon: const Icon(Icons.add_circle_outline, color: Color(0xFF004D40), size: 28),
                 onPressed: _showAttachmentMenu,
               ),
               Expanded(
@@ -140,9 +161,12 @@ class _MessageInputState extends ConsumerState<MessageInput> {
                   decoration: BoxDecoration(
                     color: const Color(0xFFF5F5F5),
                     borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Colors.grey[300]!),
                   ),
                   child: TextField(
                     controller: _controller,
+                    maxLines: 5,
+                    minLines: 1,
                     decoration: const InputDecoration(
                       hintText: 'Écrire un message...',
                       border: InputBorder.none,
@@ -152,20 +176,8 @@ class _MessageInputState extends ConsumerState<MessageInput> {
                   ),
                 ),
               ),
-              const SizedBox(width: 4),
-              GestureDetector(
-                onLongPress: _isTyping ? null : _startRecording,
-                onLongPressEnd: _isTyping ? null : (_) => _stopRecording(),
-                onTap: _isTyping ? _handleSend : null,
-                child: CircleAvatar(
-                  backgroundColor: _isRecording ? Colors.red : const Color(0xFF004D40),
-                  child: Icon(
-                    _isRecording ? Icons.mic : (_isTyping ? Icons.send : Icons.mic_none),
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                ),
-              ),
+              const SizedBox(width: 8),
+              _buildActionCircle(),
             ],
           ),
         ],
@@ -173,31 +185,94 @@ class _MessageInputState extends ConsumerState<MessageInput> {
     );
   }
 
+  Widget _buildActionCircle() {
+    bool canSend = _isTyping || _controller.text.trim().isNotEmpty;
+    return GestureDetector(
+      onLongPress: canSend ? null : _startRecording,
+      onLongPressEnd: canSend ? null : (_) => _stopRecording(),
+      onTap: canSend ? _handleSend : null,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: _isRecording ? Colors.red : const Color(0xFF004D40),
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: (_isRecording ? Colors.red : const Color(0xFF004D40)).withValues(alpha: 0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 3)
+            )
+          ]
+        ),
+        child: Icon(
+          _isRecording ? Icons.mic : (canSend ? Icons.send : Icons.mic_none),
+          color: Colors.white,
+          size: 22,
+        ),
+      ),
+    );
+  }
+
   void _showAttachmentMenu() {
     showModalBottomSheet(
       context: context,
-      builder: (context) => SafeArea(
-        child: Wrap(
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              leading: const Icon(Icons.image, color: Colors.purple),
-              title: const Text('Galerie'),
-              onTap: () {
-                Navigator.pop(context);
-                _pickImage();
-              },
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _AttachmentOption(icon: Icons.camera_alt, color: Colors.blue, label: 'Caméra', onTap: () { Navigator.pop(context); _takePhoto(); }),
+                _AttachmentOption(icon: Icons.image, color: Colors.purple, label: 'Images', onTap: () { Navigator.pop(context); _pickImage(); }),
+                _AttachmentOption(icon: Icons.insert_drive_file, color: Colors.orange, label: 'Document', onTap: () { Navigator.pop(context); _pickFile(); }),
+                _AttachmentOption(icon: Icons.audiotrack, color: Colors.red, label: 'Audio', onTap: () { Navigator.pop(context); _startRecording(); }),
+              ],
             ),
-            ListTile(
-              leading: const Icon(Icons.insert_drive_file, color: Colors.blue),
-              title: const Text('Document'),
-              onTap: () {
-                Navigator.pop(context);
-                _pickFile();
-              },
-            ),
+            const SizedBox(height: 16),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _AttachmentOption extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String label;
+  final VoidCallback onTap;
+
+  const _AttachmentOption({required this.icon, required this.color, required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(50),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 28),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+      ],
     );
   }
 }

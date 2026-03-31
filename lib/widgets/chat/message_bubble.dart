@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../services/media_service.dart';
 
 class MessageBubble extends StatelessWidget {
@@ -178,25 +179,60 @@ class _FileContent extends StatelessWidget {
     }
 
     return InkWell(
-      onTap: () {
-        // Logique pour ouvrir ou télécharger le fichier
+      onTap: () async {
+        try {
+          final url = await MediaService().getDownloadUrl(content);
+          final uri = Uri.parse(url);
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          }
+        } catch (e) {
+          debugPrint("Error launching file: $e");
+        }
       },
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: iconColor, size: 32),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              filename,
-              style: TextStyle(
-                color: isMe ? Colors.white : Colors.black87,
-                decoration: TextDecoration.underline,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isMe ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.03),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.2),
+                shape: BoxShape.circle,
               ),
-              overflow: TextOverflow.ellipsis,
+              child: Icon(icon, color: iconColor, size: 24),
             ),
-          ),
-        ],
+            const SizedBox(width: 12),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    filename,
+                    style: TextStyle(
+                      color: isMe ? Colors.white : Colors.black87,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    extension.toUpperCase(),
+                    style: TextStyle(
+                      color: isMe ? Colors.white70 : Colors.grey[600],
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -247,32 +283,98 @@ class _AudioBubbleContentState extends State<AudioBubbleContent> {
     super.dispose();
   }
 
+  String _printDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, "0");
+    String twoDigitMinutes = twoDigits(duration.inMinutes.remainder(60));
+    String twoDigitSeconds = twoDigits(duration.inSeconds.remainder(60));
+    return "$twoDigitMinutes:$twoDigitSeconds";
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, color: widget.isMe ? Colors.white : Colors.black87),
-          onPressed: () {
-            if (_isPlaying) {
-              _audioPlayer.pause();
-            } else {
-              _audioPlayer.resume();
-            }
-          },
-        ),
-        SizedBox(
-          width: 100,
-          child: Slider(
-            value: _position.inSeconds.toDouble(),
-            max: _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0,
-            onChanged: (val) => _audioPlayer.seek(Duration(seconds: val.toInt())),
-            activeColor: widget.isMe ? Colors.white : const Color(0xFF004D40),
-            inactiveColor: widget.isMe ? Colors.white54 : Colors.grey,
+    return Container(
+      width: 200,
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      child: Row(
+        children: [
+          _buildPlayButton(),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildSlider(),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildTimerText(_printDuration(_position)),
+                      _buildTimerText(_printDuration(_duration)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlayButton() {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          if (_isPlaying) {
+            _audioPlayer.pause();
+          } else {
+            _audioPlayer.resume();
+          }
+        },
+        borderRadius: BorderRadius.circular(50),
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: widget.isMe ? Colors.white.withValues(alpha: 0.2) : const Color(0xFF004D40).withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            _isPlaying ? Icons.pause : Icons.play_arrow,
+            color: widget.isMe ? Colors.white : const Color(0xFF004D40),
+            size: 24,
           ),
         ),
-      ],
+      ),
+    );
+  }
+
+  Widget _buildSlider() {
+    return SliderTheme(
+      data: SliderTheme.of(context).copyWith(
+        trackHeight: 3,
+        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+        overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+        activeTrackColor: widget.isMe ? Colors.white : const Color(0xFF004D40),
+        inactiveTrackColor: widget.isMe ? Colors.white30 : Colors.grey[300],
+        thumbColor: widget.isMe ? Colors.white : const Color(0xFF004D40),
+      ),
+      child: Slider(
+        value: _position.inSeconds.toDouble(),
+        max: _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0,
+        onChanged: (val) => _audioPlayer.seek(Duration(seconds: val.toInt())),
+      ),
+    );
+  }
+
+  Widget _buildTimerText(String text) {
+    return Text(
+      text,
+      style: TextStyle(
+        color: widget.isMe ? Colors.white70 : Colors.grey[600],
+        fontSize: 10,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      ),
     );
   }
 }
