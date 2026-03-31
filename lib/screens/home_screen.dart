@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'contacts_screen.dart';
 import 'profile_screen.dart';
 import 'search_screen.dart';
+import 'settings_screen.dart';
 import '../widgets/ui_helpers.dart';
 import '../services/push_notification_service.dart';
 import '../widgets/home/home_chats_tab.dart';
@@ -75,7 +76,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             Navigator.push(context, FadeSlideRoute(page: const SearchScreen()));
           },
         ),
-        IconButton(icon: const Icon(Icons.more_vert), onPressed: () {}),
+        IconButton(
+          icon: const Icon(Icons.more_vert),
+          onPressed: () {
+            Navigator.push(context, FadeSlideRoute(page: const SettingsScreen()));
+          },
+        ),
       ],
     );
   }

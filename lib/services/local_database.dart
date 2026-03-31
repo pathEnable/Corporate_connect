@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
@@ -135,4 +136,47 @@ class LocalDatabase {
       };
     }).toList();
   }
+
+  Future<int> getCacheSize() async {
+    try {
+      final dbPath = await getDatabasesPath();
+      final path = join(dbPath, 'chat_cache.db');
+      final file = File(path);
+      if (await file.exists()) {
+        return await file.length();
+      }
+      return 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  Future<void> clearCache() async {
+    final db = await instance.database;
+    await db.execute('DELETE FROM messages');
+    await db.execute('DELETE FROM rooms');
+    // Facultatif: Vider aussi l'espace pour réduire la taille du fichier physique
+    await db.execute('VACUUM');
+  }
+
+  Future<List<Map<String, dynamic>>> getMediaMessages(String roomId, {String? type}) async {
+    final db = await instance.database;
+    String whereClause = 'room_id = ? AND message_type != "text" AND message_type != "call_offer"';
+    List<dynamic> whereArgs = [roomId];
+    
+    if (type != null) {
+      whereClause = 'room_id = ? AND message_type = ?';
+      whereArgs = [roomId, type];
+    }
+    
+    final result = await db.query(
+      'messages',
+      where: whereClause,
+      whereArgs: whereArgs,
+      orderBy: 'created_at DESC',
+    );
+    return result;
+  }
 }
+
+
