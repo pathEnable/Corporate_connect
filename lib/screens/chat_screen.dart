@@ -9,6 +9,7 @@ import '../widgets/chat/reply_preview.dart';
 import '../widgets/chat/typing_indicator.dart';
 import '../services/room_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'room_details_screen.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String roomId;
@@ -133,69 +134,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _showGroupInfo() {
-     showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => _GroupInfoModal(
-        roomName: widget.roomName,
-        members: _members,
-        isGroup: widget.isGroup,
-        roomId: widget.roomId,
-      ),
-    );
-  }
-}
-
-class _GroupInfoModal extends StatelessWidget {
-  final String roomName;
-  final List<Map<String, dynamic>> members;
-  final bool isGroup;
-  final String roomId;
-
-  const _GroupInfoModal({
-    required this.roomName,
-    required this.members,
-    required this.isGroup,
-    required this.roomId,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(roomName, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Text(isGroup ? "Groupe · ${members.length} membres" : "Conversation privée", style: const TextStyle(color: Colors.grey)),
-          const Divider(height: 32),
-          const Align(
-            alignment: Alignment.centerLeft,
-            child: Text("Membres", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          ),
-          const SizedBox(height: 16),
-          Flexible(
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: members.length,
-              itemBuilder: (context, index) {
-                final member = members[index];
-                return ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const CircleAvatar(
-                    backgroundColor: Color(0xFF004D40),
-                    child: Icon(Icons.person, color: Colors.white),
-                  ),
-                  title: Text(member['full_name'] ?? "Inconnu"),
-                  subtitle: member['is_admin_member'] == true ? const Text("Administrateur") : null,
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 24),
-        ],
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RoomDetailsScreen(
+          roomId: widget.roomId,
+          roomName: widget.roomName,
+          isGroup: widget.isGroup,
+          members: _members,
+        ),
       ),
     );
   }
