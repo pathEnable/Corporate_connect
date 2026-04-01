@@ -24,15 +24,6 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Corporate Connect API", version="1.0.0")
 
-# ── CORS ──
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # En production, restreindre aux domaines autorisés
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # ── Headers de sécurité ──
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -62,6 +53,16 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 app.add_middleware(RateLimiterMiddleware)
+
+# ── CORS (Doit être le dernier ajouté pour être le premier/dernier exécuté) ──
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # Plus robuste pour le développement avec ngrok/flutter web
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"], # Permet au frontend de voir tous les headers si nécessaire
+)
 
 # Fichiers statiques pour les uploads
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

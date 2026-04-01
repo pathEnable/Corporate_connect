@@ -10,7 +10,11 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await PushNotificationService.initialize();
+  try {
+    await PushNotificationService.initialize();
+  } catch (e) {
+    debugPrint("⚠️ Firebase/Notifications non disponibles: $e");
+  }
   runApp(const ProviderScope(child: CorporateConnectApp()));
 }
 
@@ -27,19 +31,41 @@ class CorporateConnectApp extends ConsumerWidget {
       themeMode: settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF004D40),
+          seedColor: const Color(0xFF00695C),
+          primary: const Color(0xFF00695C),
+          secondary: const Color(0xFF26A69A),
+          surface: Colors.white,
+          background: const Color(0xFFF8F9FA),
           brightness: Brightness.light,
         ),
+        scaffoldBackgroundColor: const Color(0xFFF8F9FA),
         fontFamily: 'Roboto',
         useMaterial3: true,
+        appBarTheme: const AppBarTheme(
+          elevation: 0,
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black87,
+          centerTitle: true,
+        ),
       ),
       darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF004D40),
+          seedColor: const Color(0xFF00BFA5),
+          primary: const Color(0xFF00BFA5),
+          secondary: const Color(0xFF1DE9B6),
+          surface: const Color(0xFF1E1E1E), // Surfaces distinctes du fond
+          background: const Color(0xFF121212), // Fond presque OLED
           brightness: Brightness.dark,
         ),
+        scaffoldBackgroundColor: const Color(0xFF121212),
         fontFamily: 'Roboto',
         useMaterial3: true,
+        appBarTheme: const AppBarTheme(
+          elevation: 0,
+          backgroundColor: Color(0xFF1E1E1E),
+          foregroundColor: Colors.white,
+          centerTitle: true,
+        ),
       ),
       navigatorKey: navigatorKey,
       home: const AuthGate(),

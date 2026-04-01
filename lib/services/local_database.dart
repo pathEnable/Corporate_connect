@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
@@ -9,6 +10,7 @@ class LocalDatabase {
   LocalDatabase._init();
 
   Future<Database> get database async {
+    if (kIsWeb) throw UnsupportedError('SQLite non supporté sur Web');
     if (_database != null) return _database!;
     _database = await _initDB('chat_cache.db');
     return _database!;
@@ -20,7 +22,7 @@ class LocalDatabase {
 
     return await openDatabase(
       path,
-      version: 4,
+      version: 6,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -36,6 +38,27 @@ class LocalDatabase {
     if (oldVersion < 4) {
       await db.execute("ALTER TABLE messages ADD COLUMN reply_to_id TEXT");
       await db.execute("ALTER TABLE messages ADD COLUMN reply_to_content TEXT");
+    }
+    if (oldVersion < 5) {
+      // Créer la table FTS pour la recherche rapide
+      await db.execute('''
+        CREATE VIRTUAL TABLE messages_fts USING fts5(
+          id UNINDEXED,
+          room_id UNINDEXED,
+          content,
+          message_type UNINDEXED,
+          created_at UNINDEXED,
+          content='messages',
+          content_rowid='id'
+        )
+      ''');
+      // On peuple la table FTS avec les messages existants
+      await db.execute("INSERT INTO messages_fts(messages_fts) VALUES('rebuild')");
+    }
+    if (oldVersion < 6) {
+      // Ajout d'index pour accélérer le chargement initial et les tris
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_messages_room ON messages(room_id, created_at)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_rooms_id ON rooms(id)');
     }
   }
 
@@ -56,6 +79,18 @@ class LocalDatabase {
     ''');
 
     await db.execute('''
+      CREATE VIRTUAL TABLE messages_fts USING fts5(
+        id UNINDEXED,
+        room_id UNINDEXED,
+        content,
+        message_type UNINDEXED,
+        created_at UNINDEXED,
+        content='messages',
+        content_rowid='id'
+      )
+    ''');
+
+    await db.execute('''
       CREATE TABLE rooms (
         id TEXT PRIMARY KEY,
         name TEXT,
@@ -63,29 +98,73 @@ class LocalDatabase {
         last_message TEXT
       )
     ''');
+
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_messages_room ON messages(room_id, created_at)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_rooms_id ON rooms(id)');
   }
 
   Future<void> saveMessage(Map<String, dynamic> msg) async {
+    if (kIsWeb) return;
     final db = await instance.database;
-    await db.insert(
-      'messages',
-      {
-        'id': msg['id'] ?? msg['message_id'],
-        'room_id': msg['room_id'],
-        'sender_id': msg['sender_id'],
-        'content': msg['content'],
-        'message_type': msg['message_type'],
-        'status': msg['status'] ?? 'sent',
-        'is_read': (msg['is_read'] == true || msg['is_read'] == 1) ? 1 : 0,
-        'reply_to_id': msg['reply_to_id'],
-        'reply_to_content': msg['reply_to_content'],
-        'created_at': msg['created_at'] ?? msg['timestamp'],
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    final id = msg['id'] ?? msg['message_id'];
+    
+    await db.transaction((txn) async {
+      // 1. Sauvegarder dans la table principale
+      await txn.insert(
+        'messages',
+        {
+          'id': id,
+          'room_id': msg['room_id'],
+          'sender_id': msg['sender_id'],
+          'content': msg['content'],
+          'message_type': msg['message_type'],
+          'status': msg['status'] ?? 'sent',
+          'is_read': (msg['is_read'] == true || msg['is_read'] == 1) ? 1 : 0,
+          'reply_to_id': msg['reply_to_id'],
+          'reply_to_content': msg['reply_to_content'],
+          'created_at': msg['created_at'] ?? msg['timestamp'],
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
+      // 2. Synchroniser la table FTS (FTS5 gère automatiquement via content='messages' s'il y a des triggers, 
+      //    mais ici on utilise un rebâti périodique ou des insertions manuelles si nécessaire. 
+      //    Note: Avec content='messages', les insertions dans 'messages' DOIVENT être suivies d'une insertion dans 'messages_fts')
+      if (msg['message_type'] == 'text') {
+        await txn.insert(
+          'messages_fts',
+          {
+            'id': id,
+            'room_id': msg['room_id'],
+            'content': msg['content'],
+            'message_type': msg['message_type'],
+            'created_at': msg['created_at'] ?? msg['timestamp'],
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
+  }
+
+  /// Recherche plein texte dans les messages d'un salon ou globalement
+  Future<List<Map<String, dynamic>>> searchMessages(String query, {String? roomId}) async {
+    if (kIsWeb) return [];
+    final db = await instance.database;
+    String sql = "SELECT * FROM messages_fts WHERE content MATCH ?";
+    List<dynamic> args = ['$query*']; // Recherche par préfixe automatique
+
+    if (roomId != null) {
+      sql += " AND room_id = ?";
+      args.add(roomId);
+    }
+
+    sql += " ORDER BY created_at DESC";
+    
+    return await db.rawQuery(sql, args);
   }
 
   Future<void> updateMessageStatus(String id, String status, {String? newId}) async {
+    if (kIsWeb) return;
     final db = await instance.database;
     final Map<String, dynamic> data = {'status': status};
     if (newId != null) data['id'] = newId;
@@ -99,6 +178,7 @@ class LocalDatabase {
   }
 
   Future<List<Map<String, dynamic>>> getMessages(String roomId) async {
+    if (kIsWeb) return [];
     final db = await instance.database;
     return await db.query(
       'messages',
@@ -109,6 +189,7 @@ class LocalDatabase {
   }
 
   Future<void> saveRooms(List<Map<String, dynamic>> rooms) async {
+    if (kIsWeb) return;
     final db = await instance.database;
     final batch = db.batch();
     for (var room in rooms) {
@@ -127,6 +208,7 @@ class LocalDatabase {
   }
 
   Future<List<Map<String, dynamic>>> getRooms() async {
+    if (kIsWeb) return [];
     final db = await instance.database;
     final result = await db.query('rooms');
     return result.map((row) {
@@ -138,6 +220,7 @@ class LocalDatabase {
   }
 
   Future<int> getCacheSize() async {
+    if (kIsWeb) return 0;
     try {
       final dbPath = await getDatabasesPath();
       final path = join(dbPath, 'chat_cache.db');
@@ -152,6 +235,7 @@ class LocalDatabase {
   }
 
   Future<void> clearCache() async {
+    if (kIsWeb) return;
     final db = await instance.database;
     await db.execute('DELETE FROM messages');
     await db.execute('DELETE FROM rooms');
@@ -160,6 +244,7 @@ class LocalDatabase {
   }
 
   Future<List<Map<String, dynamic>>> getMediaMessages(String roomId, {String? type}) async {
+    if (kIsWeb) return [];
     final db = await instance.database;
     String whereClause = 'room_id = ? AND message_type != "text" AND message_type != "call_offer"';
     List<dynamic> whereArgs = [roomId];

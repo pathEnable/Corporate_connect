@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'auth_service.dart';
 
 class EncryptionService {
@@ -11,11 +12,25 @@ class EncryptionService {
 
   final _algorithm = X25519();
   final _aesApp = AesGcm.with256bits();
+  final _secureStorage = const FlutterSecureStorage();
 
   /// Générer ou récupérer la paire de clés locale
   Future<SimpleKeyPair> getLocalKeyPair() async {
-    final prefs = await SharedPreferences.getInstance();
-    final privateKeyBase64 = prefs.getString('e2ee_private_key');
+    // 1. Tenter de lire depuis le stockage sécurisé
+    String? privateKeyBase64 = await _secureStorage.read(key: 'e2ee_private_key');
+
+    // 2. Migration depuis SharedPreferences si nécessaire
+    if (privateKeyBase64 == null) {
+      final prefs = await SharedPreferences.getInstance();
+      privateKeyBase64 = prefs.getString('e2ee_private_key');
+      
+      if (privateKeyBase64 != null) {
+        // Déplacer vers le stockage sécurisé
+        await _secureStorage.write(key: 'e2ee_private_key', value: privateKeyBase64);
+        await prefs.remove('e2ee_private_key');
+        debugPrint("🔐 Clé E2EE migrée vers le stockage sécurisé.");
+      }
+    }
 
     if (privateKeyBase64 != null) {
       final privateKeyBytes = base64Decode(privateKeyBase64);
@@ -23,7 +38,9 @@ class EncryptionService {
     } else {
       final newKeyPair = await _algorithm.newKeyPair();
       final privateKey = await newKeyPair.extractPrivateKeyBytes();
-      await prefs.setString('e2ee_private_key', base64Encode(privateKey));
+      final newPrivateKeyBase64 = base64Encode(privateKey);
+      
+      await _secureStorage.write(key: 'e2ee_private_key', value: newPrivateKeyBase64);
       
       // Publier la clé publique sur le serveur
       final publicKey = await newKeyPair.extractPublicKey();

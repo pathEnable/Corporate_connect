@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import '../services/room_service.dart';
+import '../services/api_config.dart';
 import 'chat_screen.dart';
 
 class ContactsScreen extends StatefulWidget {
@@ -43,8 +44,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
       // 2. Fetch en arrière plan pour les nouveautés
       final token = await _authService.getToken();
+      final String directoryUrl = '${ApiConfig.baseUrl}/profiles/directory';
+      
       final response = await http.get(
-        Uri.parse('https://hoselike-detrital-nola.ngrok-free.dev/profiles/directory'),
+        Uri.parse(directoryUrl),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',

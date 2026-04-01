@@ -5,6 +5,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:dio/dio.dart';
 import 'dart:convert';
 import 'auth_service.dart';
+import 'api_config.dart';
 import '../main.dart';
 import '../screens/chat_screen.dart';
 
@@ -85,10 +86,12 @@ class PushNotificationService {
 
     try {
       await _dio.post(
-        'https://hoselike-detrital-nola.ngrok-free.dev/notifications/register-token',
+        '${ApiConfig.baseUrl}/notifications/register-token',
         data: {'fcm_token': fcmToken},
         options: Options(
-          headers: {'Authorization': 'Bearer $authToken'},
+          headers: {
+            'Authorization': 'Bearer $authToken',
+          },
         ),
       );
       debugPrint("Token FCM enregistré sur le backend.");

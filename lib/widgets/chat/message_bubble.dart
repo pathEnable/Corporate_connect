@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../services/media_service.dart';
 
 class MessageBubble extends StatelessWidget {
@@ -27,29 +28,48 @@ class MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final notMeBgColor = isDark ? theme.colorScheme.surfaceContainerHighest : Colors.white;
+    final notMeTextColor = isDark ? Colors.white : Colors.black87;
+    final replyBorderColor = isMe ? Colors.white : theme.colorScheme.primary;
+
     return GestureDetector(
       onLongPress: onReply,
       child: Align(
         alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 3),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
           decoration: BoxDecoration(
-            color: isMe ? const Color(0xFF004D40) : Colors.white,
+            gradient: isMe 
+              ? LinearGradient(
+                  colors: [theme.colorScheme.primary, theme.colorScheme.primary.withValues(alpha: 0.85)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : null,
+            color: isMe ? null : notMeBgColor,
             borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(16),
-              topRight: const Radius.circular(16),
-              bottomLeft: isMe ? const Radius.circular(16) : Radius.zero,
-              bottomRight: isMe ? Radius.zero : const Radius.circular(16),
+              topLeft: const Radius.circular(24),
+              topRight: const Radius.circular(24),
+              bottomLeft: isMe ? const Radius.circular(24) : const Radius.circular(6),
+              bottomRight: isMe ? const Radius.circular(6) : const Radius.circular(24),
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
+                color: isMe 
+                  ? theme.colorScheme.primary.withValues(alpha: 0.25) 
+                  : Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               ),
             ],
+            border: isMe ? null : Border.all(color: Colors.grey.withValues(alpha: 0.1), width: 1),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -60,16 +80,16 @@ class MessageBubble extends StatelessWidget {
                   margin: const EdgeInsets.only(bottom: 6),
                   width: double.infinity,
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border(left: BorderSide(color: isMe ? Colors.white : const Color(0xFF004D40), width: 4)),
+                    color: isMe ? Colors.white.withValues(alpha: 0.15) : Colors.black.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border(left: BorderSide(color: replyBorderColor, width: 4)),
                   ),
                   child: Text(
                     replyToContent!.length > 60 ? '${replyToContent!.substring(0, 60)}...' : replyToContent!,
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 13,
                       fontStyle: FontStyle.italic,
-                      color: isMe ? Colors.white70 : Colors.black54,
+                      color: isMe ? Colors.white.withValues(alpha: 0.85) : notMeTextColor.withValues(alpha: 0.7),
                     ),
                   ),
                 ),
@@ -83,8 +103,9 @@ class MessageBubble extends StatelessWidget {
                 Text(
                   content,
                   style: TextStyle(
-                    color: isMe ? Colors.white : Colors.black87,
-                    fontSize: 15,
+                    color: isMe ? Colors.white : notMeTextColor,
+                    fontSize: 15.5,
+                    height: 1.3,
                   ),
                 ),
               const SizedBox(height: 4),
@@ -138,10 +159,14 @@ class _ImageContent extends StatelessWidget {
         if (snapshot.hasData) {
           return ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: Image.network(
-              snapshot.data!,
+            child: CachedNetworkImage(
+              imageUrl: snapshot.data!,
               fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, size: 50),
+              placeholder: (context, url) => const SizedBox(
+                height: 100, width: 100, 
+                child: Center(child: CircularProgressIndicator())
+              ),
+              errorWidget: (context, url, error) => const Icon(Icons.broken_image, size: 50),
             ),
           );
         }
@@ -215,7 +240,7 @@ class _FileContent extends StatelessWidget {
                   Text(
                     filename,
                     style: TextStyle(
-                      color: isMe ? Colors.white : Colors.black87,
+                      color: isMe ? Colors.white : Theme.of(context).colorScheme.onSurface,
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
                     ),
@@ -350,19 +375,46 @@ class _AudioBubbleContentState extends State<AudioBubbleContent> {
   }
 
   Widget _buildSlider() {
-    return SliderTheme(
-      data: SliderTheme.of(context).copyWith(
-        trackHeight: 3,
-        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-        overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-        activeTrackColor: widget.isMe ? Colors.white : const Color(0xFF004D40),
-        inactiveTrackColor: widget.isMe ? Colors.white30 : Colors.grey[300],
-        thumbColor: widget.isMe ? Colors.white : const Color(0xFF004D40),
-      ),
-      child: Slider(
-        value: _position.inSeconds.toDouble(),
-        max: _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0,
-        onChanged: (val) => _audioPlayer.seek(Duration(seconds: val.toInt())),
+    // Liste de hauteurs fixes pour simuler une onde audio (Waveform)
+    final waveformData = [
+      0.4, 0.7, 0.5, 0.9, 0.6, 0.8, 0.4, 0.7, 0.5, 1.0, 
+      0.6, 0.8, 0.4, 0.9, 0.6, 0.7, 0.5, 0.8, 0.4, 0.6
+    ];
+    
+    final currentProgress = _duration.inMilliseconds > 0 
+        ? _position.inMilliseconds / _duration.inMilliseconds 
+        : 0.0;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: GestureDetector(
+        onHorizontalDragUpdate: (details) {
+          final box = context.findRenderObject() as RenderBox;
+          final localPosition = box.globalToLocal(details.globalPosition);
+          final percent = (localPosition.dx - 40).clamp(0, 160) / 160;
+          _audioPlayer.seek(Duration(milliseconds: (_duration.inMilliseconds * percent).toInt()));
+        },
+        child: SizedBox(
+          height: 30,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(waveformData.length, (index) {
+              final barProgress = index / waveformData.length;
+              final isActive = barProgress <= currentProgress;
+              
+              return Container(
+                width: 3,
+                height: 30 * waveformData[index],
+                decoration: BoxDecoration(
+                  color: isActive 
+                      ? (widget.isMe ? Colors.white : const Color(0xFF004D40))
+                      : (widget.isMe ? Colors.white.withValues(alpha: 0.3) : Colors.grey[300]),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              );
+            }),
+          ),
+        ),
       ),
     );
   }

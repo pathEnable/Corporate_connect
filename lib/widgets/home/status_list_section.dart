@@ -13,7 +13,7 @@ class StatusListSection extends ConsumerWidget {
     final state = ref.watch(homeProvider);
 
     return Container(
-      height: 100,
+      height: 110,
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,

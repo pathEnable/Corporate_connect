@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'auth_service.dart';
+import 'api_config.dart';
 
 class AgoraService {
   static final AgoraService _instance = AgoraService._internal();
@@ -11,7 +12,7 @@ class AgoraService {
   final AuthService _authService = AuthService();
 
   // URL de base pour les requêtes API (doit correspondre au backend)
-  static const String _apiBaseUrl = 'https://hoselike-detrital-nola.ngrok-free.dev/agora';
+  static const String _apiBaseUrl = '${ApiConfig.baseUrl}/agora';
 
   Future<void> initAgora() async {
     // On récupère d'abord un token de test ou l'App ID via le backend si nécessaire

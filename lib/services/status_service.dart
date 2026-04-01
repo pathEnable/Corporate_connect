@@ -1,9 +1,10 @@
 import 'dart:convert';
 import '../models/status_model.dart';
 import 'auth_service.dart';
+import 'api_config.dart';
 
 class StatusService {
-  static const String baseUrl = 'https://hoselike-detrital-nola.ngrok-free.dev/status';
+  static const String baseUrl = '${ApiConfig.baseUrl}/status';
   final AuthService _authService = AuthService();
 
   Future<List<StatusModel>> getStatuses() async {

@@ -220,7 +220,7 @@ class _MediaTabState extends State<_MediaTab> {
     return ListView.separated(
       padding: const EdgeInsets.symmetric(vertical: 8),
       itemCount: _messages.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
+      separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, index) {
         final msg = _messages[index];
         final filename = msg['content'].toString().split('/').last;
@@ -257,7 +257,7 @@ class _MediaTabState extends State<_MediaTab> {
     return ListView.separated(
       padding: const EdgeInsets.symmetric(vertical: 8),
       itemCount: _messages.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
+      separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, index) {
         final msg = _messages[index];
         return ListTile(

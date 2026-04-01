@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'auth_service.dart';
+import 'api_config.dart';
 
 class RoomService {
-  static const String baseUrl = 'https://hoselike-detrital-nola.ngrok-free.dev/rooms';
+  static const String baseUrl = '${ApiConfig.baseUrl}/rooms';
 
   final AuthService _authService = AuthService();
 

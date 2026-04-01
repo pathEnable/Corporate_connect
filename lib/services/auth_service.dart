@@ -3,16 +3,15 @@ import 'package:flutter/foundation.dart';
 import 'push_notification_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'api_config.dart';
 
 class AuthService {
-  // Changez cette URL selon votre environnement
-  static const String baseUrl = 'https://hoselike-detrital-nola.ngrok-free.dev/auth';
 
   /// Connexion par Email et mot de passe
   Future<Map<String, dynamic>> loginWithEmail(String email, String password) async {
     final response = await http.post(
-      Uri.parse('$baseUrl/login'),
-      headers: {'Content-Type': 'application/json'},
+      Uri.parse('${ApiConfig.baseUrl}/auth/login'),
+      headers: ApiConfig.defaultHeaders,
       body: jsonEncode({'email': email, 'password': password}),
     );
 
@@ -35,8 +34,8 @@ class AuthService {
     String phoneNumber,
   ) async {
     final response = await http.post(
-      Uri.parse('$baseUrl/register'),
-      headers: {'Content-Type': 'application/json'},
+      Uri.parse('${ApiConfig.baseUrl}/auth/register'),
+      headers: ApiConfig.defaultHeaders,
       body: jsonEncode({
         'full_name': fullName,
         'username': username,
@@ -59,8 +58,8 @@ class AuthService {
   /// Envoyer un OTP par SMS
   Future<void> sendOtp(String phoneNumber) async {
     final response = await http.post(
-      Uri.parse('$baseUrl/otp/send'),
-      headers: {'Content-Type': 'application/json'},
+      Uri.parse('${ApiConfig.baseUrl}/auth/otp/send'),
+      headers: ApiConfig.defaultHeaders,
       body: jsonEncode({'phone_number': phoneNumber}),
     );
 
@@ -72,8 +71,8 @@ class AuthService {
   /// Vérifier le code OTP
   Future<Map<String, dynamic>> verifyOtp(String phoneNumber, String otpCode) async {
     final response = await http.post(
-      Uri.parse('$baseUrl/otp/verify'),
-      headers: {'Content-Type': 'application/json'},
+      Uri.parse('${ApiConfig.baseUrl}/auth/otp/verify'),
+      headers: ApiConfig.defaultHeaders,
       body: jsonEncode({'phone_number': phoneNumber, 'otp_code': otpCode}),
     );
 
@@ -130,8 +129,8 @@ class AuthService {
 
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/refresh'),
-        headers: {'Content-Type': 'application/json'},
+        Uri.parse('${ApiConfig.baseUrl}/auth/refresh'),
+        headers: ApiConfig.defaultHeaders,
         body: jsonEncode({'refresh_token': rt}),
       );
 
@@ -153,7 +152,7 @@ class AuthService {
   /// Récupérer le profil complet de l'API avec gestion du rafraîchissement
   Future<Map<String, dynamic>> getCurrentProfile() async {
     final response = await authenticatedRequest(
-      url: '$baseUrl/me',
+      url: '${ApiConfig.baseUrl}/auth/me',
       method: 'GET',
     );
     if (response.statusCode == 200) {
@@ -166,7 +165,7 @@ class AuthService {
   /// Mettre à jour le profil avec gestion du rafraîchissement
   Future<void> updateProfile({String? bio, String? jobTitle, String? avatarUrl, String? publicKey}) async {
     final response = await authenticatedRequest(
-      url: 'https://hoselike-detrital-nola.ngrok-free.dev/profiles/me',
+      url: '${ApiConfig.baseUrl}/profiles/me',
       method: 'PUT',
       body: {
         'bio': bio,
@@ -190,10 +189,8 @@ class AuthService {
     String? token = await getToken();
     
     Future<http.Response> makeRequest() async {
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      };
+      final headers = Map<String, String>.from(ApiConfig.defaultHeaders)
+        ..addAll({'Authorization': 'Bearer $token'});
       final uri = Uri.parse(url);
       
       switch (method) {

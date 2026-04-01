@@ -1,9 +1,10 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'auth_service.dart';
+import 'api_config.dart';
 
 class MediaService {
-  static const String baseUrl = 'https://hoselike-detrital-nola.ngrok-free.dev/media';
+  static const String baseUrl = '${ApiConfig.baseUrl}/media';
   final AuthService _authService = AuthService();
   final Dio _dio = Dio();
 
@@ -18,7 +19,9 @@ class MediaService {
         '$baseUrl/upload',
         data: formData,
         options: Options(
-          headers: {'Authorization': 'Bearer $token'},
+          headers: {
+            'Authorization': 'Bearer $token',
+          },
         ),
       );
     }

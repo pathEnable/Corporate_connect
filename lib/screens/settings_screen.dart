@@ -54,7 +54,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ref.read(settingsProvider.notifier).toggleDarkMode(val);
             },
             secondary: const Icon(Icons.dark_mode),
-            activeColor: primaryColor,
+            activeThumbColor: primaryColor,
           ),
           const Divider(),
 
@@ -67,7 +67,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ref.read(settingsProvider.notifier).toggleNotifications(val);
             },
             secondary: const Icon(Icons.notifications),
-            activeColor: primaryColor,
+            activeThumbColor: primaryColor,
           ),
           const Divider(),
 

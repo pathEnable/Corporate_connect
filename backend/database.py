@@ -3,8 +3,13 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from config import DATABASE_URL
 
+# Fix pour Render : Convertir postgres:// en postgresql:// pour SQLAlchemy
+DB_URL = DATABASE_URL
+if DB_URL and DB_URL.startswith("postgres://"):
+    DB_URL = DB_URL.replace("postgres://", "postgresql://", 1)
+
 engine = create_engine(
-    DATABASE_URL,
+    DB_URL,
     pool_pre_ping=True,
     pool_recycle=300
 )

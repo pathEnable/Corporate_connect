@@ -2,9 +2,10 @@ import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/io.dart';
 import 'auth_service.dart';
+import 'api_config.dart';
 
 class ChatService {
-  static const String wsBaseUrl = 'wss://hoselike-detrital-nola.ngrok-free.dev/ws/chat';
+  static const String wsBaseUrl = '${ApiConfig.wsBaseUrl}/ws/chat';
 
   WebSocketChannel? _channel;
 

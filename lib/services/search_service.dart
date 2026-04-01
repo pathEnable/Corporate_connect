@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'auth_service.dart';
+import 'api_config.dart';
 
 class SearchService {
-  static const String baseUrl = 'https://hoselike-detrital-nola.ngrok-free.dev/search';
+  static const String baseUrl = '${ApiConfig.baseUrl}/search';
   final AuthService _authService = AuthService();
 
   Future<Map<String, dynamic>> globalSearch(String query) async {

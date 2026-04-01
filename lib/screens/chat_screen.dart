@@ -7,6 +7,7 @@ import '../widgets/chat/message_input.dart';
 import '../widgets/chat/chat_app_bar.dart';
 import '../widgets/chat/reply_preview.dart';
 import '../widgets/chat/typing_indicator.dart';
+import '../widgets/chat/skeleton_message.dart';
 import '../services/room_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'room_details_screen.dart';
@@ -73,7 +74,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(chatProvider(widget.roomId));
+    // Optimisation : On n'écoute que les propriétés nécessaires pour éviter des rebuilds inutiles
+    final messages = ref.watch(chatProvider(widget.roomId).select((s) => s.messages));
+    final isLoading = ref.watch(chatProvider(widget.roomId).select((s) => s.isLoading));
+    final typingUsers = ref.watch(chatProvider(widget.roomId).select((s) => s.typingUsers));
 
     // Auto-scroll on new messages
     ref.listen<ChatState>(chatProvider(widget.roomId), (previous, next) {
@@ -93,14 +97,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: state.isLoading
-                ? const Center(child: CircularProgressIndicator(color: Color(0xFF004D40)))
+            child: isLoading
+                ? ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    itemCount: 8,
+                    itemBuilder: (context, index) => SkeletonMessage(isMe: index % 2 == 0),
+                  )
                 : ListView.builder(
                     controller: _scrollController,
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    itemCount: state.messages.length,
+                    itemCount: messages.length,
                     itemBuilder: (context, index) {
-                      final msg = state.messages[index];
+                      final msg = messages[index];
                       return MessageBubble(
                         content: msg['content'] ?? '',
                         isMe: msg['sender_id'].toString() == _userId,
@@ -115,7 +123,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   ),
           ),
           
-          if (state.typingUsers.isNotEmpty) const TypingIndicator(),
+          if (typingUsers.isNotEmpty) const TypingIndicator(),
           
           if (_replyingTo != null)
             ReplyPreview(

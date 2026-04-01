@@ -20,20 +20,26 @@ def list_rooms(
     memberships = db.query(RoomMember).filter(RoomMember.profile_id == current_user.id).all()
     room_ids = [m.room_id for m in memberships]
 
+    if not room_ids:
+        return []
+
     rooms = db.query(Room).filter(Room.id.in_(room_ids)).all()
+
+    # Optimisation N+1 : Récupérer le dernier message de chaque salon en une requête structurée
+    # On sait que le backend utilise PostgreSQL d'après l'historique (psycopg2)
+    latest_messages = (
+        db.query(Message)
+        .filter(Message.room_id.in_(room_ids))
+        .distinct(Message.room_id)
+        .order_by(Message.room_id, Message.created_at.desc())
+        .all()
+    )
+    last_msg_map = {m.room_id: m.content for m in latest_messages}
 
     result = []
     for room in rooms:
-        last_msg = (
-            db.query(Message)
-            .filter(Message.room_id == room.id)
-            .order_by(Message.created_at.desc())
-            .first()
-        )
-        
-        # Plus de déchiffrement serveur (E2EE pur). 
         # Le contenu (chiffré E2EE) est envoyé directement au client.
-        last_content = last_msg.content if last_msg else None
+        last_content = last_msg_map.get(room.id)
 
         result.append(RoomResponse(
             id=room.id,
@@ -71,9 +77,12 @@ def create_room(
     # Ajouter les autres membres
     for m_id in member_ids:
         if str(m_id) != str(current_user.id):
+            # SQLAlchemy requiert des objets UUID pour les insertions en batch sur PostgreSQL
+            profile_uuid = uuid.UUID(str(m_id)) if isinstance(m_id, str) else m_id
+            
             new_member = RoomMember(
                 room_id=new_room.id,
-                profile_id=m_id,
+                profile_id=profile_uuid,
                 is_admin_member=False
             )
             db.add(new_member)
@@ -175,7 +184,8 @@ def get_room_members(
     _membership: RoomMember = Depends(get_current_room_member)
 ):
     """Lister les membres d'un salon avec leurs clés publiques."""
-    members = db.query(RoomMember).filter(RoomMember.room_id == room_id).all()
+    from sqlalchemy.orm import joinedload
+    members = db.query(RoomMember).options(joinedload(RoomMember.profile)).filter(RoomMember.room_id == room_id).all()
     
     result = []
     for m in members:
@@ -218,7 +228,11 @@ def add_member(
     if existing:
         return {"message": "Déjà membre."}
 
-    new_member = RoomMember(room_id=room_id, profile_id=target_user_id, is_admin_member=False)
+    # Utilisation d'objets UUID pour éviter le KeyError SQLAlchemy (batch inserts)
+    room_uuid = uuid.UUID(str(room_id)) if isinstance(room_id, str) else room_id
+    target_uuid = uuid.UUID(str(target_user_id)) if isinstance(target_user_id, str) else target_user_id
+    
+    new_member = RoomMember(room_id=room_uuid, profile_id=target_uuid, is_admin_member=False)
     db.add(new_member)
     db.commit()
     return {"message": "Membre ajouté."}

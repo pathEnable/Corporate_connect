@@ -54,6 +54,9 @@ dependencies:
   agora_rtc_engine: ^6.3.2
   url_launcher: ^6.3.1
   package_info_plus: ^8.1.0
+  flutter_secure_storage: ^9.2.4
+  simple_pip_mode: ^1.1.0
+  cached_network_image: ^3.4.1
 
 dev_dependencies:
   flutter_test:

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models/profile_state.dart';
 import '../services/auth_service.dart';
 import '../services/media_service.dart';
@@ -14,6 +15,7 @@ class ProfileNotifier extends Notifier<ProfileState> {
   final AuthService _authService = AuthService();
   final MediaService _mediaService = MediaService();
   final EncryptionService _encryptionService = EncryptionService();
+  final _secureStorage = const FlutterSecureStorage();
 
   @override
   ProfileState build() {
@@ -24,8 +26,15 @@ class ProfileNotifier extends Notifier<ProfileState> {
   Future<void> _loadProfile() async {
     try {
       final profile = await _authService.getCurrentProfile();
-      final prefs = await SharedPreferences.getInstance();
-      final hasKeys = prefs.containsKey('e2ee_private_key');
+      
+      // Vérifier d'abord dans le stockage sécurisé
+      bool hasKeys = await _secureStorage.containsKey(key: 'e2ee_private_key');
+      
+      // Si absent, vérifier SharedPreferences (pour compatibilité transitoire)
+      if (!hasKeys) {
+        final prefs = await SharedPreferences.getInstance();
+        hasKeys = prefs.containsKey('e2ee_private_key');
+      }
       
       state = state.copyWith(
         profileData: profile,
@@ -71,10 +80,10 @@ class ProfileNotifier extends Notifier<ProfileState> {
   Future<void> regenerateE2eeKeys() async {
     state = state.copyWith(isLoading: true);
     try {
-      // Pour forcer la régénération, on devrait idéalement vider la clé existante
-      // Mais EncryptionService.getLocalKeyPair() génère s'il n'y en a pas.
+      // Supprimer des deux endroits pour forcer la régénération
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('e2ee_private_key');
+      await _secureStorage.delete(key: 'e2ee_private_key');
       
       await _encryptionService.getLocalKeyPair();
       state = state.copyWith(isLoading: false, hasE2eeKeys: true);

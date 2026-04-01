@@ -1,45 +1,115 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 
-class TypingIndicator extends StatelessWidget {
+class TypingIndicator extends StatefulWidget {
   const TypingIndicator({super.key});
 
   @override
+  State<TypingIndicator> createState() => _TypingIndicatorState();
+}
+
+class _TypingIndicatorState extends State<TypingIndicator> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      color: Colors.white,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 24,
-            height: 16,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: List.generate(3, (i) {
-                return TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 0.0, end: 1.0),
-                  duration: Duration(milliseconds: 600 + (i * 200)),
-                  builder: (context, value, child) {
-                    return Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF004D40).withValues(alpha: 0.4 + (value * 0.6)),
-                        shape: BoxShape.circle,
+          ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildDots(),
+                    const SizedBox(width: 10),
+                    Text(
+                      'En train d\'écrire',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF004D40).withValues(alpha: 0.8),
+                        letterSpacing: 0.2,
                       ),
-                    );
-                  },
-                );
-              }),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'En train d\'écrire...',
-            style: TextStyle(fontSize: 12, color: Colors.grey[600], fontStyle: FontStyle.italic),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildDots() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(3, (index) {
+        return AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            final delay = index * 0.2;
+            double value = (_controller.value - delay) % 1.0;
+            if (value < 0) value += 1.0;
+            
+            double opacity = 0.3;
+            double scale = 1.0;
+            
+            if (value < 0.3) {
+              opacity = 0.3 + (value / 0.3) * 0.7;
+              scale = 1.0 + (value / 0.3) * 0.3;
+            } else if (value < 0.6) {
+              opacity = 1.0 - ((value - 0.3) / 0.3) * 0.7;
+              scale = 1.3 - ((value - 0.3) / 0.3) * 0.3;
+            }
+
+            return Container(
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              width: 5,
+              height: 5,
+              decoration: BoxDecoration(
+                color: const Color(0xFF004D40).withValues(alpha: opacity),
+                shape: BoxShape.circle,
+              ),
+              transform: Matrix4.diagonal3Values(scale, scale, 1.0),
+            );
+          },
+        );
+      }),
     );
   }
 }
