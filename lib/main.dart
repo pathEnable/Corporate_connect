@@ -29,17 +29,46 @@ class CorporateConnectApp extends ConsumerWidget {
       title: 'Corporate Connect',
       debugShowCheckedModeBanner: false,
       themeMode: settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+      builder: (context, child) {
+        final MediaQueryData data = MediaQuery.of(context);
+        return MediaQuery(
+          data: data.copyWith(
+            textScaler: TextScaler.linear(settings.fontScale),
+          ),
+          child: child!,
+        );
+      },
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF00695C),
-          primary: const Color(0xFF00695C),
-          secondary: const Color(0xFF26A69A),
+          seedColor: Color(settings.accentColor),
+          primary: Color(settings.accentColor),
           surface: Colors.white,
           brightness: Brightness.light,
         ),
         scaffoldBackgroundColor: const Color(0xFFF8F9FA),
         fontFamily: 'Roboto',
         useMaterial3: true,
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.grey[50],
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Color(settings.accentColor), width: 2),
+          ),
+          labelStyle: TextStyle(color: Colors.grey[700]),
+          prefixIconColor: Color(settings.accentColor),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Color(settings.accentColor),
+            foregroundColor: Colors.white,
+            minimumSize: const Size(double.infinity, 52),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 2,
+          ),
+        ),
         appBarTheme: const AppBarTheme(
           elevation: 0,
           backgroundColor: Colors.white,
@@ -49,15 +78,35 @@ class CorporateConnectApp extends ConsumerWidget {
       ),
       darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF00BFA5),
-          primary: const Color(0xFF00BFA5),
-          secondary: const Color(0xFF1DE9B6),
+          seedColor: Color(settings.accentColor),
+          primary: Color(settings.accentColor),
           surface: const Color(0xFF1E1E1E),
           brightness: Brightness.dark,
         ),
         scaffoldBackgroundColor: const Color(0xFF121212),
         fontFamily: 'Roboto',
         useMaterial3: true,
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xFF2C2C2C),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Color(settings.accentColor), width: 2),
+          ),
+          labelStyle: const TextStyle(color: Colors.white70),
+          prefixIconColor: Color(settings.accentColor),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Color(settings.accentColor),
+            foregroundColor: Colors.black,
+            minimumSize: const Size(double.infinity, 52),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 0,
+          ),
+        ),
         appBarTheme: const AppBarTheme(
           elevation: 0,
           backgroundColor: Color(0xFF1E1E1E),
@@ -82,8 +131,8 @@ class AuthGate extends StatelessWidget {
       future: AuthService().isLoggedIn(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator(color: Color(0xFF004D40))),
+          return Scaffold(
+            body: Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary)),
           );
         }
         if (snapshot.data == true) {

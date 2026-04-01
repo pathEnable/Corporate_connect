@@ -3,6 +3,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../services/media_service.dart';
+import '../../screens/image_viewer_screen.dart';
 
 class MessageBubble extends StatelessWidget {
   final String content;
@@ -11,6 +12,7 @@ class MessageBubble extends StatelessWidget {
   final String type;
   final String status;
   final bool isRead;
+  final bool isEncrypted;
   final String? replyToContent;
   final VoidCallback? onReply;
 
@@ -22,6 +24,7 @@ class MessageBubble extends StatelessWidget {
     this.type = 'text',
     this.status = 'sent',
     this.isRead = false,
+    this.isEncrypted = false,
     this.replyToContent,
     this.onReply,
   });
@@ -112,6 +115,7 @@ class MessageBubble extends StatelessWidget {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  const SizedBox(width: 4),
                   Text(
                     _formatTime(timestamp),
                     style: TextStyle(
@@ -122,8 +126,8 @@ class MessageBubble extends StatelessWidget {
                   if (isMe) ...[
                     const SizedBox(width: 4),
                     Icon(
-                      status == 'pending' ? Icons.access_time : 
-                      (isRead ? Icons.done_all : Icons.done),
+                      status == 'pending' ? Icons.access_time_rounded : 
+                      (isRead ? Icons.done_all_rounded : Icons.done_rounded),
                       size: 14,
                       color: isRead ? Colors.blueAccent : Colors.white60,
                     ),
@@ -157,20 +161,49 @@ class _ImageContent extends StatelessWidget {
       future: MediaService().getDownloadUrl(url),
       builder: (context, snapshot) {
         if (snapshot.hasData) {
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: CachedNetworkImage(
-              imageUrl: snapshot.data!,
-              fit: BoxFit.cover,
-              placeholder: (context, url) => const SizedBox(
-                height: 100, width: 100, 
-                child: Center(child: CircularProgressIndicator())
+          final imageUrl = snapshot.data!;
+          return GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ImageViewerScreen(imageUrl: imageUrl),
+                ),
+              );
+            },
+            child: Hero(
+              tag: imageUrl,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: CachedNetworkImage(
+                  imageUrl: imageUrl,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Container(
+                    height: 150,
+                    width: 200,
+                    color: Colors.grey.withAlpha(30),
+                    child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                  ),
+                  errorWidget: (context, url, error) => Container(
+                    height: 100,
+                    width: 100,
+                    color: Colors.grey.withAlpha(20),
+                    child: const Icon(Icons.broken_image_rounded, size: 40, color: Colors.grey),
+                  ),
+                ),
               ),
-              errorWidget: (context, url, error) => const Icon(Icons.broken_image, size: 50),
             ),
           );
         }
-        return const SizedBox(height: 100, width: 100, child: Center(child: CircularProgressIndicator()));
+        return Container(
+          height: 150,
+          width: 200,
+          decoration: BoxDecoration(
+            color: Colors.grey.withAlpha(10),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        );
       },
     );
   }
@@ -203,6 +236,7 @@ class _FileContent extends StatelessWidget {
       iconColor = Colors.orange;
     }
 
+    final theme = Theme.of(context);
     return InkWell(
       onTap: () async {
         try {
@@ -215,10 +249,11 @@ class _FileContent extends StatelessWidget {
           debugPrint("Error launching file: $e");
         }
       },
+      borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: isMe ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.03),
+          color: isMe ? Colors.white.withAlpha(25) : theme.colorScheme.onSurface.withAlpha(10),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
@@ -347,6 +382,7 @@ class _AudioBubbleContentState extends State<AudioBubbleContent> {
   }
 
   Widget _buildPlayButton() {
+    final theme = Theme.of(context);
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -361,12 +397,12 @@ class _AudioBubbleContentState extends State<AudioBubbleContent> {
         child: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: widget.isMe ? Colors.white.withValues(alpha: 0.2) : const Color(0xFF004D40).withValues(alpha: 0.1),
+            color: widget.isMe ? Colors.white.withAlpha(51) : theme.colorScheme.primary.withAlpha(26),
             shape: BoxShape.circle,
           ),
           child: Icon(
-            _isPlaying ? Icons.pause : Icons.play_arrow,
-            color: widget.isMe ? Colors.white : const Color(0xFF004D40),
+            _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            color: widget.isMe ? Colors.white : theme.colorScheme.primary,
             size: 24,
           ),
         ),
@@ -375,7 +411,7 @@ class _AudioBubbleContentState extends State<AudioBubbleContent> {
   }
 
   Widget _buildSlider() {
-    // Liste de hauteurs fixes pour simuler une onde audio (Waveform)
+    final theme = Theme.of(context);
     final waveformData = [
       0.4, 0.7, 0.5, 0.9, 0.6, 0.8, 0.4, 0.7, 0.5, 1.0, 
       0.6, 0.8, 0.4, 0.9, 0.6, 0.7, 0.5, 0.8, 0.4, 0.6
@@ -407,8 +443,8 @@ class _AudioBubbleContentState extends State<AudioBubbleContent> {
                 height: 30 * waveformData[index],
                 decoration: BoxDecoration(
                   color: isActive 
-                      ? (widget.isMe ? Colors.white : const Color(0xFF004D40))
-                      : (widget.isMe ? Colors.white.withValues(alpha: 0.3) : Colors.grey[300]),
+                      ? (widget.isMe ? Colors.white : theme.colorScheme.primary)
+                      : (widget.isMe ? Colors.white.withAlpha(77) : theme.dividerColor),
                   borderRadius: BorderRadius.circular(2),
                 ),
               );

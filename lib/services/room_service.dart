@@ -3,7 +3,7 @@ import 'auth_service.dart';
 import 'api_config.dart';
 
 class RoomService {
-  static const String baseUrl = '${ApiConfig.baseUrl}/rooms';
+  static String get baseUrl => '${ApiConfig.baseUrl}/rooms';
 
   final AuthService _authService = AuthService();
 
@@ -99,11 +99,24 @@ class RoomService {
     );
   }
 
-  /// Retirer un membre
+  /// Retirer un membre (Kicker ou Quitter)
   Future<void> removeMember(String roomId, String userId) async {
     await _authService.authenticatedRequest(
       url: '$baseUrl/$roomId/members/$userId',
       method: 'DELETE',
     );
+  }
+
+  /// Ajouter un membre
+  Future<void> addMember(String roomId, String userId) async {
+    await _authService.authenticatedRequest(
+      url: '$baseUrl/$roomId/members?target_user_id=$userId',
+      method: 'POST',
+    );
+  }
+
+  /// Quitter un salon
+  Future<void> leaveRoom(String roomId, String currentUserId) async {
+    await removeMember(roomId, currentUserId);
   }
 }

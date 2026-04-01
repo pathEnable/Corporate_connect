@@ -5,7 +5,7 @@ import 'auth_service.dart';
 import 'api_config.dart';
 
 class ChatService {
-  static const String wsBaseUrl = '${ApiConfig.wsBaseUrl}/ws/chat';
+  static String get wsBaseUrl => '${ApiConfig.wsBaseUrl}/ws/chat';
 
   WebSocketChannel? _channel;
 

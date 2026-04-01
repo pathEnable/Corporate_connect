@@ -55,8 +55,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
       );
 
       if (response.statusCode == 200) {
-        await prefs.setString('cached_contacts', response.body); // Sauvegarde
-        final list = List<Map<String, dynamic>>.from(jsonDecode(response.body));
+        final decodedBody = utf8.decode(response.bodyBytes);
+        await prefs.setString('cached_contacts', decodedBody);
+        final list = List<Map<String, dynamic>>.from(jsonDecode(decodedBody));
         if (mounted) {
           setState(() {
             _contacts = list;
@@ -111,33 +112,36 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
         title: const Text('Annuaire'),
-        backgroundColor: const Color(0xFF004D40),
-        foregroundColor: Colors.white,
+        backgroundColor: theme.colorScheme.surface,
+        foregroundColor: theme.colorScheme.onSurface,
+        elevation: 0,
       ),
       body: Column(
         children: [
-          // Barre de recherche
-          Container(
-            color: const Color(0xFF004D40),
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          // Barre de recherche modernisée
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
             child: TextField(
               controller: _searchController,
               onChanged: _filterContacts,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: theme.colorScheme.onSurface),
               decoration: InputDecoration(
                 hintText: 'Rechercher un collègue...',
-                hintStyle: const TextStyle(color: Colors.white60),
-                prefixIcon: const Icon(Icons.search, color: Colors.white60),
+                hintStyle: TextStyle(color: theme.colorScheme.onSurface.withAlpha(120)),
+                prefixIcon: Icon(Icons.search_rounded, color: theme.colorScheme.primary),
                 filled: true,
-                fillColor: Colors.white.withValues(alpha: 0.15),
+                fillColor: theme.colorScheme.surfaceContainerHighest.withAlpha(80),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(16),
                   borderSide: BorderSide.none,
                 ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
           ),
@@ -145,28 +149,29 @@ class _ContactsScreenState extends State<ContactsScreen> {
           // Liste des contacts
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: Color(0xFF004D40)))
+                ? Center(child: CircularProgressIndicator(color: theme.colorScheme.primary))
                 : _filtered.isEmpty
                     ? Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.people_outline, size: 64, color: Colors.grey[300]),
-                            const SizedBox(height: 12),
-                            Text('Aucun contact trouvé', style: TextStyle(color: Colors.grey[500])),
+                            Icon(Icons.people_outline_rounded, size: 64, color: theme.dividerColor.withAlpha(50)),
+                            const SizedBox(height: 16),
+                            Text('Aucun contact trouvé', style: TextStyle(color: theme.colorScheme.onSurface.withAlpha(150))),
                           ],
                         ),
                       )
                     : ListView.separated(
                         itemCount: _filtered.length,
-                        separatorBuilder: (context, index) => const Divider(height: 1, indent: 72),
+                        padding: const EdgeInsets.only(bottom: 24),
+                        separatorBuilder: (context, index) => Divider(height: 1, indent: 80, color: theme.dividerColor.withAlpha(30)),
                         itemBuilder: (context, index) {
                           final contact = _filtered[index];
                           return ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
                             leading: CircleAvatar(
-                              radius: 24,
-                              backgroundColor: const Color(0xFF004D40),
+                              radius: 26,
+                              backgroundColor: theme.colorScheme.primary,
                               child: Text(
                                 (contact['full_name'] ?? 'U')[0].toUpperCase(),
                                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
@@ -177,8 +182,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
                               style: const TextStyle(fontWeight: FontWeight.w600),
                             ),
                             subtitle: Text(
-                              '@${contact['username'] ?? ''}',
-                              style: TextStyle(color: Colors.grey[500]),
+                              contact['job_title'] ?? '@${contact['username'] ?? ''}',
+                              style: TextStyle(color: theme.colorScheme.onSurface.withAlpha(150), fontSize: 12),
                             ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -189,12 +194,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
                                     color: (contact['is_online'] == true)
-                                        ? const Color(0xFF25D366)
-                                        : Colors.grey[300],
+                                        ? theme.colorScheme.secondary
+                                        : theme.dividerColor.withAlpha(100),
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                const Icon(Icons.chat_bubble_outline, color: Color(0xFF004D40)),
+                                const SizedBox(width: 12),
+                                Icon(Icons.chat_bubble_outline_rounded, color: theme.colorScheme.primary, size: 20),
                               ],
                             ),
                             onTap: () => _startChat(contact),

@@ -19,15 +19,27 @@ class CallNotifier extends Notifier<CallState> {
     return const CallState();
   }
 
-  Future<void> initCall(String channelId, bool isVideo) async {
-    state = state.copyWith(isLoading: true);
-    
-    // 1. Permissions
-    List<Permission> permissions = [Permission.microphone];
-    if (isVideo) permissions.add(Permission.camera);
-    await permissions.request();
+  Future<void> _requestPermissions(bool isVideo) async {
+    Map<Permission, PermissionStatus> statuses = await [
+      Permission.microphone,
+      if (isVideo) Permission.camera,
+    ].request();
 
+    if (statuses[Permission.microphone] != PermissionStatus.granted) {
+      throw 'Accès au microphone requis pour l\'appel';
+    }
+    if (isVideo && statuses[Permission.camera] != PermissionStatus.granted) {
+      throw 'Accès à la caméra requis pour la vidéo';
+    }
+  }
+
+  Future<void> initCall(String channelId, bool isVideo) async {
+    state = state.copyWith(isLoading: true, errorMessage: null);
+    
     try {
+      // 1. Permissions Guard
+      await _requestPermissions(isVideo);
+
       // 2. Token & Engine
       final tokenData = await _agoraService.fetchToken(channelId);
       final String token = tokenData['token'];
@@ -49,6 +61,9 @@ class CallNotifier extends Notifier<CallState> {
           },
           onLeaveChannel: (RtcConnection connection, RtcStats stats) {
             state = state.copyWith(localUserJoined: false, remoteUid: null);
+          },
+          onError: (ErrorCodeType err, String msg) {
+            state = state.copyWith(errorMessage: "Erreur Agora: $msg", isLoading: false);
           },
         ),
       );

@@ -86,8 +86,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
     });
 
+    final theme = Theme.of(context);
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F0F0),
+      backgroundColor: theme.colorScheme.surface,
       appBar: ChatAppBar(
         roomId: widget.roomId,
         roomName: widget.roomName,
@@ -116,6 +118,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         type: msg['message_type'] ?? 'text',
                         status: msg['status'] ?? 'sent',
                         isRead: msg['is_read'] == true || msg['is_read'] == 1,
+                        isEncrypted: msg['is_encrypted'] == true,
                         replyToContent: msg['reply_to_content'],
                         onReply: () => setState(() => _replyingTo = msg),
                       );

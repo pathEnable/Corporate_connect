@@ -57,6 +57,12 @@ dependencies:
   flutter_secure_storage: ^9.2.4
   simple_pip_mode: ^1.1.0
   cached_network_image: ^3.4.1
+  flutter_image_compress: ^2.3.0
+  photo_view: ^0.15.0
+  bip39: ^1.0.6
+  intl: ^0.20.2
+  convert: ^3.1.2
+  http_parser: ^4.1.2
 
 dev_dependencies:
   flutter_test:

@@ -14,6 +14,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   late TabController _tabController;
   final AuthService _authService = AuthService();
   bool _isLoading = false;
+  bool _obscurePassword = true;
 
   // Controllers Email
   final _emailController = TextEditingController();
@@ -50,7 +51,13 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -62,10 +69,16 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     setState(() => _isLoading = true);
     try {
       await _authService.sendOtp(_phoneController.text);
-      setState(() => _otpSent = true);
+      if (mounted) setState(() => _otpSent = true);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -81,7 +94,13 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -90,64 +109,80 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Scaffold(
-      backgroundColor: Colors.white,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
           child: Column(
             children: [
-              const SizedBox(height: 60),
+              const SizedBox(height: 40),
               // Logo & Title
-              Icon(Icons.chat_bubble_rounded, size: 64, color: const Color(0xFF004D40)),
+              Hero(
+                tag: 'app_logo',
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primaryContainer.withAlpha(50),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.chat_bubble_rounded, size: 64, color: colorScheme.primary),
+                ),
+              ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'Corporate Connect',
-                style: TextStyle(
-                  fontSize: 28,
+                style: theme.textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF004D40),
+                  color: colorScheme.primary,
                 ),
               ),
               const SizedBox(height: 8),
               Text(
                 'Communication interne sécurisée',
-                style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                style: theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor),
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 48),
 
               // Tab Bar
               Container(
+                height: 50,
                 decoration: BoxDecoration(
-                  color: Colors.grey[100],
+                  color: theme.brightness == Brightness.light ? Colors.grey[100] : Colors.grey[900],
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: TabBar(
                   controller: _tabController,
                   indicator: BoxDecoration(
-                    color: const Color(0xFF004D40),
+                    color: colorScheme.primary,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  labelColor: Colors.white,
-                  unselectedLabelColor: Colors.grey[700],
+                  labelColor: colorScheme.onPrimary,
+                  unselectedLabelColor: theme.hintColor,
+                  dividerColor: Colors.transparent,
+                  indicatorSize: TabBarIndicatorSize.tab,
                   tabs: const [
                     Tab(text: 'Email Pro'),
                     Tab(text: 'Téléphone'),
                   ],
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 32),
 
-              // Tab Views
-              Expanded(
+              // Tab Views (Fixed height for simplicity in scrollable)
+              SizedBox(
+                height: 300,
                 child: TabBarView(
                   controller: _tabController,
                   children: [
-                    _buildEmailTab(),
-                    _buildPhoneTab(),
+                    _buildEmailTab(theme),
+                    _buildPhoneTab(theme),
                   ],
                 ),
               ),
+
               const SizedBox(height: 16),
               // Bouton d'inscription
               TextButton(
@@ -157,9 +192,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     MaterialPageRoute(builder: (_) => const RegisterScreen()),
                   );
                 },
-                child: const Text(
+                child: Text(
                   'Pas de compte ? Inscrivez-vous',
-                  style: TextStyle(color: Color(0xFF004D40), fontWeight: FontWeight.bold),
+                  style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold),
                 ),
               ),
             ],
@@ -169,110 +204,69 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     );
   }
 
-  Widget _buildEmailTab() {
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          TextField(
-            controller: _emailController,
-            keyboardType: TextInputType.emailAddress,
-            decoration: InputDecoration(
-              labelText: 'Email professionnel',
-              prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFF004D40)),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFF004D40), width: 2),
-              ),
+  Widget _buildEmailTab(ThemeData theme) {
+    return Column(
+      children: [
+        TextField(
+          controller: _emailController,
+          keyboardType: TextInputType.emailAddress,
+          decoration: const InputDecoration(
+            labelText: 'Email professionnel',
+            prefixIcon: Icon(Icons.email_outlined),
+          ),
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _passwordController,
+          obscureText: _obscurePassword,
+          decoration: InputDecoration(
+            labelText: 'Mot de passe',
+            prefixIcon: const Icon(Icons.lock_outline),
+            suffixIcon: IconButton(
+              icon: Icon(_obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
             ),
           ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _passwordController,
-            obscureText: true,
-            decoration: InputDecoration(
-              labelText: 'Mot de passe',
-              prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF004D40)),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFF004D40), width: 2),
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              onPressed: _isLoading ? null : _loginWithEmail,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF004D40),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              child: _isLoading
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text('Se connecter', style: TextStyle(fontSize: 16, color: Colors.white)),
-            ),
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 32),
+        ElevatedButton(
+          onPressed: _isLoading ? null : _loginWithEmail,
+          child: _isLoading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Se connecter'),
+        ),
+      ],
     );
   }
 
-  Widget _buildPhoneTab() {
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          TextField(
-            controller: _phoneController,
-            keyboardType: TextInputType.phone,
-            decoration: InputDecoration(
-              labelText: 'Numéro de téléphone',
-              prefixIcon: const Icon(Icons.phone_outlined, color: Color(0xFF004D40)),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFF004D40), width: 2),
-              ),
-            ),
+  Widget _buildPhoneTab(ThemeData theme) {
+    return Column(
+      children: [
+        TextField(
+          controller: _phoneController,
+          keyboardType: TextInputType.phone,
+          decoration: const InputDecoration(
+            labelText: 'Numéro de téléphone',
+            prefixIcon: Icon(Icons.phone_outlined),
           ),
+        ),
+        if (_otpSent) ...[
           const SizedBox(height: 16),
-          if (_otpSent) ...[
-            TextField(
-              controller: _otpController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: 'Code OTP',
-                prefixIcon: const Icon(Icons.pin_outlined, color: Color(0xFF004D40)),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFF004D40), width: 2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              onPressed: _isLoading ? null : (_otpSent ? _verifyOtp : _sendOtp),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF004D40),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              child: _isLoading
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : Text(
-                      _otpSent ? 'Vérifier le code' : 'Envoyer le code SMS',
-                      style: const TextStyle(fontSize: 16, color: Colors.white),
-                    ),
+          TextField(
+            controller: _otpController,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Code OTP',
+              prefixIcon: Icon(Icons.pin_outlined),
             ),
           ),
         ],
-      ),
+        const SizedBox(height: 32),
+        ElevatedButton(
+          onPressed: _isLoading ? null : (_otpSent ? _verifyOtp : _sendOtp),
+          child: _isLoading
+              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : Text(_otpSent ? 'Vérifier le code' : 'Envoyer le code SMS'),
+        ),
+      ],
     );
   }
 }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/chat_state.dart';
@@ -174,47 +175,67 @@ class ChatNotifier extends Notifier<ChatState> {
   }
 
   Future<void> _decryptMessage(Map<String, dynamic> msg) async {
-    if (msg['message_type'] == 'text' && msg['content'] != null && msg['is_decrypted'] != true) {
+    final bool isText = msg['message_type'] == 'text';
+    if (isText && msg['content'] != null && msg['is_decrypted'] != true) {
       final senderId = msg['sender_id'].toString();
+      
+      // On tente de déchiffrer SI on a la clé et si ça ressemble à du Base64 (chiffré)
       if (state.memberKeys.containsKey(senderId)) {
-        try {
-          // Ne pas tenter de déchiffrer si le message ressemble déjà à du texte clair (pour le cache)
-          // Dans une app réelle, le cache devrait stocker le message en clair OU chiffré, mais on va simplement l'indiquer
-          final decrypted = await _encryptionService.decrypt(msg['content'], state.memberKeys[senderId]!);
-          // Si le déchiffrement échoue "naturellement", la librairie peut jeter une erreur
-          if (decrypted != "[Message chiffré illisible]") {
-             msg['content'] = decrypted;
+        final String content = msg['content'];
+        // Heuristique simple : si c'est du Base64 long et sans espaces, c'est probablement chiffré
+        if (content.length > 20 && !content.contains(' ')) {
+          try {
+            final decrypted = await _encryptionService.decrypt(content, state.memberKeys[senderId]!);
+            if (decrypted != "[Message chiffré illisible]") {
+               msg['content'] = decrypted;
+               msg['is_encrypted'] = true; // Flag pour UI (icone cadenas)
+            }
+          } catch (e) {
+            debugPrint("⚠️ Échec déchiffrement pour msg ${msg['id']}: $e");
           }
-          msg['is_decrypted'] = true;
-        } catch (_) {
-          msg['is_decrypted'] = true; // Empêche de réessayer en boucle
         }
+        msg['is_decrypted'] = true;
       }
     }
   }
 
   void sendMessage(String content, String type, {Map<String, dynamic>? extraData}) async {
     String contentToSend = content;
-    if (type == 'text' && state.memberKeys.length == 2) {
-      final recipientId = state.memberKeys.keys.firstWhere((id) => id != _userId, orElse: () => "");
-      if (recipientId.isNotEmpty) {
-        contentToSend = await _encryptionService.encrypt(content, state.memberKeys[recipientId]!);
+    bool wasEncrypted = false;
+
+    if (type == 'text' && state.memberKeys.isNotEmpty) {
+      // Pour les messages directs (2 membres), on cherche la clé de l'autre
+      final recipientId = state.memberKeys.keys.firstWhere(
+        (id) => id != _userId, 
+        orElse: () => ""
+      );
+
+      if (recipientId.isNotEmpty && state.memberKeys[recipientId] != null) {
+        try {
+          contentToSend = await _encryptionService.encrypt(content, state.memberKeys[recipientId]!);
+          wasEncrypted = true;
+          debugPrint("🔒 Message chiffré pour $recipientId");
+        } catch (e) {
+          debugPrint("❌ Erreur de chiffrement: $e. Envoi en clair par sécurité dégradée.");
+        }
       }
     }
 
     final tempMsg = {
-      'id': DateTime.now().millisecondsSinceEpoch.toString(),
+      'id': 'temp_${DateTime.now().millisecondsSinceEpoch}',
       'room_id': roomId, 
       'sender_id': _userId,
-      'content': content, 
+      'content': content, // On garde le clair pour l'affichage local immediat
       'message_type': type,
       'status': 'pending',
+      'is_encrypted': wasEncrypted,
       'created_at': DateTime.now().toIso8601String(),
     };
 
     if (!_isDisposed) {
       state = state.copyWith(messages: [...state.messages, tempMsg]);
     }
+    
     _chatService.sendMessage(contentToSend, type: type, data: extraData);
   }
 

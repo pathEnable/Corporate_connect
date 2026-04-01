@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -16,6 +16,8 @@ class Profile(Base):
     full_name = Column(String, index=True, nullable=False)
     username = Column(String, unique=True, index=True)
     avatar_url = Column(String, nullable=True)
+    bio = Column(String, nullable=True) # Nouveau : Biographie de l'utilisateur
+    job_title = Column(String, nullable=True) # Nouveau : Poste occupé
     is_online = Column(Boolean, default=False)
     fcm_token = Column(String, nullable=True)
     public_key = Column(String, nullable=True) # Clé publique pour l'E2EE (Base64)
@@ -91,3 +93,20 @@ class RefreshToken(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("Profile")
+
+class CallLog(Base):
+    __tablename__ = "call_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    caller_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    receiver_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=True, index=True)
+    room_id = Column(UUID(as_uuid=True), ForeignKey("rooms.id", ondelete="CASCADE"), nullable=True)
+    start_time = Column(DateTime(timezone=True), server_default=func.now())
+    end_time = Column(DateTime(timezone=True), nullable=True)
+    duration = Column(Integer, default=0)
+    status = Column(String, default="completed") # 'completed', 'missed', 'rejected'
+    call_type = Column(String, default="audio") # 'audio', 'video'
+
+    caller = relationship("Profile", foreign_keys=[caller_id])
+    receiver = relationship("Profile", foreign_keys=[receiver_id])
+    room = relationship("Room")

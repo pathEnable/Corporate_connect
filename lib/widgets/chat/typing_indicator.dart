@@ -28,6 +28,8 @@ class _TypingIndicatorState extends State<TypingIndicator> with SingleTickerProv
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
@@ -40,12 +42,12 @@ class _TypingIndicatorState extends State<TypingIndicator> with SingleTickerProv
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.6),
+                  color: theme.colorScheme.surfaceContainerHighest.withAlpha(180),
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
+                  border: Border.all(color: theme.colorScheme.onSurface.withAlpha(20)),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.03),
+                      color: Colors.black.withAlpha(10),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -60,8 +62,8 @@ class _TypingIndicatorState extends State<TypingIndicator> with SingleTickerProv
                       'En train d\'écrire',
                       style: TextStyle(
                         fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: const Color(0xFF004D40).withValues(alpha: 0.8),
+                        fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.primary.withAlpha(200),
                         letterSpacing: 0.2,
                       ),
                     ),
@@ -76,6 +78,7 @@ class _TypingIndicatorState extends State<TypingIndicator> with SingleTickerProv
   }
 
   Widget _buildDots() {
+    final theme = Theme.of(context);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: List.generate(3, (index) {
@@ -102,7 +105,7 @@ class _TypingIndicatorState extends State<TypingIndicator> with SingleTickerProv
               width: 5,
               height: 5,
               decoration: BoxDecoration(
-                color: const Color(0xFF004D40).withValues(alpha: opacity),
+                color: theme.colorScheme.primary.withAlpha((opacity * 255).toInt()),
                 shape: BoxShape.circle,
               ),
               transform: Matrix4.diagonal3Values(scale, scale, 1.0),

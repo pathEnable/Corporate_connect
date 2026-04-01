@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'auth_service.dart';
+import 'api_config.dart';
 
 class AdminService {
-  static const String baseUrl = 'https://hoselike-detrital-nola.ngrok-free.dev/admin';
+  static String get baseUrl => '${ApiConfig.baseUrl}/admin';
   final AuthService _authService = AuthService();
 
   Future<Map<String, dynamic>> getStats() async {

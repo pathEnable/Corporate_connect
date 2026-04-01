@@ -21,10 +21,14 @@ class SettingsNotifier extends Notifier<SettingsState> {
     
     final isDarkMode = _prefs.getBool('isDarkMode') ?? false;
     final notificationsEnabled = _prefs.getBool('notificationsEnabled') ?? true;
+    final accentColor = _prefs.getInt('accentColor') ?? 0xFF00695C;
+    final fontScale = _prefs.getDouble('fontScale') ?? 1.0;
     
     state = state.copyWith(
       isDarkMode: isDarkMode,
       notificationsEnabled: notificationsEnabled,
+      accentColor: accentColor,
+      fontScale: fontScale,
     );
     
     await _updateCacheSize();
@@ -52,5 +56,15 @@ class SettingsNotifier extends Notifier<SettingsState> {
   Future<void> clearCache() async {
     await LocalDatabase.instance.clearCache();
     await _updateCacheSize();
+  }
+
+  Future<void> updateAccentColor(int colorValue) async {
+    await _prefs.setInt('accentColor', colorValue);
+    state = state.copyWith(accentColor: colorValue);
+  }
+
+  Future<void> updateFontScale(double scale) async {
+    await _prefs.setDouble('fontScale', scale);
+    state = state.copyWith(fontScale: scale);
   }
 }

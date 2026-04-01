@@ -4,7 +4,7 @@ import 'auth_service.dart';
 import 'api_config.dart';
 
 class StatusService {
-  static const String baseUrl = '${ApiConfig.baseUrl}/status';
+  static String get baseUrl => '${ApiConfig.baseUrl}/status';
   final AuthService _authService = AuthService();
 
   Future<List<StatusModel>> getStatuses() async {

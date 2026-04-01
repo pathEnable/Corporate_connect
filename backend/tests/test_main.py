@@ -18,7 +18,7 @@ test_user = {
     "full_name": "Test User",
     "username": f"user_{unique_id}"
 }
-test_033940bf@example.com
+
 
 def test_read_root():
     """Vérifie que l'API est en ligne."""

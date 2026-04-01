@@ -23,31 +23,51 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(chatProvider(roomId));
+    final theme = Theme.of(context);
 
     return AppBar(
-      backgroundColor: const Color(0xFF004D40),
-      foregroundColor: Colors.white,
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      backgroundColor: theme.colorScheme.primary,
+      foregroundColor: theme.colorScheme.onPrimary,
+      elevation: 0,
+      centerTitle: false,
+      title: Row(
         children: [
-          Text(roomName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          Text(
-            state.isConnected ? 'En ligne' : 'Déconnecté',
-            style: const TextStyle(fontSize: 12, color: Colors.white70),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      roomName, 
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: -0.5)
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    Text(
+                      state.isConnected ? 'En ligne' : 'Déconnecté',
+                      style: TextStyle(fontSize: 12, color: theme.colorScheme.onPrimary.withAlpha(200), fontWeight: FontWeight.w400),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.videocam),
+          icon: const Icon(Icons.videocam_rounded),
           onPressed: () => _startCall(context, ref, isVideo: true),
         ),
         IconButton(
-          icon: const Icon(Icons.call),
+          icon: const Icon(Icons.call_rounded),
           onPressed: () => _startCall(context, ref, isVideo: false),
         ),
         IconButton(
-          icon: const Icon(Icons.more_vert),
+          icon: const Icon(Icons.more_vert_rounded),
           onPressed: onShowInfo,
         ),
       ],

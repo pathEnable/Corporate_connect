@@ -1,10 +1,9 @@
 import 'dart:async';
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:record/record.dart';
 import '../../providers/chat_provider.dart';
 import '../../services/media_service.dart';
 
@@ -27,12 +26,11 @@ class MessageInput extends ConsumerStatefulWidget {
 class _MessageInputState extends ConsumerState<MessageInput> {
   final TextEditingController _controller = TextEditingController();
   final ImagePicker _picker = ImagePicker();
-  final AudioRecorder _audioRecorder = AudioRecorder();
   final MediaService _mediaService = MediaService();
 
   bool _isTyping = false;
-  bool _isRecording = false;
   bool _isUploading = false;
+  double _uploadProgress = 0.0;
   Timer? _typingDebounce;
 
   @override
@@ -74,71 +72,81 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   Future<void> _pickImage() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
     if (image != null) {
-      _uploadAndSend(File(image.path), 'image');
+      final bytes = await image.readAsBytes();
+      _uploadAndSend(bytes, image.name, 'image');
     }
   }
 
   Future<void> _takePhoto() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.camera);
     if (image != null) {
-      _uploadAndSend(File(image.path), 'image');
+      final bytes = await image.readAsBytes();
+      _uploadAndSend(bytes, image.name, 'image');
     }
   }
 
   Future<void> _pickFile() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles();
-    if (result != null) {
-      _uploadAndSend(File(result.files.single.path!), 'file');
+    FilePickerResult? result = await FilePicker.platform.pickFiles(withData: true);
+    if (result != null && result.files.single.bytes != null) {
+      _uploadAndSend(
+        result.files.single.bytes!,
+        result.files.single.name,
+        'file',
+      );
     }
   }
 
-  Future<void> _uploadAndSend(File file, String type) async {
-    setState(() => _isUploading = true);
+  Future<void> _uploadAndSend(Uint8List bytes, String filename, String type) async {
+    setState(() {
+      _isUploading = true;
+      _uploadProgress = 0.0;
+    });
+    
     try {
-      final result = await _mediaService.uploadFile(file);
+      final result = await _mediaService.uploadFile(
+        bytes,
+        filename: filename,
+        onProgress: (sent, total) {
+          if (total > 0 && mounted) {
+            setState(() => _uploadProgress = sent / total);
+          }
+        },
+      );
+      
       ref.read(chatProvider(widget.roomId).notifier).sendMessage(result['url'], type);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erreur d'envoi : $e")));
       }
     } finally {
-      if (mounted) setState(() => _isUploading = false);
-    }
-  }
-
-  Future<void> _startRecording() async {
-    if (await _audioRecorder.hasPermission()) {
-      final tempDir = Directory.systemTemp.path;
-      final path = '$tempDir/audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
-      await _audioRecorder.start(const RecordConfig(), path: path);
-      setState(() => _isRecording = true);
-    }
-  }
-
-  Future<void> _stopRecording() async {
-    if (!_isRecording) return;
-    final path = await _audioRecorder.stop();
-    setState(() => _isRecording = false);
-    if (path != null) {
-      _uploadAndSend(File(path), 'audio');
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+          _uploadProgress = 0.0;
+        });
+      }
     }
   }
 
   @override
   void dispose() {
     _controller.dispose();
-    _audioRecorder.dispose();
     _typingDebounce?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.colorScheme.surface,
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -2))
+          BoxShadow(
+            color: Colors.black.withAlpha(13),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          )
         ],
       ),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
@@ -146,22 +154,31 @@ class _MessageInputState extends ConsumerState<MessageInput> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (_isUploading)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 8.0),
-              child: LinearProgressIndicator(minHeight: 2, color: Color(0xFF004D40), backgroundColor: Colors.transparent),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: LinearProgressIndicator(
+                value: _uploadProgress > 0 ? _uploadProgress : null,
+                minHeight: 3,
+                color: theme.colorScheme.primary,
+                backgroundColor: theme.colorScheme.primary.withAlpha(30),
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
           Row(
             children: [
               IconButton(
-                icon: const Icon(Icons.add_circle_outline, color: Color(0xFF004D40), size: 28),
+                icon: Icon(Icons.add_circle_outline_rounded,
+                    color: theme.colorScheme.primary, size: 28),
                 onPressed: _showAttachmentMenu,
               ),
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF5F5F5),
+                    color: theme.brightness == Brightness.dark
+                        ? Colors.white10
+                        : const Color(0xFFF5F5F5),
                     borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: Colors.grey[300]!),
+                    border: Border.all(color: theme.dividerColor.withAlpha(50)),
                   ),
                   child: TextField(
                     controller: _controller,
@@ -170,7 +187,8 @@ class _MessageInputState extends ConsumerState<MessageInput> {
                     decoration: const InputDecoration(
                       hintText: 'Écrire un message...',
                       border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     ),
                     onSubmitted: (_) => _handleSend(),
                   ),
@@ -186,28 +204,25 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   }
 
   Widget _buildActionCircle() {
+    final theme = Theme.of(context);
     bool canSend = _isTyping || _controller.text.trim().isNotEmpty;
     return GestureDetector(
-      onLongPress: canSend ? null : _startRecording,
-      onLongPressEnd: canSend ? null : (_) => _stopRecording(),
       onTap: canSend ? _handleSend : null,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: _isRecording ? Colors.red : const Color(0xFF004D40),
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: (_isRecording ? Colors.red : const Color(0xFF004D40)).withValues(alpha: 0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 3)
-            )
-          ]
-        ),
+            color: theme.colorScheme.primary,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                  color: theme.colorScheme.primary.withAlpha(76),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3))
+            ]),
         child: Icon(
-          _isRecording ? Icons.mic : (canSend ? Icons.send : Icons.mic_none),
-          color: Colors.white,
+          canSend ? Icons.send_rounded : Icons.mic_none_rounded,
+          color: theme.colorScheme.onPrimary,
           size: 22,
         ),
       ),
@@ -235,7 +250,6 @@ class _MessageInputState extends ConsumerState<MessageInput> {
                 _AttachmentOption(icon: Icons.camera_alt, color: Colors.blue, label: 'Caméra', onTap: () { Navigator.pop(context); _takePhoto(); }),
                 _AttachmentOption(icon: Icons.image, color: Colors.purple, label: 'Images', onTap: () { Navigator.pop(context); _pickImage(); }),
                 _AttachmentOption(icon: Icons.insert_drive_file, color: Colors.orange, label: 'Document', onTap: () { Navigator.pop(context); _pickFile(); }),
-                _AttachmentOption(icon: Icons.audiotrack, color: Colors.red, label: 'Audio', onTap: () { Navigator.pop(context); _startRecording(); }),
               ],
             ),
             const SizedBox(height: 16),

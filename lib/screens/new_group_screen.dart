@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../services/auth_service.dart';
 import '../services/room_service.dart';
+import '../services/api_config.dart';
 import 'chat_screen.dart';
 
 class NewGroupScreen extends StatefulWidget {
@@ -30,21 +31,23 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
     try {
       final token = await _authService.getToken();
       final response = await http.get(
-        Uri.parse('https://hoselike-detrital-nola.ngrok-free.dev/profiles/directory'),
+        Uri.parse('${ApiConfig.baseUrl}/profiles/directory'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
       );
       if (response.statusCode == 200) {
-        final list = List<Map<String, dynamic>>.from(jsonDecode(response.body));
-        setState(() {
-          _contacts = list;
-          _isLoading = false;
-        });
+        final list = List<Map<String, dynamic>>.from(jsonDecode(utf8.decode(response.bodyBytes)));
+        if (mounted) {
+          setState(() {
+            _contacts = list;
+            _isLoading = false;
+          });
+        }
       }
     } catch (_) {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -59,7 +62,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
   }
 
   Future<void> _createGroup() async {
-    if (_nameController.text.isEmpty) {
+    if (_nameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Veuillez donner un nom au groupe')),
       );
@@ -74,7 +77,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
 
     try {
       final memberIds = _selectedContacts.map((c) => c['id'] as String).toList();
-      final room = await _roomService.createGroup(_nameController.text, memberIds);
+      final room = await _roomService.createGroup(_nameController.text.trim(), memberIds);
       if (mounted) {
         Navigator.pushReplacement(
           context,
@@ -97,17 +100,30 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
         title: const Text('Nouveau Groupe'),
-        backgroundColor: const Color(0xFF004D40),
-        foregroundColor: Colors.white,
+        backgroundColor: theme.colorScheme.surface,
+        foregroundColor: theme.colorScheme.onSurface,
+        elevation: 0,
         actions: [
           if (_selectedContacts.isNotEmpty)
-            TextButton(
-              onPressed: _createGroup,
-              child: const Text('CRÉER', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: TextButton(
+                onPressed: _createGroup,
+                child: Text(
+                  'CRÉER', 
+                  style: TextStyle(
+                    color: theme.colorScheme.primary, 
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16
+                  )
+                ),
+              ),
             ),
         ],
       ),
@@ -115,21 +131,26 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
         children: [
           // Nom du groupe
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(20),
             child: Row(
               children: [
                 CircleAvatar(
-                  radius: 24,
-                  backgroundColor: Colors.grey[200],
-                  child: const Icon(Icons.camera_alt, color: Colors.grey),
+                  radius: 32,
+                  backgroundColor: theme.colorScheme.primary.withAlpha(20),
+                  child: Icon(Icons.groups_rounded, color: theme.colorScheme.primary, size: 32),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
                   child: TextField(
                     controller: _nameController,
-                    decoration: const InputDecoration(
-                      hintText: 'Nom du groupe',
-                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF004D40))),
+                    autofocus: false,
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                    decoration: InputDecoration(
+                      hintText: 'Sujet du groupe...',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                      filled: true,
+                      fillColor: theme.colorScheme.surfaceContainerHighest.withAlpha(80),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                     ),
                   ),
                 ),
@@ -139,8 +160,9 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
 
           // Liste des sélectionnés (Horizontal)
           if (_selectedContacts.isNotEmpty)
-            SizedBox(
-              height: 90,
+            Container(
+              height: 100,
+              padding: const EdgeInsets.only(bottom: 8),
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -148,17 +170,18 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
                 itemBuilder: (context, index) {
                   final contact = _selectedContacts[index];
                   return Padding(
-                    padding: const EdgeInsets.only(right: 12),
+                    padding: const EdgeInsets.only(right: 16),
                     child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Stack(
                           children: [
                             CircleAvatar(
-                              radius: 26,
-                              backgroundColor: const Color(0xFF004D40),
+                              radius: 28,
+                              backgroundColor: theme.colorScheme.primary,
                               child: Text(
                                 (contact['full_name'] ?? 'U')[0].toUpperCase(),
-                                style: const TextStyle(color: Colors.white),
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                               ),
                             ),
                             Positioned(
@@ -166,10 +189,10 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
                               bottom: 0,
                               child: GestureDetector(
                                 onTap: () => _toggleContact(contact),
-                                child: const CircleAvatar(
-                                  radius: 10,
-                                  backgroundColor: Colors.grey,
-                                  child: Icon(Icons.close, size: 12, color: Colors.white),
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: BoxDecoration(color: theme.colorScheme.onSurface.withAlpha(150), shape: BoxShape.circle),
+                                  child: const Icon(Icons.close_rounded, size: 14, color: Colors.white),
                                 ),
                               ),
                             ),
@@ -178,7 +201,8 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
                         const SizedBox(height: 4),
                         Text(
                           contact['full_name'].split(' ')[0],
-                          style: const TextStyle(fontSize: 12),
+                          style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withAlpha(180)),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
@@ -187,25 +211,31 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
               ),
             ),
 
-          const Divider(),
+          const Divider(height: 1),
 
           // Liste des contacts
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: Color(0xFF004D40)))
+                ? Center(child: CircularProgressIndicator(color: theme.colorScheme.primary))
                 : ListView.builder(
+                    padding: const EdgeInsets.only(top: 8),
                     itemCount: _contacts.length,
                     itemBuilder: (context, index) {
                       final contact = _contacts[index];
                       final isSelected = _selectedContacts.any((c) => c['id'] == contact['id']);
                       return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
                         leading: Stack(
                           children: [
                             CircleAvatar(
-                              backgroundColor: const Color(0xFF004D40),
+                              radius: 24,
+                              backgroundColor: theme.colorScheme.primary.withAlpha(isSelected ? 255 : 40),
                               child: Text(
                                 (contact['full_name'] ?? 'U')[0].toUpperCase(),
-                                style: const TextStyle(color: Colors.white),
+                                style: TextStyle(
+                                  color: isSelected ? Colors.white : theme.colorScheme.primary,
+                                  fontWeight: FontWeight.bold
+                                ),
                               ),
                             ),
                             if (isSelected)
@@ -214,13 +244,17 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
                                 bottom: 0,
                                 child: Container(
                                   padding: const EdgeInsets.all(2),
-                                  decoration: const BoxDecoration(color: Color(0xFF25D366), shape: BoxShape.circle),
-                                  child: const Icon(Icons.check, size: 12, color: Colors.white),
+                                  decoration: BoxDecoration(color: theme.colorScheme.secondary, shape: BoxShape.circle),
+                                  child: const Icon(Icons.check_rounded, size: 14, color: Colors.white),
                                 ),
                               ),
                           ],
                         ),
-                        title: Text(contact['full_name']),
+                        title: Text(contact['full_name'], style: const TextStyle(fontWeight: FontWeight.w600)),
+                        subtitle: Text(
+                          contact['job_title'] ?? 'Membre Connect', 
+                          style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withAlpha(150))
+                        ),
                         onTap: () => _toggleContact(contact),
                       );
                     },

@@ -10,6 +10,7 @@ class HomeChatsTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
     final state = ref.watch(homeProvider);
 
     if (state.isLoadingRooms) {
@@ -18,17 +19,19 @@ class HomeChatsTab extends ConsumerWidget {
 
     return RefreshIndicator(
       onRefresh: () => ref.read(homeProvider.notifier).refreshRooms(),
-      color: const Color(0xFF004D40),
+      color: theme.colorScheme.primary,
+      backgroundColor: theme.colorScheme.surface,
       child: state.rooms.isEmpty
           ? _EmptyRoomView()
           : Column(
               children: [
                 const StatusListSection(),
-                const Divider(height: 1),
+                Divider(height: 1, color: theme.dividerColor.withAlpha(30)),
                 Expanded(
                   child: ListView.separated(
                     itemCount: state.rooms.length,
-                    separatorBuilder: (context, index) => const Divider(height: 1, indent: 76),
+                    padding: const EdgeInsets.only(bottom: 24),
+                    separatorBuilder: (context, index) => Divider(height: 1, indent: 83, color: theme.dividerColor.withAlpha(30)),
                     itemBuilder: (context, index) {
                       final room = state.rooms[index];
                       return HomeRoomTile(room: room);
@@ -44,26 +47,38 @@ class HomeChatsTab extends ConsumerWidget {
 class _EmptyRoomView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       children: [
         const StatusListSection(),
-        const Divider(height: 1),
+        Divider(height: 1, color: theme.dividerColor.withAlpha(30)),
         SizedBox(height: MediaQuery.of(context).size.height * 0.2),
         Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.chat_bubble_outline, size: 80, color: Colors.grey[300]),
-              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest.withAlpha(80),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.forum_rounded, size: 64, color: theme.colorScheme.primary.withAlpha(100)),
+              ),
+              const SizedBox(height: 24),
               Text(
-                'Aucune conversation',
-                style: TextStyle(fontSize: 18, color: Colors.grey[500]),
+                'Pas encore de conversations',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
               ),
               const SizedBox(height: 8),
-              Text(
-                'Commencez via l\'annuaire !',
-                style: TextStyle(fontSize: 14, color: Colors.grey[400]),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 40),
+                child: Text(
+                  'Explorez l\'annuaire pour chatter ou collaborez en équipe.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, color: theme.colorScheme.onSurface.withAlpha(150)),
+                ),
               ),
             ],
           ),

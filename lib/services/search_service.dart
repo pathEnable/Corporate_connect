@@ -3,7 +3,7 @@ import 'auth_service.dart';
 import 'api_config.dart';
 
 class SearchService {
-  static const String baseUrl = '${ApiConfig.baseUrl}/search';
+  static String get baseUrl => '${ApiConfig.baseUrl}/search';
   final AuthService _authService = AuthService();
 
   Future<Map<String, dynamic>> globalSearch(String query) async {

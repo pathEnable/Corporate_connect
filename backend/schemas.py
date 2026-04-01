@@ -104,3 +104,30 @@ class StatusResponse(BaseModel):
 class StatusCreate(BaseModel):
     media_url: Optional[str] = None
     text: Optional[str] = None
+
+class CallLogCreate(BaseModel):
+    receiver_id: Optional[UUID] = None
+    room_id: Optional[UUID] = None
+    start_time: str
+    end_time: Optional[str] = None
+    duration: int = 0
+    status: str = "completed"
+    call_type: str = "audio"
+
+class CallLogResponse(BaseModel):
+    id: UUID
+    caller_id: UUID
+    receiver_id: Optional[UUID] = None
+    room_id: Optional[UUID] = None
+    start_time: str
+    end_time: Optional[str] = None
+    duration: int
+    status: str
+    call_type: str
+    
+    # We can include caller/receiver info if needed, but let's keep it simple for now
+    caller_name: Optional[str] = None
+    receiver_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True

@@ -1,8 +1,8 @@
 from fastapi import FastAPI, Depends, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 from sqlalchemy.orm import Session
 from database import engine, get_db
 from models import Base, Profile
@@ -16,6 +16,7 @@ from routes_search import router as search_router
 from routes_admin import router as admin_router
 from routes_notifications import router as notifications_router
 from routes_agora import router as agora_router
+from routes_calls import router as calls_router
 import time
 from collections import defaultdict
 
@@ -24,44 +25,71 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Corporate Connect API", version="1.0.0")
 
-# ── Headers de sécurité ──
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        return response
+# ── Headers de sécurité (Middleware ASGI pur — compatible WebSocket) ──
+class SecurityHeadersMiddleware:
+    """Middleware ASGI pur qui n'interfère pas avec les WebSockets."""
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        # Les WebSockets passent directement sans modification
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_headers(message):
+            if message["type"] == "http.response.start":
+                headers = dict(message.get("headers", []))
+                extra = [
+                    (b"x-content-type-options", b"nosniff"),
+                    (b"x-frame-options", b"DENY"),
+                    (b"x-xss-protection", b"1; mode=block"),
+                    (b"strict-transport-security", b"max-age=31536000; includeSubDomains"),
+                ]
+                message["headers"] = list(message.get("headers", [])) + extra
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
 
 app.add_middleware(SecurityHeadersMiddleware)
 
-# ── Rate Limiter basique (en mémoire) ──
+# ── Rate Limiter basique (Middleware ASGI pur — compatible WebSocket) ──
 request_counts: dict = defaultdict(list)
 RATE_LIMIT = 60  # requêtes max
 RATE_WINDOW = 60  # par fenêtre de 60 secondes
 
-class RateLimiterMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        client_ip = request.client.host if request.client else "unknown"
+class RateLimiterMiddleware:
+    """Middleware ASGI pur qui n'interfère pas avec les WebSockets."""
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        # Les WebSockets passent directement sans limitation
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        client = scope.get("client")
+        client_ip = client[0] if client else "unknown"
         now = time.time()
-        # Nettoyer les anciennes entrées
         request_counts[client_ip] = [t for t in request_counts[client_ip] if now - t < RATE_WINDOW]
         if len(request_counts[client_ip]) >= RATE_LIMIT:
-            return JSONResponse(status_code=429, content={"detail": "Trop de requêtes. Réessayez plus tard."})
+            response = JSONResponse(status_code=429, content={"detail": "Trop de requêtes. Réessayez plus tard."})
+            await response(scope, receive, send)
+            return
         request_counts[client_ip].append(now)
-        return await call_next(request)
+        await self.app(scope, receive, send)
 
 app.add_middleware(RateLimiterMiddleware)
 
 # ── CORS (Doit être le dernier ajouté pour être le premier/dernier exécuté) ──
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Plus robuste pour le développement avec ngrok/flutter web
+    allow_origins=["*"],  # Plus robuste pour le développement avec ngrok/flutter web
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"], # Permet au frontend de voir tous les headers si nécessaire
+    expose_headers=["*"],  # Permet au frontend de voir tous les headers si nécessaire
 )
 
 # Fichiers statiques pour les uploads
@@ -78,6 +106,7 @@ app.include_router(search_router)
 app.include_router(admin_router)
 app.include_router(notifications_router)
 app.include_router(agora_router)
+app.include_router(calls_router)
 
 
 @app.get("/")

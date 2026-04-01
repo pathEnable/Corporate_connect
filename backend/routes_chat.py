@@ -3,7 +3,7 @@ import uuid
 import asyncio
 from datetime import datetime
 from typing import Dict, Set
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Message, Room, RoomMember, Profile
@@ -20,6 +20,8 @@ class ConnectionManager:
     def __init__(self):
         # {room_id: {user_id: WebSocket}}
         self.active_connections: Dict[str, Dict[str, WebSocket]] = {}
+        # {user_id: WebSocket}
+        self.global_connections: Dict[str, WebSocket] = {}
 
     async def connect(self, websocket: WebSocket, room_id: str, user_id: str):
         await websocket.accept()
@@ -32,6 +34,13 @@ class ConnectionManager:
             self.active_connections[room_id].pop(user_id, None)
             if not self.active_connections[room_id]:
                 del self.active_connections[room_id]
+
+    async def connect_global(self, websocket: WebSocket, user_id: str):
+        await websocket.accept()
+        self.global_connections[user_id] = websocket
+
+    def disconnect_global(self, user_id: str):
+        self.global_connections.pop(user_id, None)
 
     async def broadcast_to_room(self, room_id: str, message: dict, exclude_user: str = None):
         """Envoyer un message à tous les membres connectés d'un salon."""
@@ -56,14 +65,73 @@ manager = ConnectionManager()
 from auth import create_access_token, ALGORITHM, SECRET_KEY
 from jose import jwt, JWTError
 
+@router.websocket("/ws/global/{user_id}")
+async def websocket_global(
+    websocket: WebSocket,
+    user_id: str,
+    token: str = Query(None)
+):
+    """Point d'entrée global pour la présence (is_online) et les notifications."""
+    print(f"🔌 Tentative WS Global pour {user_id} (Token présent: {token is not None})")
+    
+    # Il faut TOUJOURS accepter la connexion WebSocket avant de pouvoir la fermer proprement.
+    # Sans accept(), le client ne reçoit jamais le code de fermeture (1006 au lieu de 1008).
+    await websocket.accept()
+    
+    if not token:
+        print(f"❌ WS Global refusé: Token manquant pour {user_id}")
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+        
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        token_sub = payload.get("sub")
+        if token_sub != user_id:
+            print(f"❌ WS Global refusé: Discordance ID ({token_sub} != {user_id})")
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+    except JWTError as e:
+        print(f"❌ WS Global refusé: Erreur JWT ({e})")
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    print(f"✅ WS Global connecté pour {user_id}")
+    # La connexion est déjà acceptée, on l'ajoute au manager directement
+    manager.global_connections[user_id] = websocket
+
+    def set_online_status(u_id: str, is_online: bool):
+        db_session = next(get_db())
+        try:
+            user = db_session.query(Profile).filter(Profile.id == u_id).first()
+            if user:
+                user.is_online = is_online
+                db_session.commit()
+        finally:
+            db_session.close()
+
+    await run_in_threadpool(set_online_status, user_id, True)
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # On écoute juste le ping, pas de traitement spécifique
+            # Le heartbeat garde la connexion en vie
+            pass
+    except WebSocketDisconnect:
+        manager.disconnect_global(user_id)
+        await run_in_threadpool(set_online_status, user_id, False)
+
 @router.websocket("/ws/chat/{room_id}/{user_id}")
 async def websocket_chat(
     websocket: WebSocket,
     room_id: str,
     user_id: str,
-    token: str = None
+    token: str = Query(None)
 ):
     """Point d'entrée WebSocket pour le chat temps réel sécurisé."""
+    # Accepter d'abord pour pouvoir fermer proprement (sinon 1006)
+    await websocket.accept()
+    
     # Validation du token (passé en query param car les WS supportent mal les headers)
     if not token:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
@@ -79,7 +147,7 @@ async def websocket_chat(
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    # --- NOUVEAU : Vérification de l'appartenance au salon (IDOR Fix) ---
+    # --- Vérification de l'appartenance au salon (IDOR Fix) ---
     def check_membership(r_id, u_id):
         db_session = next(get_db())
         try:
@@ -96,25 +164,14 @@ async def websocket_chat(
         return
     # -------------------------------------------------------------------
 
-    await manager.connect(websocket, room_id, user_id)
+    # Connexion déjà acceptée, enregistrer directement dans le manager
+    if room_id not in manager.active_connections:
+        manager.active_connections[room_id] = {}
+    manager.active_connections[room_id][user_id] = websocket
 
-    # Fonction pour mettre à jour le statut en ligne
-    def set_online_status(u_id: str, status: bool):
-        db_session = next(get_db())
-        try:
-            user = db_session.query(Profile).filter(Profile.id == u_id).first()
-            if user:
-                user.is_online = status
-                db_session.commit()
-        except Exception as e:
-            db_session.rollback()
-        finally:
-            db_session.close()
-
-    # Mettre à jour is_online = True
-    await run_in_threadpool(set_online_status, user_id, True)
-
-    # Notifier les autres que l'utilisateur est en ligne
+    # Fonction pour mettre à jour le statut en ligne localement n'est plus utile ici
+    # Elle est gérée par le WS /ws/global
+    # Notifier les autres que l'utilisateur a rejoint la salle active
     await manager.broadcast_to_room(
         room_id,
         {"type": "user_joined", "user_id": user_id, "timestamp": datetime.utcnow().isoformat()},
@@ -269,6 +326,26 @@ async def websocket_chat(
                         db_session.close()
 
                 await run_in_threadpool(notify_offline_members, room_id, user_id, message_data.get("content", ""), final_m_type)
+                
+                # --- NOUVEAU : Diffuser le message aux WS globaux correspondants ---
+                def get_members_for_broadcast(r_id):
+                    db_session = next(get_db())
+                    try:
+                        return [str(m.profile_id) for m in db_session.query(RoomMember).filter(RoomMember.room_id == r_id).all()]
+                    finally:
+                        db_session.close()
+                member_ids = await run_in_threadpool(get_members_for_broadcast, room_id)
+                global_msg = broadcast_msg.copy()
+                global_msg["type"] = "global_new_message" # Marqueur spécial pour distinguer
+                for m_id in member_ids:
+                    # Ne pas envoyer au sender, ni à l'utilisateur déjà actif dans le WS local
+                    active_users_in_room = manager.get_online_users(str(room_id))
+                    if m_id != user_id and m_id not in active_users_in_room:
+                        if m_id in manager.global_connections:
+                            try:
+                                await manager.global_connections[m_id].send_json(global_msg)
+                            except:
+                                pass
                 # -----------------------------------------------------------------
 
             except Exception as e:
@@ -276,8 +353,6 @@ async def websocket_chat(
 
     except WebSocketDisconnect:
         manager.disconnect(room_id, user_id)
-        # Mettre à jour is_online = False
-        await run_in_threadpool(set_online_status, user_id, False)
         
         await manager.broadcast_to_room(
             room_id,

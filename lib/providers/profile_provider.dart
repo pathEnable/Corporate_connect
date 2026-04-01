@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -51,10 +51,10 @@ class ProfileNotifier extends Notifier<ProfileState> {
     await _loadProfile();
   }
 
-  Future<void> updateAvatar(File file) async {
+  Future<void> updateAvatar(Uint8List bytes, String filename) async {
     state = state.copyWith(isLoading: true);
     try {
-      final result = await _mediaService.uploadFile(file);
+      final result = await _mediaService.uploadFile(bytes, filename: filename);
       final String newAvatarUrl = result['url'];
       await _authService.updateProfile(avatarUrl: newAvatarUrl);
       await _loadProfile();

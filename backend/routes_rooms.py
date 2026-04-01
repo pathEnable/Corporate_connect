@@ -8,6 +8,7 @@ from schemas import RoomResponse, MessageResponse, RoomMemberResponse
 from routes_auth import get_current_user
 from security_utils import decrypt_data
 from dependencies import get_current_room_member
+from collections import defaultdict
 
 router = APIRouter(prefix="/rooms", tags=["Rooms"])
 
@@ -26,7 +27,6 @@ def list_rooms(
     rooms = db.query(Room).filter(Room.id.in_(room_ids)).all()
 
     # Optimisation N+1 : Récupérer le dernier message de chaque salon en une requête structurée
-    # On sait que le backend utilise PostgreSQL d'après l'historique (psycopg2)
     latest_messages = (
         db.query(Message)
         .filter(Message.room_id.in_(room_ids))
@@ -36,14 +36,30 @@ def list_rooms(
     )
     last_msg_map = {m.room_id: m.content for m in latest_messages}
 
+    # Optimisation N+1 (Contacts) : Récupérer tous les membres pour résoudre le nom des discussions privées (1:1)
+    all_members = db.query(RoomMember).filter(RoomMember.room_id.in_(room_ids)).all()
+    members_by_room = defaultdict(list)
+    for m in all_members:
+        members_by_room[m.room_id].append(m)
+        
+    profile_ids = {m.profile_id for m in all_members}
+    profiles = db.query(Profile).filter(Profile.id.in_(profile_ids)).all()
+    profiles_dict = {p.id: p for p in profiles}
+
     result = []
     for room in rooms:
-        # Le contenu (chiffré E2EE) est envoyé directement au client.
         last_content = last_msg_map.get(room.id)
+        
+        display_name = room.name
+        if not room.is_group:
+            # Trouver l'autre membre
+            other_m = next((m for m in members_by_room.get(room.id, []) if str(m.profile_id) != str(current_user.id)), None)
+            if other_m and other_m.profile_id in profiles_dict:
+                display_name = profiles_dict[other_m.profile_id].full_name
 
         result.append(RoomResponse(
             id=room.id,
-            name=room.name,
+            name=display_name,
             is_group=room.is_group,
             last_message=last_content,
         ))

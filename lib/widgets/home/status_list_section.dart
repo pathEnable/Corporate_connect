@@ -12,16 +12,29 @@ class StatusListSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(homeProvider);
 
+    final Map<String, List<StatusModel>> groupedStatuses = {};
+    for (var s in state.statuses) {
+      groupedStatuses.putIfAbsent(s.userId, () => []).add(s);
+    }
+    final userList = groupedStatuses.keys.toList();
+    final flatGroupedStatuses = groupedStatuses.values.expand((list) => list).toList();
+
     return Container(
       height: 110,
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
-        itemCount: state.statuses.length + 1,
+        itemCount: userList.length + 1,
         itemBuilder: (context, index) {
           if (index == 0) return _AddStatusItem(ref: ref);
-          final status = state.statuses[index - 1];
-          return _StatusCircle(status: status);
+          
+          final userId = userList[index - 1];
+          final userStatuses = groupedStatuses[userId]!;
+          
+          return _StatusCircle(
+            firstStatus: userStatuses.first, 
+            allStatuses: flatGroupedStatuses,
+          );
         },
       ),
     );
@@ -33,30 +46,46 @@ class _AddStatusItem extends StatelessWidget {
   const _AddStatusItem({required this.ref});
 
   void _showCreateStatusDialog(BuildContext context) {
+    final theme = Theme.of(context);
     final controller = TextEditingController();
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: theme.colorScheme.surface,
         title: const Text('Nouveau statut'),
         content: TextField(
           controller: controller,
-          decoration: const InputDecoration(hintText: "Quoi de neuf ?"),
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText: "Quoi de neuf ?",
+            filled: true,
+            fillColor: theme.colorScheme.surfaceContainerHighest.withAlpha(80),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+          ),
           maxLength: 100,
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () {
-              if (controller.text.isNotEmpty) {
-                ref.read(homeProvider.notifier).createStatus(controller.text);
-                Navigator.pop(context);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF004D40),
-              foregroundColor: Colors.white,
+          TextButton(
+            onPressed: () => Navigator.pop(context), 
+            child: Text('Annuler', style: TextStyle(color: theme.colorScheme.onSurface.withAlpha(150)))
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ElevatedButton(
+              onPressed: () {
+                if (controller.text.isNotEmpty) {
+                  ref.read(homeProvider.notifier).createStatus(controller.text);
+                  Navigator.pop(context);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: theme.colorScheme.primary,
+                foregroundColor: theme.colorScheme.onPrimary,
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('Publier'),
             ),
-            child: const Text('Publier'),
           ),
         ],
       ),
@@ -65,35 +94,37 @@ class _AddStatusItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return GestureDetector(
       onTap: () => _showCreateStatusDialog(context),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        padding: const EdgeInsets.only(left: 20, right: 12),
         child: Column(
           children: [
             Stack(
               children: [
-                const CircleAvatar(
+                CircleAvatar(
                   radius: 30,
-                  backgroundColor: Color(0xFFE0E0E0),
-                  child: Icon(Icons.person, color: Colors.white, size: 30),
+                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                  child: Icon(Icons.person_outline_rounded, color: theme.colorScheme.onSurface.withAlpha(100), size: 30),
                 ),
                 Positioned(
                   bottom: 0,
                   right: 0,
                   child: Container(
                     padding: const EdgeInsets.all(2),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF004D40),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary,
                       shape: BoxShape.circle,
+                      border: Border.all(color: theme.colorScheme.surface, width: 2),
                     ),
-                    child: const Icon(Icons.add, color: Colors.white, size: 20),
+                    child: Icon(Icons.add_rounded, color: theme.colorScheme.onPrimary, size: 18),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 4),
-            const Text('Mon statut', style: TextStyle(fontSize: 12)),
+            const SizedBox(height: 6),
+            Text('Moi', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withAlpha(180))),
           ],
         ),
       ),
@@ -102,20 +133,21 @@ class _AddStatusItem extends StatelessWidget {
 }
 
 class _StatusCircle extends StatelessWidget {
-  final StatusModel status;
-  const _StatusCircle({required this.status});
+  final StatusModel firstStatus;
+  final List<StatusModel> allStatuses;
+  
+  const _StatusCircle({required this.firstStatus, required this.allStatuses});
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return GestureDetector(
       onTap: () {
-        // Redirection vers la vue story (nécessite l'accès à la liste complète)
-        final state = ProviderScope.containerOf(context).read(homeProvider);
-        final index = state.statuses.indexOf(status);
+        final index = allStatuses.indexOf(firstStatus);
         Navigator.push(
           context,
           FadeSlideRoute(
-            page: StoryViewScreen(stories: state.statuses, initialIndex: index),
+            page: StoryViewScreen(stories: allStatuses, initialIndex: index),
           ),
         );
       },
@@ -127,17 +159,21 @@ class _StatusCircle extends StatelessWidget {
               padding: const EdgeInsets.all(3),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFF004D40), width: 2),
+                border: Border.all(color: theme.colorScheme.primary, width: 2),
               ),
               child: CircleAvatar(
                 radius: 27,
-                backgroundColor: const Color(0xFF004D40),
-                backgroundImage: status.userAvatar != null ? NetworkImage(status.userAvatar!) : null,
-                child: status.userAvatar == null ? const Icon(Icons.person, color: Colors.white) : null,
+                backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                backgroundImage: firstStatus.userAvatar != null ? NetworkImage(firstStatus.userAvatar!) : null,
+                child: firstStatus.userAvatar == null 
+                  ? Icon(Icons.person_rounded, color: theme.colorScheme.onSurface.withAlpha(100)) 
+                  : null,
               ),
             ),
-            const SizedBox(height: 4),
-            Text(status.userName.split(' ')[0], style: const TextStyle(fontSize: 12)),
+            const SizedBox(height: 6),
+            Text(firstStatus.userName.split(' ')[0], 
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: theme.colorScheme.onSurface.withAlpha(180))
+            ),
           ],
         ),
       ),

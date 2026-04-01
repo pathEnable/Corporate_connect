@@ -21,11 +21,11 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _hasSearched = false;
 
   Future<void> _performSearch(String query) async {
-    if (query.length < 2) return;
+    if (query.trim().length < 2) return;
     setState(() => _isLoading = true);
 
     try {
-      final results = await _searchService.globalSearch(query);
+      final results = await _searchService.globalSearch(query.trim());
       if (mounted) {
         setState(() {
           _profiles = List<Map<String, dynamic>>.from(results['profiles'] ?? []);
@@ -43,23 +43,26 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF004D40),
-        foregroundColor: Colors.white,
+        backgroundColor: theme.colorScheme.surface,
+        foregroundColor: theme.colorScheme.onSurface,
+        elevation: 0,
         title: TextField(
           controller: _controller,
           autofocus: true,
-          style: const TextStyle(color: Colors.white),
-          cursorColor: Colors.white,
-          decoration: const InputDecoration(
+          style: TextStyle(color: theme.colorScheme.onSurface),
+          cursorColor: theme.colorScheme.primary,
+          decoration: InputDecoration(
             hintText: 'Rechercher...',
-            hintStyle: TextStyle(color: Colors.white70),
+            hintStyle: TextStyle(color: theme.colorScheme.onSurface.withAlpha(120)),
             border: InputBorder.none,
           ),
           onChanged: (value) {
-            if (value.length >= 2) {
+            if (value.trim().length >= 2) {
               _performSearch(value);
             } else {
               setState(() {
@@ -73,7 +76,7 @@ class _SearchScreenState extends State<SearchScreen> {
         actions: [
           if (_controller.text.isNotEmpty)
             IconButton(
-              icon: const Icon(Icons.clear),
+              icon: const Icon(Icons.clear_rounded),
               onPressed: () {
                 _controller.clear();
                 setState(() {
@@ -86,16 +89,18 @@ class _SearchScreenState extends State<SearchScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF004D40)))
+          ? Center(child: CircularProgressIndicator(color: theme.colorScheme.primary))
           : !_hasSearched
               ? Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.search, size: 80, color: Colors.grey[300]),
+                      Icon(Icons.search_rounded, size: 80, color: theme.dividerColor.withAlpha(50)),
                       const SizedBox(height: 16),
-                      Text('Rechercher des contacts ou des groupes',
-                          style: TextStyle(fontSize: 16, color: Colors.grey[500])),
+                      Text(
+                        'Rechercher des contacts ou des groupes',
+                        style: TextStyle(fontSize: 16, color: theme.colorScheme.onSurface.withAlpha(150)),
+                      ),
                     ],
                   ),
                 )
@@ -104,68 +109,110 @@ class _SearchScreenState extends State<SearchScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.search_off, size: 80, color: Colors.grey[300]),
+                          Icon(Icons.search_off_rounded, size: 80, color: theme.dividerColor.withAlpha(50)),
                           const SizedBox(height: 16),
-                          Text('Aucun résultat', style: TextStyle(fontSize: 16, color: Colors.grey[500])),
+                          Text(
+                            'Aucun résultat', 
+                            style: TextStyle(fontSize: 16, color: theme.colorScheme.onSurface.withAlpha(150)),
+                          ),
                         ],
                       ),
                     )
                   : ListView(
+                      padding: const EdgeInsets.only(bottom: 24),
                       children: [
                         // Section Contacts
                         if (_profiles.isNotEmpty) ...[
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                            child: Text('CONTACTS', style: TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey[600], letterSpacing: 1)),
+                            padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+                            child: Text(
+                              'CONTACTS', 
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold, 
+                                fontSize: 12, 
+                                color: theme.colorScheme.primary, 
+                                letterSpacing: 1.2
+                              ),
+                            ),
                           ),
                           ..._profiles.map((p) => ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
                             leading: CircleAvatar(
-                              backgroundColor: const Color(0xFF004D40),
+                              radius: 24,
+                              backgroundColor: theme.colorScheme.primary,
                               backgroundImage: p['avatar'] != null ? NetworkImage(p['avatar']) : null,
                               child: p['avatar'] == null
-                                  ? Text(p['name'][0].toUpperCase(), style: const TextStyle(color: Colors.white))
+                                  ? Text(
+                                      p['name'][0].toUpperCase(), 
+                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)
+                                    )
                                   : null,
                             ),
                             title: Text(p['name'], style: const TextStyle(fontWeight: FontWeight.w600)),
-                            subtitle: Text('@${p['username']}', style: TextStyle(color: Colors.grey[500])),
+                            subtitle: Text(
+                              '@${p['username']}', 
+                              style: TextStyle(color: theme.colorScheme.onSurface.withAlpha(150), fontSize: 13)
+                            ),
                             onTap: () async {
+                              final String targetUserId = p['id'];
+                              final String targetUserName = p['name'];
+                              
+                              // Capture the navigator and messenger before the async gap
+                              final navigator = Navigator.of(context);
                               final messenger = ScaffoldMessenger.of(context);
+                              
                               try {
-                                final room = await _roomService.createPrivateRoom(p['id']);
-                                if (context.mounted) {
-                                  Navigator.pushReplacement(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => ChatScreen(
-                                        roomId: room['id'],
-                                        roomName: p['name'],
-                                      ),
+                                final room = await _roomService.createPrivateRoom(targetUserId);
+                                if (!mounted) return;
+                                
+                                navigator.pushReplacement(
+                                  MaterialPageRoute(
+                                    builder: (_) => ChatScreen(
+                                      roomId: room['id'],
+                                      roomName: targetUserName,
                                     ),
+                                  ),
+                                );
+                              } catch (e) {
+                                // Since we captured the messenger, we can safely use it here
+                                // even if the widget is no longer in the tree, 
+                                // though checking mounted is still good practice.
+                                if (mounted) {
+                                  messenger.showSnackBar(
+                                    SnackBar(content: Text("Erreur: $e")),
                                   );
                                 }
-                              } catch (e) {
-                                messenger.showSnackBar(SnackBar(content: Text("Erreur: $e")));
                               }
                             },
                           )),
                         ],
                         // Section Groupes
                         if (_rooms.isNotEmpty) ...[
-                          const Divider(),
+                          const Divider(height: 32),
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                            child: Text('GROUPES', style: TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey[600], letterSpacing: 1)),
+                            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                            child: Text(
+                              'GROUPES', 
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold, 
+                                fontSize: 12, 
+                                color: theme.colorScheme.primary, 
+                                letterSpacing: 1.2
+                              ),
+                            ),
                           ),
                           ..._rooms.map((r) => ListTile(
-                            leading: const CircleAvatar(
-                              backgroundColor: Color(0xFF004D40),
-                              child: Icon(Icons.group, color: Colors.white),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+                            leading: CircleAvatar(
+                              radius: 24,
+                              backgroundColor: theme.colorScheme.primary.withAlpha(30),
+                              child: Icon(Icons.groups_rounded, color: theme.colorScheme.primary, size: 24),
                             ),
                             title: Text(r['name'] ?? 'Groupe', style: const TextStyle(fontWeight: FontWeight.w600)),
-                            subtitle: Text(r['is_group'] == true ? 'Groupe' : 'Discussion',
-                                style: TextStyle(color: Colors.grey[500])),
+                            subtitle: Text(
+                              r['is_group'] == true ? 'Canal de groupe' : 'Discussion privée',
+                              style: TextStyle(color: theme.colorScheme.onSurface.withAlpha(150), fontSize: 13)
+                            ),
                             onTap: () {
                               Navigator.pushReplacement(
                                 context,

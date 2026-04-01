@@ -12,7 +12,7 @@ class AgoraService {
   final AuthService _authService = AuthService();
 
   // URL de base pour les requêtes API (doit correspondre au backend)
-  static const String _apiBaseUrl = '${ApiConfig.baseUrl}/agora';
+  static String get _apiBaseUrl => '${ApiConfig.baseUrl}/agora';
 
   Future<void> initAgora() async {
     // On récupère d'abord un token de test ou l'App ID via le backend si nécessaire

@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'package:convert/convert.dart';
 import 'package:flutter/foundation.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:bip39/bip39.dart' as bip39;
 import 'auth_service.dart';
 
 class EncryptionService {
@@ -19,13 +21,12 @@ class EncryptionService {
     // 1. Tenter de lire depuis le stockage sécurisé
     String? privateKeyBase64 = await _secureStorage.read(key: 'e2ee_private_key');
 
-    // 2. Migration depuis SharedPreferences si nécessaire
+    // 2. Migration depuis SharedPreferences (Légué)
     if (privateKeyBase64 == null) {
       final prefs = await SharedPreferences.getInstance();
       privateKeyBase64 = prefs.getString('e2ee_private_key');
       
       if (privateKeyBase64 != null) {
-        // Déplacer vers le stockage sécurisé
         await _secureStorage.write(key: 'e2ee_private_key', value: privateKeyBase64);
         await prefs.remove('e2ee_private_key');
         debugPrint("🔐 Clé E2EE migrée vers le stockage sécurisé.");
@@ -36,19 +37,55 @@ class EncryptionService {
       final privateKeyBytes = base64Decode(privateKeyBase64);
       return await _algorithm.newKeyPairFromSeed(privateKeyBytes);
     } else {
+      // Générer une nouvelle clé (entropie aléatoire)
       final newKeyPair = await _algorithm.newKeyPair();
       final privateKey = await newKeyPair.extractPrivateKeyBytes();
       final newPrivateKeyBase64 = base64Encode(privateKey);
       
       await _secureStorage.write(key: 'e2ee_private_key', value: newPrivateKeyBase64);
       
-      // Publier la clé publique sur le serveur
+      // Publier la clé publique initiale sur le serveur
       final publicKey = await newKeyPair.extractPublicKey();
       final publicKeyBase64 = base64Encode(publicKey.bytes);
       await AuthService().updateProfile(publicKey: publicKeyBase64);
       
       return newKeyPair;
     }
+  }
+
+  /// Exporter la clé privée sous forme de phrase mnémonique (12 mots)
+  Future<String> exportRecoveryPhrase() async {
+    final keyPair = await getLocalKeyPair();
+    final privateKeyBytes = await keyPair.extractPrivateKeyBytes();
+    // Utiliser les 32 octets de la clé X25519 comme entropie pour BIP39
+    // Note: BIP39 standardise l'entropie de 128 à 256 bits (16-32 bytes). 32 bytes = 24 mots. 
+    // Pour 12 mots, il faut 16 bytes. X25519 utilise 32 bytes.
+    // On va utiliser les 32 octets pour 24 mots pour une sécurité maximale, 
+    // ou tronquer proprement si 12 mots sont préférés (moins sécurisé mais plus simple).
+    // Restons sur 24 mots (plus pro pour du E2EE) ou 12 mots via les 16 premiers octets.
+    // L'idéal est la phrase complète de 32 bytes -> 24 mots.
+    return bip39.entropyToMnemonic(hex.encode(privateKeyBytes));
+  }
+
+  /// Restaurer la clé depuis une phrase mnémonique
+  Future<void> importFromRecoveryPhrase(String mnemonic) async {
+    if (!bip39.validateMnemonic(mnemonic)) {
+      throw Exception("Phrase de récupération invalide.");
+    }
+    
+    final entropyHex = bip39.mnemonicToEntropy(mnemonic);
+    final entropyBytes = hex.decode(entropyHex);
+    
+    final privateKeyBase64 = base64Encode(entropyBytes);
+    await _secureStorage.write(key: 'e2ee_private_key', value: privateKeyBase64);
+    
+    // Mettre à jour la clé publique sur le serveur pour refléter le changement
+    final keyPair = await _algorithm.newKeyPairFromSeed(entropyBytes);
+    final publicKey = await keyPair.extractPublicKey();
+    final publicKeyBase64 = base64Encode(publicKey.bytes);
+    await AuthService().updateProfile(publicKey: publicKeyBase64);
+    
+    debugPrint("🔐 Clé E2EE restaurée avec succès.");
   }
 
   /// Récupérer la clé publique locale en Base64

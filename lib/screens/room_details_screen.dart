@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/local_database.dart';
 import '../services/media_service.dart';
+import '../services/room_service.dart';
+import '../providers/profile_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../widgets/chat/message_bubble.dart'; // Pour réutiliser AudioBubbleContent
+import '../widgets/chat/message_bubble.dart';
+import 'image_viewer_screen.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class RoomDetailsScreen extends ConsumerStatefulWidget {
   final String roomId;
@@ -40,22 +44,49 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
-        title: const Text('Détails'),
-        backgroundColor: const Color(0xFF004D40),
-        foregroundColor: Colors.white,
+        title: const Text('Détails du groupe'),
+        backgroundColor: theme.colorScheme.surface,
+        foregroundColor: theme.colorScheme.onSurface,
         elevation: 0,
+        actions: [
+          if (widget.isGroup)
+            PopupMenuButton<String>(
+              onSelected: (val) {
+                if (val == 'leave') _leaveRoom();
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'leave',
+                  child: Row(
+                    children: [
+                      Icon(Icons.exit_to_app_rounded, color: Colors.red, size: 20),
+                      SizedBox(width: 12),
+                      Text('Quitter le groupe', style: TextStyle(color: Colors.red)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+        ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Divider(height: 1, color: theme.dividerColor.withAlpha(50)),
+        ),
       ),
       body: Column(
         children: [
           _buildHeader(),
           TabBar(
             controller: _tabController,
-            labelColor: const Color(0xFF004D40),
+            labelColor: theme.colorScheme.primary,
             unselectedLabelColor: Colors.grey,
-            indicatorColor: const Color(0xFF004D40),
+            indicatorColor: theme.colorScheme.primary,
+            indicatorSize: TabBarIndicatorSize.label,
+            dividerColor: Colors.transparent,
             isScrollable: false,
             tabs: const [
               Tab(text: 'Membres'),
@@ -64,6 +95,7 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
               Tab(text: 'Vocal'),
             ],
           ),
+          const Divider(height: 1),
           Expanded(
             child: TabBarView(
               controller: _tabController,
@@ -81,55 +113,175 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
   }
 
   Widget _buildHeader() {
+    final theme = Theme.of(context);
     return Container(
       width: double.infinity,
-      color: Colors.white,
+      color: theme.colorScheme.surface,
       padding: const EdgeInsets.symmetric(vertical: 24),
       child: Column(
         children: [
-          CircleAvatar(
-            radius: 40,
-            backgroundColor: const Color(0xFF004D40).withValues(alpha: 0.1),
-            child: Icon(
-              widget.isGroup ? Icons.group : Icons.person,
-              size: 40,
-              color: const Color(0xFF004D40),
+          Hero(
+            tag: 'room_avatar_${widget.roomId}',
+            child: CircleAvatar(
+              radius: 45,
+              backgroundColor: theme.colorScheme.primary.withAlpha(26),
+              child: Icon(
+                widget.isGroup ? Icons.groups_rounded : Icons.person_rounded,
+                size: 45,
+                color: theme.colorScheme.primary,
+              ),
             ),
           ),
           const SizedBox(height: 16),
           Text(
             widget.roomName,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 4),
           Text(
             widget.isGroup ? '${widget.members.length} membres' : 'Conversation privée',
-            style: const TextStyle(color: Colors.grey, fontSize: 14),
+            style: TextStyle(color: theme.colorScheme.onSurface.withAlpha(153), fontSize: 14),
           ),
         ],
       ),
     );
   }
 
+  Future<void> _promoteMember(String userId) async {
+    try {
+      await RoomService().promoteMember(widget.roomId, userId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Membre promu administrateur')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e')));
+    }
+  }
+
+  Future<void> _demoteMember(String userId) async {
+    try {
+      await RoomService().demoteMember(widget.roomId, userId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Membre rétrogradé')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e')));
+    }
+  }
+
+  Future<void> _removeMember(String userId) async {
+    try {
+      await RoomService().removeMember(widget.roomId, userId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Membre retiré du groupe')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e')));
+    }
+  }
+
+  Future<void> _leaveRoom() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Quitter le groupe ?'),
+        content: const Text('Vous ne recevrez plus les messages de ce groupe.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('ANNULER')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true), 
+            child: const Text('QUITTER', style: TextStyle(color: Colors.red))
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        final profile = ref.read(profileProvider).profileData;
+        if (profile != null) {
+          await RoomService().leaveRoom(widget.roomId, profile['id']);
+          if (mounted) {
+            Navigator.pop(context); // Retour détails
+            Navigator.pop(context); // Retour chat
+          }
+        }
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e')));
+      }
+    }
+  }
+
   Widget _buildMembersTab() {
+    final theme = Theme.of(context);
+    final currentUserId = ref.read(profileProvider).profileData?['id'];
+    final bool isUserAdmin = widget.members.any((m) => m['id'] == currentUserId && m['is_admin_member'] == true);
+
     if (widget.members.isEmpty) {
       return const Center(child: Text("Aucun membre trouvé"));
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(8),
-      itemCount: widget.members.length,
-      itemBuilder: (context, index) {
-        final member = widget.members[index];
-        return ListTile(
-          leading: const CircleAvatar(
-            backgroundColor: Color(0xFF004D40),
-            child: Icon(Icons.person, color: Colors.white),
+    return Column(
+      children: [
+        if (widget.isGroup && isUserAdmin)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: ListTile(
+              onTap: () {
+                // Rediriger vers un sélecteur d'utilisateurs (NewGroupScreen ou similaire)
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Fonction 'Ajouter des membres' en cours de déploiement")));
+              },
+              leading: CircleAvatar(
+                backgroundColor: theme.colorScheme.primary,
+                child: const Icon(Icons.person_add_rounded, color: Colors.white, size: 20),
+              ),
+              title: Text('Ajouter des membres', style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold)),
+            ),
           ),
-          title: Text(member['full_name'] ?? member['username'] ?? 'Utilisateur'),
-          subtitle: member['is_admin_member'] == true ? const Text('Administrateur', style: TextStyle(color: Color(0xFF004D40))) : null,
-        );
-      },
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.only(bottom: 24),
+            itemCount: widget.members.length,
+            itemBuilder: (context, index) {
+              final member = widget.members[index];
+              final bool isAdmin = member['is_admin_member'] == true;
+              final bool isMe = member['id'] == currentUserId;
+
+              return ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+                leading: CircleAvatar(
+                  backgroundColor: theme.colorScheme.primary.withAlpha(isAdmin ? 255 : 30),
+                  child: Text(
+                    (member['full_name'] ?? 'U')[0].toUpperCase(),
+                    style: TextStyle(color: isAdmin ? theme.colorScheme.onPrimary : theme.colorScheme.primary, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                title: Text(
+                  isMe ? "${member['full_name']} (Vous)" : (member['full_name'] ?? 'Utilisateur'), 
+                  style: const TextStyle(fontWeight: FontWeight.w600)
+                ),
+                subtitle: isAdmin ? Text('Administrateur', style: TextStyle(color: theme.colorScheme.primary, fontSize: 12, fontWeight: FontWeight.w600)) : null,
+                trailing: isUserAdmin && !isMe ? PopupMenuButton<String>(
+                  onSelected: (val) {
+                    if (val == 'promote') _promoteMember(member['id']);
+                    if (val == 'demote') _demoteMember(member['id']);
+                    if (val == 'remove') _removeMember(member['id']);
+                  },
+                  itemBuilder: (context) => [
+                    if (!isAdmin)
+                      const PopupMenuItem(value: 'promote', child: Text('Promouvoir Admin')),
+                    if (isAdmin)
+                      const PopupMenuItem(value: 'demote', child: Text('Rétrograder')),
+                    const PopupMenuItem(value: 'remove', child: Text('Retirer du groupe', style: TextStyle(color: Colors.red))),
+                  ],
+                  icon: const Icon(Icons.more_vert_rounded),
+                ) : (isAdmin ? Icon(Icons.verified_user_rounded, color: theme.colorScheme.primary, size: 20) : null),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -166,7 +318,8 @@ class _MediaTabState extends State<_MediaTab> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Center(child: CircularProgressIndicator(color: Color(0xFF004D40)));
+    final theme = Theme.of(context);
+    if (_isLoading) return Center(child: CircularProgressIndicator(color: theme.colorScheme.primary));
     if (_messages.isEmpty) {
       String emptyText = "Aucune image trouvée";
       if (widget.type == 'file') emptyText = "Aucun document trouvé";
@@ -181,36 +334,37 @@ class _MediaTabState extends State<_MediaTab> {
 
   Widget _buildImageGrid() {
     return GridView.builder(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(2),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        crossAxisSpacing: 4,
-        mainAxisSpacing: 4,
+        crossAxisSpacing: 2,
+        mainAxisSpacing: 2,
       ),
       itemCount: _messages.length,
       itemBuilder: (context, index) {
         final url = _messages[index]['content'];
-        return GestureDetector(
-          onTap: () async {
-            // Optionnel : Ouvrir en plein écran
-            try {
-              final dlUrl = await MediaService().getDownloadUrl(url);
-              final uri = Uri.parse(dlUrl);
-              if (await canLaunchUrl(uri)) await launchUrl(uri);
-            } catch (_) {}
+        return FutureBuilder<String>(
+          future: MediaService().getDownloadUrl(url),
+          builder: (context, snapshot) {
+            if (snapshot.hasData) {
+              final dlUrl = snapshot.data!;
+              return GestureDetector(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => ImageViewerScreen(imageUrl: dlUrl)),
+                ),
+                child: Hero(
+                  tag: dlUrl,
+                  child: CachedNetworkImage(
+                    imageUrl: dlUrl,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) => Container(color: Colors.grey.withAlpha(20)),
+                  ),
+                ),
+              );
+            }
+            return Container(color: Colors.grey.withAlpha(10), child: const Center(child: Icon(Icons.image_rounded, color: Colors.grey)));
           },
-          child: Container(
-            color: Colors.grey[200],
-            child: FutureBuilder<String>(
-              future: MediaService().getDownloadUrl(url),
-              builder: (context, snapshot) {
-                if (snapshot.hasData) {
-                  return Image.network(snapshot.data!, fit: BoxFit.cover);
-                }
-                return const Center(child: Icon(Icons.image, color: Colors.grey));
-              },
-            ),
-          ),
         );
       },
     );
@@ -254,19 +408,24 @@ class _MediaTabState extends State<_MediaTab> {
   }
 
   Widget _buildAudioList() {
+    final theme = Theme.of(context);
     return ListView.separated(
       padding: const EdgeInsets.symmetric(vertical: 8),
       itemCount: _messages.length,
-      separatorBuilder: (_, _) => const Divider(height: 1),
+      separatorBuilder: (_, _) => Divider(height: 1, indent: 70, color: theme.dividerColor.withAlpha(30)),
       itemBuilder: (context, index) {
         final msg = _messages[index];
         return ListTile(
-          leading: const CircleAvatar(
-            backgroundColor: Color(0xFFF5F5F5),
-            child: Icon(Icons.mic, color: Color(0xFF004D40)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          leading: CircleAvatar(
+            backgroundColor: theme.colorScheme.primary.withAlpha(20),
+            child: Icon(Icons.mic_rounded, color: theme.colorScheme.primary),
           ),
           title: AudioBubbleContent(url: msg['content'], isMe: false),
-          subtitle: Text(_formatDate(msg['created_at'])),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(left: 4, top: 4),
+            child: Text(_formatDate(msg['created_at']), style: const TextStyle(fontSize: 11)),
+          ),
         );
       },
     );

@@ -4,6 +4,7 @@ import '../models/home_state.dart';
 import '../services/room_service.dart';
 import '../services/status_service.dart';
 import '../services/local_database.dart';
+import '../services/global_presence_service.dart';
 
 final homeProvider = NotifierProvider<HomeNotifier, HomeState>(() {
   return HomeNotifier();
@@ -32,6 +33,18 @@ class HomeNotifier extends Notifier<HomeState> {
     ]);
 
     if (_isDisposed) return;
+
+    // 2. Global presence connection
+    GlobalPresenceService.instance.connect();
+    GlobalPresenceService.instance.globalEventsStream.listen((event) {
+      if (!_isDisposed) {
+        if (event['type'] == 'global_new_message') {
+          // Un nouveau message est arrivé dans un groupe ou DM
+          // On rafraîchit la liste des rooms pour afficher la notification rouge ou le badging
+          refreshRooms();
+        }
+      }
+    });
 
     state = state.copyWith(
       rooms: futures[0] as List<Map<String, dynamic>>,
