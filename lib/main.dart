@@ -35,7 +35,6 @@ class CorporateConnectApp extends ConsumerWidget {
           primary: const Color(0xFF00695C),
           secondary: const Color(0xFF26A69A),
           surface: Colors.white,
-          background: const Color(0xFFF8F9FA),
           brightness: Brightness.light,
         ),
         scaffoldBackgroundColor: const Color(0xFFF8F9FA),
@@ -53,8 +52,7 @@ class CorporateConnectApp extends ConsumerWidget {
           seedColor: const Color(0xFF00BFA5),
           primary: const Color(0xFF00BFA5),
           secondary: const Color(0xFF1DE9B6),
-          surface: const Color(0xFF1E1E1E), // Surfaces distinctes du fond
-          background: const Color(0xFF121212), // Fond presque OLED
+          surface: const Color(0xFF1E1E1E),
           brightness: Brightness.dark,
         ),
         scaffoldBackgroundColor: const Color(0xFF121212),
