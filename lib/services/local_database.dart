@@ -22,7 +22,7 @@ class LocalDatabase {
 
     return await openDatabase(
       path,
-      version: 6,
+      version: 7,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -38,6 +38,26 @@ class LocalDatabase {
     if (oldVersion < 4) {
       await db.execute("ALTER TABLE messages ADD COLUMN reply_to_id TEXT");
       await db.execute("ALTER TABLE messages ADD COLUMN reply_to_content TEXT");
+    }
+    if (oldVersion < 7) {
+      // Forcer la recréation de la table FTS en cas de corruption ou changement FTS5->FTS4
+      await db.execute("DROP TABLE IF EXISTS messages_fts");
+      await db.execute('''
+        CREATE VIRTUAL TABLE messages_fts USING fts4(
+          id,
+          room_id,
+          content,
+          message_type,
+          created_at,
+          notindexed=id,
+          notindexed=room_id,
+          notindexed=message_type,
+          notindexed=created_at,
+          content='messages'
+        )
+      ''');
+      // Repeupler à partir des messages existants
+      await db.execute("INSERT INTO messages_fts(id, room_id, content, message_type, created_at) SELECT id, room_id, content, message_type, created_at FROM messages");
     }
     if (oldVersion < 5) {
       // Créer la table FTS pour la recherche rapide

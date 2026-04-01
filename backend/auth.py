@@ -75,11 +75,12 @@ def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     
-    # Utiliser le token du query param si le header est vide
-    actual_token = token if token else token_query
+    # Utiliser le token du query param si le header est vide ou invalide
+    # oauth2_scheme peut retourner une chaîne vide ou None avec auto_error=False
+    actual_token = token if (token and token.strip()) else token_query
     
     if not actual_token:
-        # On log l'absence du token pour le debug si besoin
+        # Si aucun token n'est fourni, on lève l'exception standard
         raise credentials_exception
 
     try:
