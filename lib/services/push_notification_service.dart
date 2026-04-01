@@ -84,18 +84,36 @@ class PushNotificationService {
     final authToken = await _authService.getToken();
     if (authToken == null) return;
 
-    try {
-      await _dio.post(
+    Future<Response> makeRequest(String token) async {
+      return await _dio.post(
         '${ApiConfig.baseUrl}/notifications/register-token',
         data: {'fcm_token': fcmToken},
         options: Options(
           headers: {
-            'Authorization': 'Bearer $authToken',
+            'Authorization': 'Bearer $token',
           },
         ),
       );
+    }
+
+    try {
+      await makeRequest(authToken);
       debugPrint("Token FCM enregistré sur le backend.");
     } catch (e) {
+      if (e is DioException && e.response?.statusCode == 401) {
+        debugPrint("Token expiré lors de l'enregistrement FCM. Tentative de refresh...");
+        final refreshed = await _authService.refreshToken();
+        if (refreshed) {
+          final newToken = await _authService.getToken();
+          if (newToken != null) {
+            try {
+              await makeRequest(newToken);
+              debugPrint("Token FCM enregistré après refresh.");
+              return;
+            } catch (_) {}
+          }
+        }
+      }
       debugPrint("Erreur initialisation notifications: $e");
     }
   }

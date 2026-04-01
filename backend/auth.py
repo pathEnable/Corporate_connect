@@ -11,7 +11,8 @@ from database import get_db
 from models import Profile
 
 # Suppression de passlib context qui bug avec bcrypt 4.0+/Python 3.14
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+#oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
 def hash_password(password: str) -> str:
@@ -76,14 +77,17 @@ def get_current_user(
     
     # Utiliser le token du query param si le header est vide
     actual_token = token if token else token_query
+    
     if not actual_token:
+        # On log l'absence du token pour le debug si besoin
         raise credentials_exception
 
     try:
         payload = jwt.decode(actual_token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: str = payload.get("sub")
-        if user_id is None:
+        user_id_str: str = payload.get("sub")
+        if user_id_str is None:
             raise credentials_exception
+        user_id = user_id_str
     except JWTError:
         raise credentials_exception
 

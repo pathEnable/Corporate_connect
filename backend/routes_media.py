@@ -1,7 +1,8 @@
 import os
 import shutil
 import uuid
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Profile
@@ -54,14 +55,9 @@ from jose import jwt, JWTError
 @router.get("/download/{filename}")
 async def download_file(
     filename: str,
-    token: str = Query(None),
     current_user: Profile = Depends(get_current_user),
 ):
-    """Téléchargement sécurisé via JWT (Header ou Query)."""
-    # Si current_user est injecté via Depends(get_current_user), c'est déjà bon (Header).
-    # Sinon, on pourrait manuellement vérifier le token si on voulait désactiver la dépendance pour le query param.
-    # Mais ici, Depends(get_current_user) cherche déjà dans le header. 
-    # Pour le query param, on va adapter get_current_user ou faire une vérification manuelle ici.
+    """Téléchargement sécurisé via JWT (Auto-détection Header ou Query)."""
     
     # Chercher d'abord dans images, puis docs
     img_path = os.path.join(IMAGES_DIR, filename)

@@ -42,14 +42,17 @@ class LocalDatabase {
     if (oldVersion < 5) {
       // Créer la table FTS pour la recherche rapide
       await db.execute('''
-        CREATE VIRTUAL TABLE messages_fts USING fts5(
-          id UNINDEXED,
-          room_id UNINDEXED,
+        CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts4(
+          id,
+          room_id,
           content,
-          message_type UNINDEXED,
-          created_at UNINDEXED,
-          content='messages',
-          content_rowid='id'
+          message_type,
+          created_at,
+          notindexed=id,
+          notindexed=room_id,
+          notindexed=message_type,
+          notindexed=created_at,
+          content='messages'
         )
       ''');
       // On peuple la table FTS avec les messages existants
@@ -79,14 +82,17 @@ class LocalDatabase {
     ''');
 
     await db.execute('''
-      CREATE VIRTUAL TABLE messages_fts USING fts5(
-        id UNINDEXED,
-        room_id UNINDEXED,
+      CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts4(
+        id,
+        room_id,
         content,
-        message_type UNINDEXED,
-        created_at UNINDEXED,
-        content='messages',
-        content_rowid='id'
+        message_type,
+        created_at,
+        notindexed=id,
+        notindexed=room_id,
+        notindexed=message_type,
+        notindexed=created_at,
+        content='messages'
       )
     ''');
 
