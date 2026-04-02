@@ -53,17 +53,19 @@ class EncryptionService {
     }
   }
 
+  /// Récupérer les octets de la clé privée pour compute()
+  Future<Uint8List?> getPrivateKeyBytes() async {
+    String? privateKeyBase64 = await _secureStorage.read(key: 'e2ee_private_key');
+    if (privateKeyBase64 != null) {
+      return base64Decode(privateKeyBase64);
+    }
+    return null;
+  }
+
   /// Exporter la clé privée sous forme de phrase mnémonique (12 mots)
   Future<String> exportRecoveryPhrase() async {
     final keyPair = await getLocalKeyPair();
     final privateKeyBytes = await keyPair.extractPrivateKeyBytes();
-    // Utiliser les 32 octets de la clé X25519 comme entropie pour BIP39
-    // Note: BIP39 standardise l'entropie de 128 à 256 bits (16-32 bytes). 32 bytes = 24 mots. 
-    // Pour 12 mots, il faut 16 bytes. X25519 utilise 32 bytes.
-    // On va utiliser les 32 octets pour 24 mots pour une sécurité maximale, 
-    // ou tronquer proprement si 12 mots sont préférés (moins sécurisé mais plus simple).
-    // Restons sur 24 mots (plus pro pour du E2EE) ou 12 mots via les 16 premiers octets.
-    // L'idéal est la phrase complète de 32 bytes -> 24 mots.
     return bip39.entropyToMnemonic(hex.encode(privateKeyBytes));
   }
 
@@ -79,20 +81,10 @@ class EncryptionService {
     final privateKeyBase64 = base64Encode(entropyBytes);
     await _secureStorage.write(key: 'e2ee_private_key', value: privateKeyBase64);
     
-    // Mettre à jour la clé publique sur le serveur pour refléter le changement
     final keyPair = await _algorithm.newKeyPairFromSeed(entropyBytes);
     final publicKey = await keyPair.extractPublicKey();
     final publicKeyBase64 = base64Encode(publicKey.bytes);
     await AuthService().updateProfile(publicKey: publicKeyBase64);
-    
-    debugPrint("🔐 Clé E2EE restaurée avec succès.");
-  }
-
-  /// Récupérer la clé publique locale en Base64
-  Future<String> getLocalPublicKeyBase64() async {
-    final keyPair = await getLocalKeyPair();
-    final publicKey = await keyPair.extractPublicKey();
-    return base64Encode(publicKey.bytes);
   }
 
   /// Chiffrer un message pour un destinataire
@@ -103,19 +95,16 @@ class EncryptionService {
       type: KeyPairType.x25519,
     );
 
-    // 1. Calculer le secret partagé Diffie-Hellman
     final sharedSecret = await _algorithm.sharedSecretKey(
       keyPair: keyPair,
       remotePublicKey: recipientPublicKey,
     );
 
-    // 2. Chiffrer avec AES-GCM
     final secretBox = await _aesApp.encrypt(
       utf8.encode(plainText),
       secretKey: sharedSecret,
     );
 
-    // On combine le nonce et le cipher text pour le transport
     final combined = Uint8List(secretBox.nonce.length + secretBox.cipherText.length + secretBox.mac.bytes.length);
     combined.setRange(0, secretBox.nonce.length, secretBox.nonce);
     combined.setRange(secretBox.nonce.length, secretBox.nonce.length + secretBox.cipherText.length, secretBox.cipherText);
@@ -134,19 +123,15 @@ class EncryptionService {
       );
 
       final combined = base64Decode(combinedBase64);
-      
-      // Extraire Nonce (12 bytes), CipherText, et MAC (16 bytes)
       final nonce = combined.sublist(0, 12);
       final macBytes = combined.sublist(combined.length - 16);
       final cipherText = combined.sublist(12, combined.length - 16);
 
-      // 1. Recalculer le même secret partagé
       final sharedSecret = await _algorithm.sharedSecretKey(
         keyPair: keyPair,
         remotePublicKey: senderPublicKey,
       );
 
-      // 2. Déchiffrer
       final secretBox = SecretBox(cipherText, nonce: nonce, mac: Mac(macBytes));
       final clearTextBytes = await _aesApp.decrypt(
         secretBox,
@@ -158,5 +143,62 @@ class EncryptionService {
       debugPrint("Erreur déchiffrement: $e");
       return "[Message chiffré illisible]";
     }
+  }
+
+  /// Méthode statique pour déchiffrer une liste de messages via compute()
+  /// Cela évite de bloquer l'interface (ANR) pendant le traitement de masse.
+  static Future<List<Map<String, dynamic>>> decryptBulk(Map<String, dynamic> params) async {
+    final List<Map<String, dynamic>> messages = List<Map<String, dynamic>>.from(params['messages']);
+    final Map<String, String> memberKeys = Map<String, String>.from(params['memberKeys']);
+    final Uint8List privateKeyBytes = params['privateKeyBytes'];
+
+    final algorithm = X25519();
+    final aesApp = AesGcm.with256bits();
+    
+    final keyPair = await algorithm.newKeyPairFromSeed(privateKeyBytes);
+
+    for (var msg in messages) {
+      final bool isText = msg['message_type'] == 'text';
+      if (isText && msg['content'] != null && msg['is_decrypted'] != true) {
+        final senderId = msg['sender_id'].toString();
+        
+        if (memberKeys.containsKey(senderId)) {
+          final String content = msg['content'];
+          if (content.length > 20 && !content.contains(' ')) {
+            try {
+              final senderPublicKey = SimplePublicKey(
+                base64Decode(memberKeys[senderId]!),
+                type: KeyPairType.x25519,
+              );
+
+              final sharedSecret = await algorithm.sharedSecretKey(
+                keyPair: keyPair,
+                remotePublicKey: senderPublicKey,
+              );
+
+              final combined = base64Decode(content);
+              if (combined.length > 28) { // 12 (nonce) + 16 (mac)
+                final nonce = combined.sublist(0, 12);
+                final macBytes = combined.sublist(combined.length - 16);
+                final cipherText = combined.sublist(12, combined.length - 16);
+
+                final secretBox = SecretBox(cipherText, nonce: nonce, mac: Mac(macBytes));
+                final clearTextBytes = await aesApp.decrypt(
+                  secretBox,
+                  secretKey: sharedSecret,
+                );
+                
+                msg['content'] = utf8.decode(clearTextBytes);
+                msg['is_encrypted'] = true;
+              }
+            } catch (_) {
+              // Silently fail for individual messages in bulk
+            }
+          }
+          msg['is_decrypted'] = true;
+        }
+      }
+    }
+    return messages;
   }
 }

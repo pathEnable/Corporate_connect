@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:record/record.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../providers/chat_provider.dart';
 import '../../services/media_service.dart';
 
@@ -27,9 +30,11 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   final TextEditingController _controller = TextEditingController();
   final ImagePicker _picker = ImagePicker();
   final MediaService _mediaService = MediaService();
+  final _audioRecorder = AudioRecorder();
 
   bool _isTyping = false;
   bool _isUploading = false;
+  bool _isRecording = false;
   double _uploadProgress = 0.0;
   Timer? _typingDebounce;
 
@@ -132,6 +137,7 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   void dispose() {
     _controller.dispose();
     _typingDebounce?.cancel();
+    _audioRecorder.dispose();
     super.dispose();
   }
 
@@ -207,26 +213,56 @@ class _MessageInputState extends ConsumerState<MessageInput> {
     final theme = Theme.of(context);
     bool canSend = _isTyping || _controller.text.trim().isNotEmpty;
     return GestureDetector(
-      onTap: canSend ? _handleSend : null,
+      onTap: canSend ? _handleSend : _toggleRecording,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-            color: theme.colorScheme.primary,
+            color: _isRecording ? Colors.red : theme.colorScheme.primary,
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
-                  color: theme.colorScheme.primary.withAlpha(76),
+                  color: (_isRecording ? Colors.red : theme.colorScheme.primary).withAlpha(76),
                   blurRadius: 8,
                   offset: const Offset(0, 3))
             ]),
         child: Icon(
-          canSend ? Icons.send_rounded : Icons.mic_none_rounded,
+          canSend ? Icons.send_rounded : (_isRecording ? Icons.stop_rounded : Icons.mic_none_rounded),
           color: theme.colorScheme.onPrimary,
           size: 22,
         ),
       ),
     );
+  }
+
+  Future<void> _toggleRecording() async {
+    try {
+      if (_isRecording) {
+        final path = await _audioRecorder.stop();
+        setState(() => _isRecording = false);
+        if (path != null) {
+          final File audioFile = File(path);
+          final bytes = await audioFile.readAsBytes();
+          _uploadAndSend(bytes, 'audio_record.m4a', 'audio');
+        }
+      } else {
+        if (await _audioRecorder.hasPermission()) {
+          final tempDir = await getTemporaryDirectory();
+          final path = '${tempDir.path}/audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
+          await _audioRecorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
+          setState(() => _isRecording = true);
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Permission micro refusée')));
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isRecording = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur micro: $e')));
+      }
+    }
   }
 
   void _showAttachmentMenu() {

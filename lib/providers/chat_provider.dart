@@ -27,10 +27,7 @@ class ChatNotifier extends Notifier<ChatState> {
 
   @override
   ChatState build() {
-    // Initialisation du nettoyage lors de la suppression du provider
     ref.onDispose(() => _isDisposed = true);
-
-    // Initialisation asynchrone lancée après le build initial
     _init();
 
     return ChatState(
@@ -53,7 +50,7 @@ class ChatNotifier extends Notifier<ChatState> {
         state = state.copyWith(messages: localMsgs);
       }
     } catch (e) {
-      // sqflite non supporté sur Web ou base corrompue : on ignore le cache
+      debugPrint("❌ Erreur chargement cache DB: $e");
     }
 
     // 2. Charger les clés membres
@@ -69,31 +66,31 @@ class ChatNotifier extends Notifier<ChatState> {
         state = state.copyWith(memberKeys: keys);
       }
       
-      final decryptedMsgs = List<Map<String, dynamic>>.from(state.messages);
-      for (var msg in decryptedMsgs) {
-        await _decryptMessage(msg);
+      // Déchiffrement en masse du cache local
+      if (state.messages.isNotEmpty) {
+        final decryptedLocal = await _decryptBulk(state.messages);
+        if (!_isDisposed) {
+          state = state.copyWith(messages: decryptedLocal);
+        }
       }
-      if (!_isDisposed) {
-        state = state.copyWith(messages: decryptedMsgs);
-      }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint("❌ Erreur chargement membres/clés: $e");
+    }
 
     // 3. Charger l'historique depuis le serveur
     try {
       final history = await _roomService.getMessages(roomId);
-      for (var msg in history) {
-        await _decryptMessage(msg);
-        try {
-          await LocalDatabase.instance.saveMessage(msg);
-        } catch (_) {} // Ignore cache update fails
-      }
+      final decryptedHistory = await _decryptBulk(history);
+      
+      // Sauvegarder en cache (sans attendre, en tâche de fond)
+      _saveHistoryToCache(decryptedHistory);
+      
       if (!_isDisposed) {
-        state = state.copyWith(messages: history, isLoading: false);
+        state = state.copyWith(messages: decryptedHistory, isLoading: false);
       }
-    } catch (_) {
-      // Ignorer l'erreur réseau et afficher ce qu'on peut
+    } catch (e) {
+      debugPrint("❌ Erreur historique serveur: $e");
     } finally {
-      // Toujours s'assurer d'éteindre le spinner
       if (!_isDisposed && state.isLoading) {
         state = state.copyWith(isLoading: false);
       }
@@ -102,6 +99,37 @@ class ChatNotifier extends Notifier<ChatState> {
     // 4. WebSocket
     if (_userId != null) {
       _connectWebSocket();
+    }
+  }
+
+  /// Déchiffre une liste de messages en arrière-plan (Isolate/Compute)
+  Future<List<Map<String, dynamic>>> _decryptBulk(List<Map<String, dynamic>> messages) async {
+    if (messages.isEmpty || state.memberKeys.isEmpty) return messages;
+    
+    final privateKeyBytes = await _encryptionService.getPrivateKeyBytes();
+    if (privateKeyBytes == null) return messages;
+
+    final stopwatch = Stopwatch()..start();
+    
+    // Déplacement du calcul lourd vers un Isolate séparé
+    final result = await compute(EncryptionService.decryptBulk, {
+      'messages': messages,
+      'memberKeys': state.memberKeys,
+      'privateKeyBytes': privateKeyBytes,
+    });
+    
+    stopwatch.stop();
+    debugPrint("🚀 Déchiffrement de ${messages.length} messages terminé en ${stopwatch.elapsedMilliseconds}ms");
+    
+    return result;
+  }
+
+  void _saveHistoryToCache(List<Map<String, dynamic>> history) async {
+    for (var msg in history) {
+      if (_isDisposed) break;
+      try {
+        await LocalDatabase.instance.saveMessage(msg);
+      } catch (_) {}
     }
   }
 
@@ -128,22 +156,28 @@ class ChatNotifier extends Notifier<ChatState> {
 
   Future<void> _handleIncomingMessage(Map<String, dynamic> message) async {
     if (message['type'] == 'new_message' || message['type'] == 'image' || message['type'] == 'file' || message['type'] == 'audio') {
-      await _decryptMessage(message);
+      
+      // Déchiffrer le message entrant (singulier)
+      final decrypted = await _decryptBulk([message]);
+      final finalMsg = decrypted.first;
+
       try {
-        await LocalDatabase.instance.saveMessage(message);
-      } catch (_) {} // Ignore cache fails
+        await LocalDatabase.instance.saveMessage(finalMsg);
+      } catch (_) {}
       
       final newMessages = List<Map<String, dynamic>>.from(state.messages);
-      final index = newMessages.indexWhere((m) => 
-        m['content'] == message['content'] && 
-        m['sender_id'] == message['sender_id'] && 
-        (m['status'] == 'pending' || m['id'].toString().length > 15)
-      );
+      final index = newMessages.indexWhere((m) {
+        // Logique de remplacement pour les messages "pending"
+        final bool isSameContent = m['content'] == finalMsg['content'];
+        final bool isSameSender = m['sender_id'] == finalMsg['sender_id'];
+        final bool isTemporary = m['status'] == 'pending' || m['id'].toString().startsWith('temp_');
+        return isSameContent && isSameSender && isTemporary;
+      });
 
       if (index != -1) {
-        newMessages[index] = message;
+        newMessages[index] = finalMsg;
       } else {
-        newMessages.add(message);
+        newMessages.add(finalMsg);
       }
       if (!_isDisposed) {
         state = state.copyWith(messages: newMessages);
@@ -174,37 +208,11 @@ class ChatNotifier extends Notifier<ChatState> {
     }
   }
 
-  Future<void> _decryptMessage(Map<String, dynamic> msg) async {
-    final bool isText = msg['message_type'] == 'text';
-    if (isText && msg['content'] != null && msg['is_decrypted'] != true) {
-      final senderId = msg['sender_id'].toString();
-      
-      // On tente de déchiffrer SI on a la clé et si ça ressemble à du Base64 (chiffré)
-      if (state.memberKeys.containsKey(senderId)) {
-        final String content = msg['content'];
-        // Heuristique simple : si c'est du Base64 long et sans espaces, c'est probablement chiffré
-        if (content.length > 20 && !content.contains(' ')) {
-          try {
-            final decrypted = await _encryptionService.decrypt(content, state.memberKeys[senderId]!);
-            if (decrypted != "[Message chiffré illisible]") {
-               msg['content'] = decrypted;
-               msg['is_encrypted'] = true; // Flag pour UI (icone cadenas)
-            }
-          } catch (e) {
-            debugPrint("⚠️ Échec déchiffrement pour msg ${msg['id']}: $e");
-          }
-        }
-        msg['is_decrypted'] = true;
-      }
-    }
-  }
-
   void sendMessage(String content, String type, {Map<String, dynamic>? extraData}) async {
     String contentToSend = content;
     bool wasEncrypted = false;
 
     if (type == 'text' && state.memberKeys.isNotEmpty) {
-      // Pour les messages directs (2 membres), on cherche la clé de l'autre
       final recipientId = state.memberKeys.keys.firstWhere(
         (id) => id != _userId, 
         orElse: () => ""
@@ -214,9 +222,8 @@ class ChatNotifier extends Notifier<ChatState> {
         try {
           contentToSend = await _encryptionService.encrypt(content, state.memberKeys[recipientId]!);
           wasEncrypted = true;
-          debugPrint("🔒 Message chiffré pour $recipientId");
         } catch (e) {
-          debugPrint("❌ Erreur de chiffrement: $e. Envoi en clair par sécurité dégradée.");
+          debugPrint("❌ Erreur de chiffrement: $e");
         }
       }
     }
@@ -225,7 +232,7 @@ class ChatNotifier extends Notifier<ChatState> {
       'id': 'temp_${DateTime.now().millisecondsSinceEpoch}',
       'room_id': roomId, 
       'sender_id': _userId,
-      'content': content, // On garde le clair pour l'affichage local immediat
+      'content': content, 
       'message_type': type,
       'status': 'pending',
       'is_encrypted': wasEncrypted,

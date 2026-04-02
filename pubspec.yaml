@@ -63,6 +63,7 @@ dependencies:
   intl: ^0.20.2
   convert: ^3.1.2
   http_parser: ^4.1.2
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:

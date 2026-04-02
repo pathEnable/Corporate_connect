@@ -44,14 +44,15 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
                     ),
                   ],
                 ),
-                Row(
-                  children: [
-                    Text(
-                      state.isConnected ? 'En ligne' : 'Déconnecté',
-                      style: TextStyle(fontSize: 12, color: theme.colorScheme.onPrimary.withAlpha(200), fontWeight: FontWeight.w400),
-                    ),
-                  ],
-                ),
+                if (isGroup)
+                  Row(
+                    children: [
+                      Text(
+                        state.isConnected ? 'Connecté' : 'Déconnecté',
+                        style: TextStyle(fontSize: 12, color: theme.colorScheme.onPrimary.withAlpha(200), fontWeight: FontWeight.w400),
+                      ),
+                    ],
+                  ),
               ],
             ),
           ),

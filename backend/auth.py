@@ -58,7 +58,6 @@ def create_refresh_token(db: Session, user_id: str) -> str:
         expires_at=expires_at
     )
     db.add(db_token)
-    db.commit()
     return token
 
 

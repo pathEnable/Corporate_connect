@@ -12,7 +12,7 @@ class RoomService {
   /// Lister les salons de l'utilisateur
   Future<List<Map<String, dynamic>>> getRooms() async {
     final response = await _authService.authenticatedRequest(
-      url: baseUrl,
+      url: '$baseUrl/',
       method: 'GET',
     );
 
@@ -25,7 +25,7 @@ class RoomService {
   /// Créer un salon privé (1:1)
   Future<Map<String, dynamic>> createPrivateRoom(String memberId) async {
     final response = await _authService.authenticatedRequest(
-      url: baseUrl,
+      url: '$baseUrl/',
       method: 'POST',
       body: {
         'is_group': false,
@@ -42,7 +42,7 @@ class RoomService {
   /// Créer un groupe
   Future<Map<String, dynamic>> createGroup(String name, List<String> memberIds) async {
     final response = await _authService.authenticatedRequest(
-      url: baseUrl,
+      url: '$baseUrl/',
       method: 'POST',
       body: {
         'name': name,

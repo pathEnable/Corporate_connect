@@ -48,7 +48,7 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
-        title: const Text('Détails du groupe'),
+        title: Text(widget.isGroup ? 'Détails du groupe' : 'Détails du contact'),
         backgroundColor: theme.colorScheme.surface,
         foregroundColor: theme.colorScheme.onSurface,
         elevation: 0,
@@ -261,8 +261,8 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
                   isMe ? "${member['full_name']} (Vous)" : (member['full_name'] ?? 'Utilisateur'), 
                   style: const TextStyle(fontWeight: FontWeight.w600)
                 ),
-                subtitle: isAdmin ? Text('Administrateur', style: TextStyle(color: theme.colorScheme.primary, fontSize: 12, fontWeight: FontWeight.w600)) : null,
-                trailing: isUserAdmin && !isMe ? PopupMenuButton<String>(
+                subtitle: (widget.isGroup && isAdmin) ? Text('Administrateur', style: TextStyle(color: theme.colorScheme.primary, fontSize: 12, fontWeight: FontWeight.w600)) : null,
+                trailing: widget.isGroup && isUserAdmin && !isMe ? PopupMenuButton<String>(
                   onSelected: (val) {
                     if (val == 'promote') _promoteMember(member['id']);
                     if (val == 'demote') _demoteMember(member['id']);
@@ -276,7 +276,7 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
                     const PopupMenuItem(value: 'remove', child: Text('Retirer du groupe', style: TextStyle(color: Colors.red))),
                   ],
                   icon: const Icon(Icons.more_vert_rounded),
-                ) : (isAdmin ? Icon(Icons.verified_user_rounded, color: theme.colorScheme.primary, size: 20) : null),
+                ) : (widget.isGroup && isAdmin ? Icon(Icons.verified_user_rounded, color: theme.colorScheme.primary, size: 20) : null),
               );
             },
           ),

@@ -41,6 +41,23 @@ def run_migration():
                 else:
                     print(f"  [ERR] {table}.{col_name}: {e}")
 
+    # Corrections de contraintes existantes
+    constraint_fixes = [
+        ('call_logs', 'receiver_id', 'DROP NOT NULL'),
+    ]
+
+    for table, col_name, action in constraint_fixes:
+        with engine.connect() as conn:
+            try:
+                conn.execute(text(
+                    f'ALTER TABLE {table} ALTER COLUMN {col_name} {action};'
+                ))
+                conn.commit()
+                print(f"  [OK] {table}.{col_name} contrainte mise a jour ({action}).")
+            except Exception as e:
+                conn.rollback()
+                print(f"  [ERR] {table}.{col_name} (contrainte): {e}")
+
     print("\nMigration terminee !")
 
 if __name__ == "__main__":

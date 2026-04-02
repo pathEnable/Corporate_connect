@@ -1,19 +1,40 @@
-import 'dart:io';
+import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 
 class ApiConfig {
   /// Toggle pour passer du mode local au mode production (Render)
-  static const bool useLocalBackend = true;
+  static const bool useLocalBackend = false;
 
   /// URL pour Render (Production)
   static const String _prodBaseUrl = 'https://corporate-connect.onrender.com';
   static const String _prodWsUrl = 'wss://corporate-connect.onrender.com';
 
+  /// Adresse IP de votre PC détectée (192.168.2.5)
+  /// Pour permettre la connexion depuis un TÉLÉPHONE PHYSIQUE sur le même Wi-Fi
+  static const String _detectedLocalIP = '192.168.2.5';
+
   /// Détection automatique de l'URL locale selon la plateforme
   static String get _localHost {
-    if (kIsWeb) return '127.0.0.1';
-    if (Platform.isAndroid) return '10.0.2.2'; // IP spéciale pour l'émulateur Android
-    return '127.0.0.1'; // Pour Windows, iOS Simulator, macOS
+    if (kIsWeb) {
+      // Sur le web, le navigateur accède au backend sur la même machine (localhost)
+      return '127.0.0.1';
+    }
+    
+    try {
+      // Détection de l'émulateur Android (toujours 10.0.2.2)
+      if (Platform.isAndroid) {
+        // Note: On pourrait utiliser package:device_info_plus pour être 100% sûr 
+        // qu'on est sur un émulateur, mais 10.0.2.2 fonctionne généralement bien.
+        // Si vous êtes sur un TÉLÉPHONE PHYSIQUE Android, nous utilisons l'IP Wi-Fi.
+        
+        // Pour l'instant, on privilégie l'IP Wi-Fi car c'est votre cas d'usage actuel.
+        return _detectedLocalIP;
+      }
+    } catch (_) {
+      // Fallback si Platform n'est pas disponible (ex: desktop)
+    }
+
+    return _detectedLocalIP;
   }
 
   /// URL de base finale

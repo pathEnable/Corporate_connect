@@ -20,6 +20,15 @@ def log_call(call_data: CallLogCreate, current_user: Profile = Depends(get_curre
         receiver = db.query(Profile).filter(Profile.id == call_data.receiver_id).first()
         if not receiver:
             raise HTTPException(status_code=404, detail="Receiver not found")
+    elif call_data.room_id:
+        from models import RoomMember
+        other_member = db.query(RoomMember).filter(
+            RoomMember.room_id == call_data.room_id,
+            RoomMember.profile_id != current_user.id
+        ).first()
+        if other_member:
+            call_data.receiver_id = other_member.profile_id
+            receiver = db.query(Profile).filter(Profile.id == call_data.receiver_id).first()
 
     start_dt = datetime.datetime.fromisoformat(call_data.start_time.replace("Z", "+00:00"))
     

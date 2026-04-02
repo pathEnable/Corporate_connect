@@ -5,17 +5,31 @@ import 'services/auth_service.dart';
 import 'services/push_notification_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'providers/settings_provider.dart';
+import 'dart:async';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
+  // 1. Initialisation de la liaison Flutter (Essentiel)
   WidgetsFlutterBinding.ensureInitialized();
+  
+  final stopwatch = Stopwatch()..start();
+
+  // 2. Lancement immédiat de l'interface (Non bloquant)
+  runApp(const ProviderScope(child: CorporateConnectApp()));
+
+  // 3. Initialisation des services lourds en arrière-plan (Après affichage)
+  unawaited(_initializeBgServices(stopwatch));
+}
+
+Future<void> _initializeBgServices(Stopwatch stopwatch) async {
   try {
     await PushNotificationService.initialize();
+    stopwatch.stop();
+    debugPrint("⏱️ Services initialisés et UI prête en ${stopwatch.elapsedMilliseconds}ms");
   } catch (e) {
-    debugPrint("⚠️ Firebase/Notifications non disponibles: $e");
+    debugPrint("⚠️ Erreur services arrière-plan: $e");
   }
-  runApp(const ProviderScope(child: CorporateConnectApp()));
 }
 
 class CorporateConnectApp extends ConsumerWidget {
@@ -120,8 +134,7 @@ class CorporateConnectApp extends ConsumerWidget {
   }
 }
 
-
-/// Vérifie si l'utilisateur est connecté et redirige
+/// Vérifie si l'utilisateur est connecté et redirige (Ecran de chargement léger)
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
@@ -132,7 +145,18 @@ class AuthGate extends StatelessWidget {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Scaffold(
-            body: Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary)),
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // On pourrait charger un logo ici pour un aspect plus "Splash Pro"
+                  const Icon(Icons.connect_without_contact, size: 80, color: Colors.blueAccent),
+                  const SizedBox(height: 24),
+                  CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
+                ],
+              ),
+            ),
           );
         }
         if (snapshot.data == true) {
