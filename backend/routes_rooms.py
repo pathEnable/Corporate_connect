@@ -12,7 +12,7 @@ from collections import defaultdict
 
 router = APIRouter(prefix="/rooms", tags=["Rooms"])
 
-@router.get("/", response_model=List[RoomResponse])
+@router.get("", response_model=List[RoomResponse])
 def list_rooms(
     db: Session = Depends(get_db),
     current_user: Profile = Depends(get_current_user),
@@ -66,7 +66,7 @@ def list_rooms(
 
     return result
 
-@router.post("/", response_model=RoomResponse)
+@router.post("", response_model=RoomResponse)
 def create_room(
     room_data: dict,
     db: Session = Depends(get_db),
