@@ -11,6 +11,7 @@ import uuid
 router = APIRouter(prefix="/status", tags=["Status"])
 
 @router.post("", response_model=StatusResponse)
+@router.post("/", response_model=StatusResponse, include_in_schema=False)
 async def create_status(
     status_data: StatusCreate,
     current_user: Profile = Depends(get_current_user),
@@ -41,6 +42,7 @@ async def create_status(
     )
 
 @router.get("", response_model=List[StatusResponse])
+@router.get("/", response_model=List[StatusResponse], include_in_schema=False)
 async def get_statuses(
     db: Session = Depends(get_db),
     current_user: Profile = Depends(get_current_user)
