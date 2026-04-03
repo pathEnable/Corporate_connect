@@ -86,21 +86,23 @@ class AuthService {
   }
 
   /// Sauvegarder le token JWT en local
-  Future<void> _saveToken(String token, String refreshToken, String userId, String fullName) async {
+  Future<void> _saveToken(String token, String refreshToken, String userId, String fullName, {bool registerFcm = true}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('access_token', token);
     await prefs.setString('refresh_token', refreshToken);
     await prefs.setString('user_id', userId);
     await prefs.setString('full_name', fullName);
 
-    // Enregistrer le token FCM s'il est disponible
-    try {
-      final fcmToken = await PushNotificationService.getFcmToken();
-      if (fcmToken != null) {
-        await PushNotificationService.registerToken(fcmToken);
+    // Enregistrer le token FCM s'il est disponible et demandé
+    if (registerFcm) {
+      try {
+        final fcmToken = await PushNotificationService.getFcmToken();
+        if (fcmToken != null) {
+          await PushNotificationService.registerToken(fcmToken);
+        }
+      } catch (e) {
+        debugPrint("Erreur enregistrement FCM: $e");
       }
-    } catch (e) {
-      debugPrint("Erreur enregistrement FCM: $e");
     }
   }
 
@@ -136,7 +138,8 @@ class AuthService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        await _saveToken(data['access_token'], data['refresh_token'], data['user_id'], data['full_name']);
+        // On ne ré-enregistre pas FCM ici car refreshToken est souvent appelé PAR PushNotificationService
+        await _saveToken(data['access_token'], data['refresh_token'], data['user_id'], data['full_name'], registerFcm: false);
         return true;
       }
     } catch (_) {}

@@ -30,7 +30,6 @@ class AppTheme {
       textTheme: GoogleFonts.poppinsTextTheme().apply(
         bodyColor: Colors.black.withAlpha(220),
         displayColor: Colors.black,
-        fontSizeFactor: fontScale,
       ),
       appBarTheme: const AppBarTheme(
         backgroundColor: Colors.white,
@@ -87,7 +86,6 @@ class AppTheme {
       textTheme: GoogleFonts.poppinsTextTheme(ThemeData.dark().textTheme).apply(
         bodyColor: Colors.white.withAlpha(230),
         displayColor: Colors.white,
-        fontSizeFactor: fontScale,
       ),
       appBarTheme: const AppBarTheme(
         backgroundColor: deepBlack,

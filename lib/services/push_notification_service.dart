@@ -82,7 +82,10 @@ class PushNotificationService {
 
   static Future<void> registerToken(String fcmToken) async {
     final authToken = await _authService.getToken();
-    if (authToken == null) return;
+    if (authToken == null) {
+      debugPrint("FCM Registration: Aucun token d'authentification trouvé. Abandon.");
+      return;
+    }
 
     Future<Response> makeRequest(String token) async {
       return await _dio.post(
@@ -92,29 +95,40 @@ class PushNotificationService {
           headers: {
             'Authorization': 'Bearer $token',
           },
+          validateStatus: (status) => status! < 500, // On gère les 401 nous-mêmes
         ),
       );
     }
 
     try {
-      await makeRequest(authToken);
-      debugPrint("Token FCM enregistré sur le backend.");
-    } catch (e) {
-      if (e is DioException && e.response?.statusCode == 401) {
-        debugPrint("Token expiré lors de l'enregistrement FCM. Tentative de refresh...");
+      var response = await makeRequest(authToken);
+      
+      if (response.statusCode == 401) {
+        debugPrint("FCM Registration: Token expiré (401). Tentative de rafraîchissement...");
         final refreshed = await _authService.refreshToken();
+        
         if (refreshed) {
           final newToken = await _authService.getToken();
           if (newToken != null) {
-            try {
-              await makeRequest(newToken);
-              debugPrint("Token FCM enregistré après refresh.");
+            response = await makeRequest(newToken);
+            if (response.statusCode == 200) {
+              debugPrint("FCM Registration: Succès après rafraîchissement.");
               return;
-            } catch (_) {}
+            }
           }
         }
+        
+        debugPrint("FCM Registration: Échec critique après tentative de rafraîchissement (Status: ${response.statusCode}).");
+        if (response.statusCode == 401) {
+          debugPrint("FCM Registration: La session semble totalement expirée. Reconnexion requise.");
+        }
+      } else if (response.statusCode == 200) {
+        debugPrint("FCM Registration: Succès.");
+      } else {
+        debugPrint("FCM Registration: Erreur inattendue (Status: ${response.statusCode}, Body: ${response.data})");
       }
-      debugPrint("Erreur initialisation notifications: $e");
+    } catch (e) {
+      debugPrint("FCM Registration: Exception lors de l'appel API: $e");
     }
   }
 
