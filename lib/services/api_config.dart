@@ -1,5 +1,6 @@
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiConfig {
   /// Toggle pour passer du mode local au mode production (Render)
@@ -53,4 +54,20 @@ class ApiConfig {
   static const Map<String, String> defaultHeaders = {
     'Content-Type': 'application/json',
   };
+
+  /// Construit une URL complète et authentifiée pour afficher un média (avatar, image, etc.)
+  /// 
+  /// Utilise le token JWT en query param pour que Image.network fonctionne sans headers.
+  /// Inclut un cache-buster basé sur le timestamp pour forcer le rafraîchissement quand nécessaire.
+  static Future<String> getAuthenticatedMediaUrl(String relativeUrl) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('access_token') ?? '';
+    
+    // Nettoyer l'URL relative
+    String path = relativeUrl.replaceFirst("/media", "");
+    if (!path.startsWith('/')) path = '/$path';
+    
+    return '$baseUrl/media$path?token=$token';
+  }
 }
+

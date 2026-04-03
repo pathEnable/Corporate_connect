@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
-import 'package:web_socket_channel/io.dart';
 import 'auth_service.dart';
 import 'api_config.dart';
 
@@ -15,7 +14,7 @@ class ChatService {
   Future<void> connect(String roomId, String userId) async {
     final token = await _authService.getToken();
     final uri = Uri.parse('$wsBaseUrl/$roomId/$userId?token=$token');
-    _channel = IOWebSocketChannel.connect(uri);
+    _channel = WebSocketChannel.connect(uri);
   }
 
   /// Écouter les messages entrants

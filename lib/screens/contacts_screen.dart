@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import '../services/room_service.dart';
 import '../services/api_config.dart';
+import '../services/local_database.dart';
+import '../services/media_service.dart';
 import 'chat_screen.dart';
 
 class ContactsScreen extends StatefulWidget {
@@ -17,6 +19,7 @@ class ContactsScreen extends StatefulWidget {
 class _ContactsScreenState extends State<ContactsScreen> {
   final AuthService _authService = AuthService();
   final RoomService _roomService = RoomService();
+  final MediaService _mediaService = MediaService();
   final TextEditingController _searchController = TextEditingController();
   List<Map<String, dynamic>> _contacts = [];
   List<Map<String, dynamic>> _filtered = [];
@@ -30,16 +33,16 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   Future<void> _loadContacts() async {
     try {
-      // 1. Charger depuis le cache instantanément
-      final prefs = await SharedPreferences.getInstance();
-      final cachedContacts = prefs.getString('cached_contacts');
-      if (cachedContacts != null && mounted) {
-        final list = List<Map<String, dynamic>>.from(jsonDecode(cachedContacts));
-        setState(() {
-          _contacts = list;
-          _filtered = list;
-          _isLoading = false;
-        });
+      // 1. Charger depuis le cache SQLite instantanément
+      if (!kIsWeb) {
+        final cached = await LocalDatabase.instance.getProfiles();
+        if (cached.isNotEmpty && mounted) {
+          setState(() {
+            _contacts = cached;
+            _filtered = cached;
+            _isLoading = false;
+          });
+        }
       }
 
       // 2. Fetch en arrière plan pour les nouveautés
@@ -56,8 +59,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
       if (response.statusCode == 200) {
         final decodedBody = utf8.decode(response.bodyBytes);
-        await prefs.setString('cached_contacts', decodedBody);
         final list = List<Map<String, dynamic>>.from(jsonDecode(decodedBody));
+        
+        // Sauvegarder dans le cache SQLite
+        if (!kIsWeb) {
+          await LocalDatabase.instance.saveProfiles(list);
+        }
+
         if (mounted) {
           setState(() {
             _contacts = list;
@@ -124,7 +132,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
       ),
       body: Column(
         children: [
-          // Barre de recherche modernisée
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
             child: TextField(
@@ -146,7 +153,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
             ),
           ),
 
-          // Liste des contacts
           Expanded(
             child: _isLoading
                 ? Center(child: CircularProgressIndicator(color: theme.colorScheme.primary))
@@ -167,15 +173,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         separatorBuilder: (context, index) => Divider(height: 1, indent: 80, color: theme.dividerColor.withAlpha(30)),
                         itemBuilder: (context, index) {
                           final contact = _filtered[index];
+                          final String? avatarUrl = contact['avatar_url'];
+                          final String initial = (contact['full_name'] ?? 'U')[0].toUpperCase();
+
                           return ListTile(
                             contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-                            leading: CircleAvatar(
-                              radius: 26,
-                              backgroundColor: theme.colorScheme.primary,
-                              child: Text(
-                                (contact['full_name'] ?? 'U')[0].toUpperCase(),
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                              ),
+                            leading: _ContactAvatar(
+                              avatarUrl: avatarUrl,
+                              initial: initial,
+                              mediaService: _mediaService,
                             ),
                             title: Text(
                               contact['full_name'] ?? '',
@@ -212,3 +218,54 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
   }
 }
+
+class _ContactAvatar extends StatelessWidget {
+  final String? avatarUrl;
+  final String initial;
+  final MediaService mediaService;
+
+  const _ContactAvatar({
+    required this.avatarUrl,
+    required this.initial,
+    required this.mediaService,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (avatarUrl == null || avatarUrl!.isEmpty) {
+      return CircleAvatar(
+        radius: 26,
+        backgroundColor: theme.colorScheme.primary,
+        child: Text(
+          initial,
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+      );
+    }
+
+    return FutureBuilder<String>(
+      future: mediaService.getDownloadUrl(avatarUrl!),
+      builder: (context, snapshot) {
+        if (snapshot.hasData) {
+          return CircleAvatar(
+            radius: 26,
+            backgroundImage: NetworkImage(snapshot.data!),
+            backgroundColor: theme.colorScheme.primary.withAlpha(40),
+          );
+        }
+        return CircleAvatar(
+          radius: 26,
+          backgroundColor: theme.colorScheme.primary.withAlpha(40),
+          child: const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        );
+      },
+    );
+  }
+}
+

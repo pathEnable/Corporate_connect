@@ -8,7 +8,7 @@ final callProvider = NotifierProvider.autoDispose<CallNotifier, CallState>(() {
   return CallNotifier();
 });
 
-class CallNotifier extends Notifier<CallState> {
+class CallNotifier extends AutoDisposeNotifier<CallState> {
   final AgoraService _agoraService = AgoraService();
   
   @override

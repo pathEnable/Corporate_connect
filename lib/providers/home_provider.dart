@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/home_state.dart';
+import '../models/status_model.dart';
 import '../services/room_service.dart';
 import '../services/status_service.dart';
 import '../services/local_database.dart';
@@ -26,36 +28,39 @@ class HomeNotifier extends Notifier<HomeState> {
   }
 
   Future<void> _init() async {
+    final prefs = await SharedPreferences.getInstance();
+    final viewedIds = prefs.getStringList('viewed_status_ids')?.toSet() ?? {};
+
     // 1. Charger tout le cache local en parallèle
     final futures = await Future.wait([
       LocalDatabase.instance.getRooms(),
-      _statusService.getStatuses(), // Les statuts sont légers
+      _statusService.getStatuses(),
     ]);
 
     if (_isDisposed) return;
 
     // 2. Global presence connection
     GlobalPresenceService.instance.connect();
-    GlobalPresenceService.instance.globalEventsStream.listen((event) {
-      if (!_isDisposed) {
-        if (event['type'] == 'global_new_message') {
-          // Un nouveau message est arrivé dans un groupe ou DM
-          // On rafraîchit la liste des rooms pour afficher la notification rouge ou le badging
-          refreshRooms();
-        }
-      }
-    });
-
+    
     state = state.copyWith(
       rooms: futures[0] as List<Map<String, dynamic>>,
-      statuses: futures[1] as dynamic,
+      statuses: futures[1] as List<StatusModel>,
+      viewedStatusIds: viewedIds,
       isLoadingRooms: (futures[0] as List).isEmpty,
       isLoadingStatus: false,
     );
 
-    // 2. Refresh API en arrière-plan
+    // Refresh API
     refreshRooms();
     refreshStatus();
+  }
+
+  Future<void> markStatusAsRead(String id) async {
+    final newViewedIds = {...state.viewedStatusIds, id};
+    state = state.copyWith(viewedStatusIds: newViewedIds);
+    
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('viewed_status_ids', newViewedIds.toList());
   }
 
   Future<void> refreshRooms() async {
@@ -86,9 +91,9 @@ class HomeNotifier extends Notifier<HomeState> {
     }
   }
 
-  Future<void> createStatus(String text) async {
+  Future<void> createStatus({String? text, String? mediaUrl}) async {
     try {
-      await _statusService.createStatus(text: text);
+      await _statusService.createStatus(text: text, mediaUrl: mediaUrl);
       await refreshStatus();
     } catch (e) {
       state = state.copyWith(errorMessage: "Erreur lors de la création du statut");

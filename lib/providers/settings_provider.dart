@@ -21,14 +21,16 @@ class SettingsNotifier extends Notifier<SettingsState> {
     
     final isDarkMode = _prefs.getBool('isDarkMode') ?? false;
     final notificationsEnabled = _prefs.getBool('notificationsEnabled') ?? true;
-    final accentColor = _prefs.getInt('accentColor') ?? 0xFF00695C;
+    final accentColor = _prefs.getInt('accentColor') ?? 0xFF26E9CF;
     final fontScale = _prefs.getDouble('fontScale') ?? 1.0;
+    final ringtoneName = _prefs.getString('ringtoneName') ?? 'Défaut';
     
     state = state.copyWith(
       isDarkMode: isDarkMode,
       notificationsEnabled: notificationsEnabled,
       accentColor: accentColor,
       fontScale: fontScale,
+      ringtoneName: ringtoneName,
     );
     
     await _updateCacheSize();
@@ -66,5 +68,10 @@ class SettingsNotifier extends Notifier<SettingsState> {
   Future<void> updateFontScale(double scale) async {
     await _prefs.setDouble('fontScale', scale);
     state = state.copyWith(fontScale: scale);
+  }
+
+  Future<void> updateRingtone(String name) async {
+    await _prefs.setString('ringtoneName', name);
+    state = state.copyWith(ringtoneName: name);
   }
 }

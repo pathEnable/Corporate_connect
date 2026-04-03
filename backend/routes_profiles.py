@@ -17,6 +17,7 @@ class ProfileUpdateRequest(BaseModel):
     bio: Optional[str] = None
     job_title: Optional[str] = None
     public_key: Optional[str] = None
+    presence_status: Optional[str] = None
 
 
 class ProfileResponse(BaseModel):
@@ -27,6 +28,7 @@ class ProfileResponse(BaseModel):
     username: str
     avatar_url: Optional[str]
     is_online: bool
+    presence_status: str
     public_key: Optional[str] = None
 
     class Config:
@@ -58,6 +60,8 @@ def update_profile(
         current_user.job_title = request.job_title
     if request.public_key is not None:
         current_user.public_key = request.public_key
+    if request.presence_status is not None:
+        current_user.presence_status = request.presence_status
 
     db.commit()
     db.refresh(current_user)

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" rx="200" fill="#4AD4BA"/>
+  <!-- Left Branches -->
+  <polygon points="70,100 480,330 480,490 70,260" fill="#0D0D0D"/>
+  <polygon points="70,320 480,550 480,710 70,480" fill="#0D0D0D"/>
+  <polygon points="70,540 480,770 480,930 70,700" fill="#0D0D0D"/>
+  <!-- Right Branches -->
+  <polygon points="954,100 544,330 544,490 954,260" fill="#0D0D0D"/>
+  <polygon points="954,320 544,550 544,710 954,480" fill="#0D0D0D"/>
+  <polygon points="954,540 544,770 544,930 954,700" fill="#0D0D0D"/>
+  <!-- WiFi Dot -->
+  <circle cx="512" cy="280" r="25" fill="#0D0D0D"/>
+  <!-- WiFi Arcs -->
+  <path d="M 463 231 A 70 70 0 0 1 561 231" fill="none" stroke="#0D0D0D" stroke-width="35" stroke-linecap="round"/>
+  <path d="M 420 188 A 130 130 0 0 1 604 188" fill="none" stroke="#0D0D0D" stroke-width="35" stroke-linecap="round"/>
+  <path d="M 378 146 A 190 190 0 0 1 646 146" fill="none" stroke="#0D0D0D" stroke-width="35" stroke-linecap="round"/>
+</svg>

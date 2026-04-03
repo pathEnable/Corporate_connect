@@ -55,17 +55,22 @@ from jose import jwt, JWTError
 @router.get("/download/{filename}")
 async def download_file(
     filename: str,
+    token: str = Query(None),
     current_user: Profile = Depends(get_current_user),
 ):
-    """Téléchargement sécurisé via JWT (Auto-détection Header ou Query)."""
+    """Téléchargement sécurisé via JWT (Header OU Query param ?token=).
+    
+    Le query param est nécessaire pour Flutter Image.network qui ne
+    supporte pas facilement les headers d'authentification.
+    """
     
     # Chercher d'abord dans images, puis docs
     img_path = os.path.join(IMAGES_DIR, filename)
     doc_path = os.path.join(DOCS_DIR, filename)
 
     if os.path.exists(img_path):
-        return FileResponse(img_path)
+        return FileResponse(img_path, headers={"Cache-Control": "public, max-age=86400"})
     if os.path.exists(doc_path):
-        return FileResponse(doc_path)
+        return FileResponse(doc_path, headers={"Cache-Control": "public, max-age=86400"})
         
     raise HTTPException(status_code=404, detail="Fichier introuvable.")

@@ -63,13 +63,24 @@ class ProfileNotifier extends Notifier<ProfileState> {
     }
   }
 
-  Future<void> updateProfile({String? bio, String? jobTitle, String? avatarUrl}) async {
+  Future<void> updatePresenceStatus(String status) async {
+    state = state.copyWith(isLoading: true);
+    try {
+      await _authService.updateProfile(presenceStatus: status);
+      await _loadProfile();
+    } catch (e) {
+      state = state.copyWith(isLoading: false, errorMessage: e.toString());
+    }
+  }
+
+  Future<void> updateProfile({String? bio, String? jobTitle, String? avatarUrl, String? presenceStatus}) async {
     state = state.copyWith(isLoading: true);
     try {
       await _authService.updateProfile(
         bio: bio,
         jobTitle: jobTitle,
         avatarUrl: avatarUrl,
+        presenceStatus: presenceStatus,
       );
       await _loadProfile();
     } catch (e) {

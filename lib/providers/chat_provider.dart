@@ -7,26 +7,30 @@ import '../services/chat_service.dart';
 import '../services/room_service.dart';
 import '../services/encryption_service.dart';
 import '../services/local_database.dart';
+import '../services/media_service.dart';
+import '../services/api_config.dart';
 
-/// Provider pour un salon de chat spécifique (Riverpod 3.0 Notifier Family)
-final chatProvider = NotifierProvider.family<ChatNotifier, ChatState, String>((arg) {
-  return ChatNotifier(arg);
+/// Provider pour un salon de chat spécifique (Riverpod 2.0 Notifier Family)
+final chatProvider = NotifierProvider.family<ChatNotifier, ChatState, String>(() {
+  return ChatNotifier();
 });
 
-class ChatNotifier extends Notifier<ChatState> {
-  final String roomId;
+class ChatNotifier extends FamilyNotifier<ChatState, String> {
+  late String roomId;
   final ChatService _chatService = ChatService();
   final RoomService _roomService = RoomService();
   final EncryptionService _encryptionService = EncryptionService();
+  final MediaService _mediaService = MediaService();
   
   String? _userId;
   Timer? _typingClearTimer;
   bool _isDisposed = false;
 
-  ChatNotifier(this.roomId);
+  ChatNotifier();
 
   @override
-  ChatState build() {
+  ChatState build(String arg) {
+    roomId = arg;
     ref.onDispose(() => _isDisposed = true);
     _init();
 
@@ -182,6 +186,11 @@ class ChatNotifier extends Notifier<ChatState> {
       if (!_isDisposed) {
         state = state.copyWith(messages: newMessages);
       }
+
+      // 3. Téléchargement auto en arrière-plan pour les médias
+      if (finalMsg['message_type'] == 'image' || finalMsg['message_type'] == 'file') {
+        _downloadMediaInBackground(finalMsg);
+      }
     } else if (message['type'] == 'typing') {
       final typingUserId = message['user_id'] as String;
       final isTyping = message['is_typing'] == true;
@@ -248,5 +257,33 @@ class ChatNotifier extends Notifier<ChatState> {
 
   void sendTyping(bool isTyping) {
     _chatService.sendTyping(isTyping: isTyping);
+  }
+
+  Future<void> _downloadMediaInBackground(Map<String, dynamic> message) async {
+    if (kIsWeb) return;
+    
+    final url = await ApiConfig.getAuthenticatedMediaUrl(message['content']);
+    final fileName = message['content'].split('/').last;
+    
+    final localPath = await _mediaService.saveToGallery(
+      url, 
+      fileName, 
+      message['message_type']
+    );
+
+    if (localPath != null && !_isDisposed) {
+      // Mettre à jour la DB
+      await LocalDatabase.instance.updateLocalPath(message['id'].toString(), localPath);
+      
+      // Mettre à jour l'état UI
+      final newMessages = state.messages.map((m) {
+        if (m['id'].toString() == message['id'].toString()) {
+          return {...m, 'local_path': localPath};
+        }
+        return m;
+      }).toList();
+      
+      state = state.copyWith(messages: newMessages);
+    }
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/settings_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -68,13 +69,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 spacing: 12,
                 runSpacing: 12,
                 children: [
+                  _buildColorDot(0xFF26E9CF, settingsState.accentColor), // Turquoise (Emini)
                   _buildColorDot(0xFF00695C, settingsState.accentColor), // Midnight
                   _buildColorDot(0xFF2E7D32, settingsState.accentColor), // Emerald
                   _buildColorDot(0xFF1565C0, settingsState.accentColor), // Ocean
-                  _buildColorDot(0xFFC62828, settingsState.accentColor), // Ruby
-                  _buildColorDot(0xFFF9A825, settingsState.accentColor), // Gold
-                  _buildColorDot(0xFF455A64, settingsState.accentColor), // Slate
                   _buildColorDot(0xFF6A1B9A, settingsState.accentColor), // Amethyst
+                  _buildColorDot(0xFF455A64, settingsState.accentColor), // Slate
                 ],
               ),
             ),
@@ -112,8 +112,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             onChanged: (val) {
               ref.read(settingsProvider.notifier).toggleNotifications(val);
             },
-            secondary: Icon(Icons.notifications_rounded, color: theme.colorScheme.primary),
             activeThumbColor: theme.colorScheme.primary,
+          ),
+          ListTile(
+            leading: Icon(Icons.music_note_rounded, color: theme.colorScheme.primary),
+            title: const Text('Sonnerie', style: TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: Text(settingsState.ringtoneName, style: TextStyle(color: theme.colorScheme.onSurface.withAlpha(150))),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => _showRingtonePicker(context, ref, settingsState.ringtoneName),
           ),
           Divider(indent: 72, color: theme.dividerColor.withAlpha(30)),
 
@@ -207,5 +213,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  void _showRingtonePicker(BuildContext context, WidgetRef ref, String current) {
+    final theme = Theme.of(context);
+    final ringtones = ['Défaut', 'Emini Connect', 'Digital Sky', 'Smooth Wave', 'Minimalist'];
+    final AudioPlayer previewPlayer = AudioPlayer();
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: theme.colorScheme.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Text('Choisir une sonnerie', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+          ),
+          ...ringtones.map((name) => ListTile(
+            title: Text(name),
+            leading: Icon(Icons.music_note_rounded, color: theme.colorScheme.primary.withAlpha(current == name ? 255 : 100)),
+            trailing: current == name ? Icon(Icons.check_circle_rounded, color: theme.colorScheme.primary) : null,
+            onTap: () {
+              ref.read(settingsProvider.notifier).updateRingtone(name);
+              Navigator.pop(context);
+            },
+          )),
+          const SizedBox(height: 24),
+        ],
+      ),
+    ).then((_) => previewPlayer.dispose());
   }
 }

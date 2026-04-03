@@ -163,7 +163,7 @@ class AuthService {
   }
 
   /// Mettre à jour le profil avec gestion du rafraîchissement
-  Future<void> updateProfile({String? bio, String? jobTitle, String? avatarUrl, String? publicKey}) async {
+  Future<void> updateProfile({String? bio, String? jobTitle, String? avatarUrl, String? publicKey, String? presenceStatus}) async {
     final response = await authenticatedRequest(
       url: '${ApiConfig.baseUrl}/profiles/me',
       method: 'PUT',
@@ -172,6 +172,7 @@ class AuthService {
         'job_title': jobTitle,
         'avatar_url': avatarUrl,
         'public_key': publicKey,
+        'presence_status': presenceStatus,
       }..removeWhere((key, value) => value == null),
     );
     

@@ -1,13 +1,15 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../services/local_database.dart';
 import '../services/media_service.dart';
 import '../services/room_service.dart';
 import '../providers/profile_provider.dart';
-import 'package:url_launcher/url_launcher.dart';
-import '../widgets/chat/message_bubble.dart';
+import '../widgets/premium_background.dart';
 import 'image_viewer_screen.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'add_member_picker_screen.dart';
 
 class RoomDetailsScreen extends ConsumerStatefulWidget {
   final String roomId;
@@ -45,139 +47,163 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
-        title: Text(widget.isGroup ? 'Détails du groupe' : 'Détails du contact'),
-        backgroundColor: theme.colorScheme.surface,
-        foregroundColor: theme.colorScheme.onSurface,
-        elevation: 0,
-        actions: [
-          if (widget.isGroup)
-            PopupMenuButton<String>(
-              onSelected: (val) {
-                if (val == 'leave') _leaveRoom();
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'leave',
-                  child: Row(
-                    children: [
-                      Icon(Icons.exit_to_app_rounded, color: Colors.red, size: 20),
-                      SizedBox(width: 12),
-                      Text('Quitter le groupe', style: TextStyle(color: Colors.red)),
-                    ],
-                  ),
-                ),
-              ],
+    return PremiumBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            _buildSliverAppBar(theme),
+            SliverToBoxAdapter(
+              child: _buildTabHeader(theme).animate().fadeIn(delay: 200.ms),
             ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Divider(height: 1, color: theme.dividerColor.withAlpha(50)),
-        ),
-      ),
-      body: Column(
-        children: [
-          _buildHeader(),
-          TabBar(
-            controller: _tabController,
-            labelColor: theme.colorScheme.primary,
-            unselectedLabelColor: Colors.grey,
-            indicatorColor: theme.colorScheme.primary,
-            indicatorSize: TabBarIndicatorSize.label,
-            dividerColor: Colors.transparent,
-            isScrollable: false,
-            tabs: const [
-              Tab(text: 'Membres'),
-              Tab(text: 'Médias'),
-              Tab(text: 'Docs'),
-              Tab(text: 'Vocal'),
-            ],
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildMembersTab(),
-                _MediaTab(roomId: widget.roomId, type: 'image'),
-                _MediaTab(roomId: widget.roomId, type: 'file'),
-                _MediaTab(roomId: widget.roomId, type: 'audio'),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      color: theme.colorScheme.surface,
-      padding: const EdgeInsets.symmetric(vertical: 24),
-      child: Column(
-        children: [
-          Hero(
-            tag: 'room_avatar_${widget.roomId}',
-            child: CircleAvatar(
-              radius: 45,
-              backgroundColor: theme.colorScheme.primary.withAlpha(26),
-              child: Icon(
-                widget.isGroup ? Icons.groups_rounded : Icons.person_rounded,
-                size: 45,
-                color: theme.colorScheme.primary,
+            SliverFillRemaining(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildMembersTab(),
+                  _MediaTab(roomId: widget.roomId, type: 'image'),
+                  _MediaTab(roomId: widget.roomId, type: 'file'),
+                  _MediaTab(roomId: widget.roomId, type: 'audio'),
+                ],
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSliverAppBar(ThemeData theme) {
+    return SliverAppBar(
+      expandedHeight: 300,
+      pinned: true,
+      stretch: true,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+        onPressed: () => Navigator.pop(context),
+      ),
+      actions: [
+        if (widget.isGroup)
+          IconButton(
+            icon: const Icon(Icons.more_vert_rounded),
+            onPressed: () => _showGroupMenu(context),
           ),
-          const SizedBox(height: 16),
-          Text(
-            widget.roomName,
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+      ],
+      flexibleSpace: FlexibleSpaceBar(
+        centerTitle: true,
+        title: Text(
+          widget.roomName,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.5,
           ),
-          const SizedBox(height: 4),
-          Text(
-            widget.isGroup ? '${widget.members.length} membres' : 'Conversation privée',
-            style: TextStyle(color: theme.colorScheme.onSurface.withAlpha(153), fontSize: 14),
-          ),
+        ),
+        background: Stack(
+          alignment: Alignment.center,
+          children: [
+            // Background Header Glow
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [theme.colorScheme.primary.withValues(alpha: 0.1), Colors.transparent],
+                ),
+              ),
+            ),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Hero(
+                  tag: 'room_avatar_${widget.roomId}',
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(color: theme.colorScheme.primary.withValues(alpha: 0.2), blurRadius: 40, spreadRadius: 5),
+                      ],
+                    ),
+                    child: CircleAvatar(
+                      radius: 50,
+                      backgroundColor: theme.colorScheme.primary,
+                      child: Icon(
+                        widget.isGroup ? Icons.groups_rounded : Icons.person_rounded,
+                        size: 50,
+                        color: Colors.black,
+                      ),
+                    ),
+                  ),
+                ).animate().scale(curve: Curves.easeOutBack, duration: 600.ms),
+                const SizedBox(height: 60), // Room for Title
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabHeader(ThemeData theme) {
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withValues(alpha: 0.5),
+        border: Border(bottom: BorderSide(color: theme.colorScheme.onSurface.withValues(alpha: 0.05))),
+      ),
+      child: TabBar(
+        controller: _tabController,
+        labelColor: theme.colorScheme.primary,
+        unselectedLabelColor: Colors.grey,
+        indicatorColor: theme.colorScheme.primary,
+        indicatorWeight: 3,
+        indicatorSize: TabBarIndicatorSize.tab,
+        dividerColor: Colors.transparent,
+        tabs: const [
+          Tab(icon: Icon(Icons.people_alt_rounded, size: 20), text: 'Social'),
+          Tab(icon: Icon(Icons.image_rounded, size: 20), text: 'Images'),
+          Tab(icon: Icon(Icons.insert_drive_file_rounded, size: 20), text: 'Doc'),
+          Tab(icon: Icon(Icons.mic_rounded, size: 20), text: 'Vocal'),
         ],
       ),
     );
   }
 
-  Future<void> _promoteMember(String userId) async {
-    try {
-      await RoomService().promoteMember(widget.roomId, userId);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Membre promu administrateur')));
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e')));
-    }
-  }
-
-  Future<void> _demoteMember(String userId) async {
-    try {
-      await RoomService().demoteMember(widget.roomId, userId);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Membre rétrogradé')));
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e')));
-    }
-  }
-
-  Future<void> _removeMember(String userId) async {
-    try {
-      await RoomService().removeMember(widget.roomId, userId);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Membre retiré du groupe')));
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e')));
-    }
+  void _showGroupMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => ClipRRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.9),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(2))),
+                const SizedBox(height: 24),
+                ListTile(
+                  leading: const Icon(Icons.exit_to_app_rounded, color: Colors.redAccent),
+                  title: const Text('Quitter le groupe', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _leaveRoom();
+                  },
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _leaveRoom() async {
@@ -185,30 +211,19 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Quitter le groupe ?'),
-        content: const Text('Vous ne recevrez plus les messages de ce groupe.'),
+        content: const Text('Ceci supprimera le groupe de votre liste.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('ANNULER')),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true), 
-            child: const Text('QUITTER', style: TextStyle(color: Colors.red))
-          ),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('QUITTER', style: TextStyle(color: Colors.red))),
         ],
       ),
     );
 
     if (confirmed == true) {
-      try {
-        final profile = ref.read(profileProvider).profileData;
-        if (profile != null) {
-          await RoomService().leaveRoom(widget.roomId, profile['id']);
-          if (mounted) {
-            Navigator.pop(context); // Retour détails
-            Navigator.pop(context); // Retour chat
-          }
-        }
-      } catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e')));
+      final profile = ref.read(profileProvider).profileData;
+      if (profile != null) {
+        await RoomService().leaveRoom(widget.roomId, profile['id']);
+        if (mounted) Navigator.popUntil(context, (route) => route.isFirst);
       }
     }
   }
@@ -218,69 +233,79 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
     final currentUserId = ref.read(profileProvider).profileData?['id'];
     final bool isUserAdmin = widget.members.any((m) => m['id'] == currentUserId && m['is_admin_member'] == true);
 
-    if (widget.members.isEmpty) {
-      return const Center(child: Text("Aucun membre trouvé"));
-    }
-
-    return Column(
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 20),
       children: [
         if (widget.isGroup && isUserAdmin)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             child: ListTile(
-              onTap: () {
-                // Rediriger vers un sélecteur d'utilisateurs (NewGroupScreen ou similaire)
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Fonction 'Ajouter des membres' en cours de déploiement")));
+              onTap: () async {
+                final existingIds = widget.members.map((m) => m['id'] as String).toList();
+                final selectedIds = await Navigator.push<List<String>>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => AddMemberPickerScreen(existingMemberIds: existingIds),
+                  ),
+                );
+
+                if (selectedIds != null && selectedIds.isNotEmpty && mounted) {
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) => const Center(child: CircularProgressIndicator()),
+                  );
+
+                  try {
+                    for (String id in selectedIds) {
+                      await RoomService().addMember(widget.roomId, id);
+                    }
+                    if (mounted) {
+                      Navigator.pop(context); // Close loading dialog
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Membres ajoutés avec succès !', style: TextStyle(color: Colors.green))),
+                      );
+                      // Pop the details screen to force a refresh on next open
+                      Navigator.pop(context, true); 
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      Navigator.pop(context); // Close loading dialog
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text("Erreur lors de l'ajout: $e")),
+                      );
+                    }
+                  }
+                }
               },
-              leading: CircleAvatar(
-                backgroundColor: theme.colorScheme.primary,
-                child: const Icon(Icons.person_add_rounded, color: Colors.white, size: 20),
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: theme.colorScheme.primary.withValues(alpha: 0.1), shape: BoxShape.circle),
+                child: Icon(Icons.person_add_rounded, color: theme.colorScheme.primary, size: 22),
               ),
               title: Text('Ajouter des membres', style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold)),
             ),
-          ),
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.only(bottom: 24),
-            itemCount: widget.members.length,
-            itemBuilder: (context, index) {
-              final member = widget.members[index];
-              final bool isAdmin = member['is_admin_member'] == true;
-              final bool isMe = member['id'] == currentUserId;
+          ).animate().fadeIn().slideX(),
+        ...widget.members.asMap().entries.map((entry) {
+          final index = entry.key;
+          final member = entry.value;
+          final bool isAdmin = member['is_admin_member'] == true;
+          final bool isMe = member['id'] == currentUserId;
 
-              return ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-                leading: CircleAvatar(
-                  backgroundColor: theme.colorScheme.primary.withAlpha(isAdmin ? 255 : 30),
-                  child: Text(
-                    (member['full_name'] ?? 'U')[0].toUpperCase(),
-                    style: TextStyle(color: isAdmin ? theme.colorScheme.onPrimary : theme.colorScheme.primary, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                title: Text(
-                  isMe ? "${member['full_name']} (Vous)" : (member['full_name'] ?? 'Utilisateur'), 
-                  style: const TextStyle(fontWeight: FontWeight.w600)
-                ),
-                subtitle: (widget.isGroup && isAdmin) ? Text('Administrateur', style: TextStyle(color: theme.colorScheme.primary, fontSize: 12, fontWeight: FontWeight.w600)) : null,
-                trailing: widget.isGroup && isUserAdmin && !isMe ? PopupMenuButton<String>(
-                  onSelected: (val) {
-                    if (val == 'promote') _promoteMember(member['id']);
-                    if (val == 'demote') _demoteMember(member['id']);
-                    if (val == 'remove') _removeMember(member['id']);
-                  },
-                  itemBuilder: (context) => [
-                    if (!isAdmin)
-                      const PopupMenuItem(value: 'promote', child: Text('Promouvoir Admin')),
-                    if (isAdmin)
-                      const PopupMenuItem(value: 'demote', child: Text('Rétrograder')),
-                    const PopupMenuItem(value: 'remove', child: Text('Retirer du groupe', style: TextStyle(color: Colors.red))),
-                  ],
-                  icon: const Icon(Icons.more_vert_rounded),
-                ) : (widget.isGroup && isAdmin ? Icon(Icons.verified_user_rounded, color: theme.colorScheme.primary, size: 20) : null),
-              );
-            },
-          ),
-        ),
+          return ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+            leading: CircleAvatar(
+              backgroundColor: isAdmin ? theme.colorScheme.primary : theme.colorScheme.surface.withValues(alpha: 0.2),
+              child: Text(
+                (member['full_name'] ?? 'U')[0].toUpperCase(),
+                style: TextStyle(color: isAdmin ? Colors.black : theme.colorScheme.primary, fontWeight: FontWeight.bold),
+              ),
+            ),
+            title: Text(isMe ? "${member['full_name']} (Vous)" : member['full_name'], style: const TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: isAdmin ? Text('Admin', style: TextStyle(color: theme.colorScheme.primary, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1.2)) : null,
+            trailing: isMe ? null : const Icon(Icons.chevron_right_rounded, size: 18, color: Colors.grey),
+          ).animate(delay: (index * 40).ms).fadeIn().slideX();
+        }),
       ],
     );
   }
@@ -289,9 +314,7 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
 class _MediaTab extends StatefulWidget {
   final String roomId;
   final String type;
-
   const _MediaTab({required this.roomId, required this.type});
-
   @override
   State<_MediaTab> createState() => _MediaTabState();
 }
@@ -308,135 +331,48 @@ class _MediaTabState extends State<_MediaTab> {
 
   Future<void> _loadData() async {
     final msgs = await LocalDatabase.instance.getMediaMessages(widget.roomId, type: widget.type);
-    if (mounted) {
-      setState(() {
-        _messages = msgs;
-        _isLoading = false;
-      });
-    }
+    if (mounted) setState(() { _messages = msgs; _isLoading = false; });
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    if (_isLoading) return Center(child: CircularProgressIndicator(color: theme.colorScheme.primary));
-    if (_messages.isEmpty) {
-      String emptyText = "Aucune image trouvée";
-      if (widget.type == 'file') emptyText = "Aucun document trouvé";
-      if (widget.type == 'audio') emptyText = "Aucun message vocal trouvé";
-      return Center(child: Text(emptyText, style: const TextStyle(color: Colors.grey)));
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_messages.isEmpty) return const Center(child: Text("Aucun média trouvé", style: TextStyle(color: Colors.grey)));
+
+    if (widget.type == 'image') {
+      return GridView.builder(
+        padding: const EdgeInsets.all(4),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 4, mainAxisSpacing: 4),
+        itemCount: _messages.length,
+        itemBuilder: (context, index) {
+          final url = _messages[index]['content'];
+          return FutureBuilder<String>(
+            future: MediaService().getDownloadUrl(url),
+            builder: (context, snap) {
+              if (snap.hasData) {
+                return GestureDetector(
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ImageViewerScreen(imageUrl: snap.data!))),
+                  child: Hero(tag: snap.data!, child: CachedNetworkImage(imageUrl: snap.data!, fit: BoxFit.cover)),
+                );
+              }
+              return Container(color: Colors.grey.withValues(alpha: 0.1));
+            },
+          );
+        },
+      ).animate().fadeIn();
     }
 
-    if (widget.type == 'image') return _buildImageGrid();
-    if (widget.type == 'file') return _buildFileList();
-    return _buildAudioList();
-  }
-
-  Widget _buildImageGrid() {
-    return GridView.builder(
-      padding: const EdgeInsets.all(2),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 2,
-        mainAxisSpacing: 2,
-      ),
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 10),
       itemCount: _messages.length,
-      itemBuilder: (context, index) {
-        final url = _messages[index]['content'];
-        return FutureBuilder<String>(
-          future: MediaService().getDownloadUrl(url),
-          builder: (context, snapshot) {
-            if (snapshot.hasData) {
-              final dlUrl = snapshot.data!;
-              return GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => ImageViewerScreen(imageUrl: dlUrl)),
-                ),
-                child: Hero(
-                  tag: dlUrl,
-                  child: CachedNetworkImage(
-                    imageUrl: dlUrl,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(color: Colors.grey.withAlpha(20)),
-                  ),
-                ),
-              );
-            }
-            return Container(color: Colors.grey.withAlpha(10), child: const Center(child: Icon(Icons.image_rounded, color: Colors.grey)));
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildFileList() {
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: _messages.length,
-      separatorBuilder: (_, _) => const Divider(height: 1),
-      itemBuilder: (context, index) {
-        final msg = _messages[index];
-        final filename = msg['content'].toString().split('/').last;
-        final extension = filename.split('.').last.toLowerCase();
-        
-        IconData icon = Icons.insert_drive_file;
-        Color iconColor = Colors.blue;
-        if (['pdf'].contains(extension)) {
-          icon = Icons.picture_as_pdf;
-          iconColor = Colors.red;
-        }
-
-        return ListTile(
-          leading: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: iconColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-            child: Icon(icon, color: iconColor),
-          ),
-          title: Text(filename, maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: Text(_formatDate(msg['created_at'])),
-          onTap: () async {
-            try {
-              final dlUrl = await MediaService().getDownloadUrl(msg['content']);
-              final uri = Uri.parse(dlUrl);
-              if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
-            } catch (_) {}
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildAudioList() {
-    final theme = Theme.of(context);
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: _messages.length,
-      separatorBuilder: (_, _) => Divider(height: 1, indent: 70, color: theme.dividerColor.withAlpha(30)),
       itemBuilder: (context, index) {
         final msg = _messages[index];
         return ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          leading: CircleAvatar(
-            backgroundColor: theme.colorScheme.primary.withAlpha(20),
-            child: Icon(Icons.mic_rounded, color: theme.colorScheme.primary),
-          ),
-          title: AudioBubbleContent(url: msg['content'], isMe: false),
-          subtitle: Padding(
-            padding: const EdgeInsets.only(left: 4, top: 4),
-            child: Text(_formatDate(msg['created_at']), style: const TextStyle(fontSize: 11)),
-          ),
-        );
+          leading: Icon(widget.type == 'file' ? Icons.description_rounded : Icons.mic_rounded, color: Colors.grey),
+          title: Text(msg['content'].toString().split('/').last, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: Text(msg['created_at'].toString().split('T')[0]),
+        ).animate(delay: (index * 30).ms).fadeIn().slideY();
       },
     );
-  }
-
-  String _formatDate(String dtString) {
-    try {
-      final dt = DateTime.parse(dtString);
-      return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')} à ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-    } catch (_) {
-      return '';
-    }
   }
 }

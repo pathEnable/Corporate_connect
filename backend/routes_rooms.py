@@ -1,6 +1,7 @@
 import uuid
+import asyncio
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Message, Room, RoomMember, Profile
@@ -9,8 +10,14 @@ from routes_auth import get_current_user
 from security_utils import decrypt_data
 from dependencies import get_current_room_member
 from collections import defaultdict
+from routes_chat import broadcast_to_users
 
 router = APIRouter(prefix="/rooms", tags=["Rooms"])
+
+
+async def _broadcast_room_created(member_ids: list, event: dict):
+    """Helper async pour broadcaster la création d'un salon."""
+    await broadcast_to_users(member_ids, event)
 
 @router.get("", response_model=List[RoomResponse])
 @router.get("/", response_model=List[RoomResponse], include_in_schema=False)
@@ -71,6 +78,7 @@ def list_rooms(
 @router.post("/", response_model=RoomResponse, include_in_schema=False)
 def create_room(
     room_data: dict,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: Profile = Depends(get_current_user),
 ):
@@ -106,6 +114,19 @@ def create_room(
             db.add(new_member)
 
     db.commit()
+
+    # --- Broadcast temps réel : Notifier tous les membres du nouveau salon ---
+    all_member_ids = [str(current_user.id)] + [str(m) for m in member_ids]
+    room_event = {
+        "type": "room_created",
+        "room_id": str(new_room.id),
+        "room_name": new_room.name,
+        "is_group": new_room.is_group,
+        "created_by": str(current_user.id),
+        "member_ids": all_member_ids,
+    }
+    background_tasks.add_task(asyncio.get_event_loop().run_until_complete if False else _broadcast_room_created, all_member_ids, room_event)
+    
     return RoomResponse(
         id=new_room.id,
         name=new_room.name,

@@ -8,6 +8,8 @@ import '../models/call_state.dart';
 import '../providers/call_provider.dart';
 import '../services/call_service.dart';
 
+import '../services/ringtone_service.dart';
+
 class CallScreen extends ConsumerStatefulWidget {
   final String remoteUserName;
   final String channelId;
@@ -33,12 +35,26 @@ class _CallScreenState extends ConsumerState<CallScreen> {
     // On initialise l'appel au lancement via le provider
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(callProvider.notifier).initCall(widget.channelId, widget.isVideo);
+      RingtoneService.instance.playRingtone();
     });
+  }
+
+  @override
+  void dispose() {
+    RingtoneService.instance.stop();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(callProvider);
+
+    // Écouter le changement de remoteUid pour arrêter la sonnerie
+    ref.listen(callProvider, (previous, next) {
+      if (next.remoteUid != null && previous?.remoteUid == null) {
+        RingtoneService.instance.stop();
+      }
+    });
 
     return PipWidget(
       onPipEntered: () => debugPrint("Entrée en PIP"),

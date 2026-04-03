@@ -1,24 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/auth_service.dart';
 import 'services/push_notification_service.dart';
+import 'services/update_service.dart';
+import 'services/local_database.dart';
+import 'widgets/update_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'providers/settings_provider.dart';
+import 'theme/app_theme.dart';
 import 'dart:async';
+import 'package:lottie/lottie.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
-  // 1. Initialisation de la liaison Flutter (Essentiel)
   WidgetsFlutterBinding.ensureInitialized();
   
+  // Préchauffage de la base de données locale pour un accès instantané au cache
+  if (!kIsWeb) {
+    await LocalDatabase.instance.database;
+  }
+  
   final stopwatch = Stopwatch()..start();
-
-  // 2. Lancement immédiat de l'interface (Non bloquant)
   runApp(const ProviderScope(child: CorporateConnectApp()));
-
-  // 3. Initialisation des services lourds en arrière-plan (Après affichage)
   unawaited(_initializeBgServices(stopwatch));
 }
 
@@ -40,7 +46,7 @@ class CorporateConnectApp extends ConsumerWidget {
     final settings = ref.watch(settingsProvider);
 
     return MaterialApp(
-      title: 'Corporate Connect',
+      title: 'Emini Connect',
       debugShowCheckedModeBanner: false,
       themeMode: settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
       builder: (context, child) {
@@ -52,118 +58,117 @@ class CorporateConnectApp extends ConsumerWidget {
           child: child!,
         );
       },
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Color(settings.accentColor),
-          primary: Color(settings.accentColor),
-          surface: Colors.white,
-          brightness: Brightness.light,
-        ),
-        scaffoldBackgroundColor: const Color(0xFFF8F9FA),
-        fontFamily: 'Roboto',
-        useMaterial3: true,
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: Colors.grey[50],
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Color(settings.accentColor), width: 2),
-          ),
-          labelStyle: TextStyle(color: Colors.grey[700]),
-          prefixIconColor: Color(settings.accentColor),
-        ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Color(settings.accentColor),
-            foregroundColor: Colors.white,
-            minimumSize: const Size(double.infinity, 52),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            elevation: 2,
-          ),
-        ),
-        appBarTheme: const AppBarTheme(
-          elevation: 0,
-          backgroundColor: Colors.white,
-          foregroundColor: Colors.black87,
-          centerTitle: true,
-        ),
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Color(settings.accentColor),
-          primary: Color(settings.accentColor),
-          surface: const Color(0xFF1E1E1E),
-          brightness: Brightness.dark,
-        ),
-        scaffoldBackgroundColor: const Color(0xFF121212),
-        fontFamily: 'Roboto',
-        useMaterial3: true,
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: const Color(0xFF2C2C2C),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Color(settings.accentColor), width: 2),
-          ),
-          labelStyle: const TextStyle(color: Colors.white70),
-          prefixIconColor: Color(settings.accentColor),
-        ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Color(settings.accentColor),
-            foregroundColor: Colors.black,
-            minimumSize: const Size(double.infinity, 52),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            elevation: 0,
-          ),
-        ),
-        appBarTheme: const AppBarTheme(
-          elevation: 0,
-          backgroundColor: Color(0xFF1E1E1E),
-          foregroundColor: Colors.white,
-          centerTitle: true,
-        ),
-      ),
+      theme: AppTheme.lightTheme(settings.fontScale),
+      darkTheme: AppTheme.darkTheme(settings.fontScale),
       navigatorKey: navigatorKey,
       home: const AuthGate(),
     );
   }
 }
 
-/// Vérifie si l'utilisateur est connecté et redirige (Ecran de chargement léger)
-class AuthGate extends StatelessWidget {
+/// Splash screen avec animation Lottie puis redirection
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
 
   @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> with TickerProviderStateMixin {
+  late final AnimationController _lottieController;
+  bool _isLoggedIn = false;
+  bool _authChecked = false;
+  bool _animationComplete = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _lottieController = AnimationController(vsync: this);
+    _checkAuth();
+    
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkUpdate();
+    });
+  }
+
+  @override
+  void dispose() {
+    _lottieController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _checkAuth() async {
+    final loggedIn = await AuthService().isLoggedIn();
+    if (mounted) {
+      setState(() {
+        _isLoggedIn = loggedIn;
+        _authChecked = true;
+      });
+      _navigateIfReady();
+    }
+  }
+
+  void _navigateIfReady() {
+    if (_authChecked && _animationComplete && mounted) {
+      Navigator.pushReplacement(
+        context,
+        PageRouteBuilder(
+          pageBuilder: (_, __, ___) =>
+              _isLoggedIn ? const HomeScreen() : const LoginScreen(),
+          transitionsBuilder: (_, animation, __, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+          transitionDuration: const Duration(milliseconds: 500),
+        ),
+      );
+    }
+  }
+
+  Future<void> _checkUpdate() async {
+    final updateData = await UpdateService().checkForUpdate();
+    if (updateData != null && mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => UpdateDialog(
+          apkUrl: updateData['apk_url'],
+          versionName: updateData['version_name'],
+        ),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return FutureBuilder<bool>(
-      future: AuthService().isLoggedIn(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Scaffold(
-            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-            body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // On pourrait charger un logo ici pour un aspect plus "Splash Pro"
-                  const Icon(Icons.connect_without_contact, size: 80, color: Colors.blueAccent),
-                  const SizedBox(height: 24),
-                  CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
-                ],
-              ),
+    final size = MediaQuery.of(context).size;
+    
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: AnimatedOpacity(
+        opacity: _animationComplete ? 0.0 : 1.0,
+        duration: const Duration(milliseconds: 400),
+        child: Center(
+          child: SizedBox(
+            width: size.width * 0.85,
+            child: Lottie.asset(
+              'assets/images/logo_animation.json',
+              controller: _lottieController,
+              fit: BoxFit.contain,
+              onLoaded: (composition) {
+                _lottieController
+                  ..duration = composition.duration
+                  ..forward().whenComplete(() {
+                    setState(() => _animationComplete = true);
+                    // Petit délai pour laisser le fade-out se jouer
+                    Future.delayed(const Duration(milliseconds: 500), () {
+                      _navigateIfReady();
+                    });
+                  });
+              },
             ),
-          );
-        }
-        if (snapshot.data == true) {
-          return const HomeScreen();
-        }
-        return const LoginScreen();
-      },
+          ),
+        ),
+      ),
     );
   }
 }

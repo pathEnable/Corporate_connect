@@ -1,8 +1,11 @@
-import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:http_parser/http_parser.dart';
 import 'auth_service.dart';
 import 'api_config.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 
 class MediaService {
   static String get baseUrl => '${ApiConfig.baseUrl}/media';
@@ -69,22 +72,67 @@ class MediaService {
     throw Exception('Erreur lors du téléchargement du fichier');
   }
 
-  Future<String> getDownloadUrl(String relativeUrl) async {
-    final token = await _authService.getToken();
-    // Nettoyer l'URL relative pour éviter les doubles slashes ou les préfixes redondants
-    String path = relativeUrl.replaceFirst("/media", "");
-    if (!path.startsWith('/')) path = '/$path';
-    
-    // S'assurer que le baseUrl ne se termine pas par un slash pour éviter les conflits
-    String base = baseUrl;
-    if (base.endsWith('/')) base = base.substring(0, base.length - 1);
-    
-    return '$base$path?token=$token';
+  Future<String> getDownloadUrl(String relativeUrl) {
+    return ApiConfig.getAuthenticatedMediaUrl(relativeUrl);
   }
 
   String formatBytes(int bytes) {
     if (bytes < 1024) return '${bytes}B';
     if (bytes < 1048576) return '${(bytes / 1024).toStringAsFixed(1)}KB';
     return '${(bytes / 1048576).toStringAsFixed(1)}MB';
+  }
+
+  /// Télécharge un média et l'enregistre dans la galerie publique
+  Future<String?> saveToGallery(String url, String fileName, String type) async {
+    if (kIsWeb) return null;
+
+    try {
+      // 1. Demander les permissions
+      if (Platform.isAndroid) {
+        if (await Permission.manageExternalStorage.isDenied) {
+           await Permission.manageExternalStorage.request();
+        }
+        // Pour Android 13+
+        await [Permission.photos, Permission.videos, Permission.audio].request();
+      } else if (Platform.isIOS) {
+        await Permission.photos.request();
+      }
+
+      // 2. Déterminer le dossier de destination public
+      Directory? baseDir;
+      if (Platform.isAndroid) {
+        // Dossier standard pour Android (Pictures pour images, Downloads pour le reste)
+        if (type == 'image') {
+          baseDir = Directory('/storage/emulated/0/Pictures/CorporateConnect');
+        } else {
+          baseDir = Directory('/storage/emulated/0/Download/CorporateConnect');
+        }
+      } else {
+        baseDir = await getApplicationDocumentsDirectory(); // iOS est plus restrictif
+      }
+
+      if (!await baseDir.exists()) {
+        await baseDir.create(recursive: true);
+      }
+
+      final String savePath = '${baseDir.path}/$fileName';
+      final File file = File(savePath);
+
+      // Si le fichier existe déjà, on ne télécharge pas
+      if (await file.exists()) return savePath;
+
+      // 3. Téléchargement via Dio
+      final token = await _authService.getToken();
+      await _dio.download(
+        url,
+        savePath,
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+
+      return savePath;
+    } catch (e) {
+      debugPrint("❌ Erreur lors de la sauvegarde en galerie: $e");
+      return null;
+    }
   }
 }

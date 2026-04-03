@@ -19,6 +19,7 @@ class Profile(Base):
     bio = Column(String, nullable=True) # Nouveau : Biographie de l'utilisateur
     job_title = Column(String, nullable=True) # Nouveau : Poste occupé
     is_online = Column(Boolean, default=False)
+    presence_status = Column(String, default="online") # 'online', 'busy', 'dnd', 'meeting', 'remote'
     fcm_token = Column(String, nullable=True)
     public_key = Column(String, nullable=True) # Clé publique pour l'E2EE (Base64)
     is_active = Column(Boolean, default=True) # Nouveau : Pour bannissement

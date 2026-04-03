@@ -62,6 +62,34 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+# --- Fonctions utilitaires pour les broadcasts cross-module ---
+async def broadcast_to_all_globals(message: dict, exclude_user: str = None):
+    """Diffuser un événement à TOUS les utilisateurs connectés au WS global.
+    
+    Utilisé pour : inscription d'un nouvel utilisateur.
+    """
+    for user_id, ws in manager.global_connections.items():
+        if user_id != exclude_user:
+            try:
+                await ws.send_json(message)
+            except Exception:
+                pass
+
+
+async def broadcast_to_users(user_ids: list, message: dict):
+    """Diffuser un événement à une liste spécifique d'utilisateurs connectés.
+    
+    Utilisé pour : création d'un nouveau salon.
+    """
+    for uid in user_ids:
+        uid_str = str(uid)
+        if uid_str in manager.global_connections:
+            try:
+                await manager.global_connections[uid_str].send_json(message)
+            except Exception:
+                pass
+
+
 from auth import create_access_token, ALGORITHM, SECRET_KEY
 from jose import jwt, JWTError
 

@@ -1,7 +1,7 @@
 import secrets
 import redis
 from config import REDIS_URL
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Profile
@@ -10,14 +10,21 @@ from auth import hash_password, verify_password, create_access_token, get_curren
 from models import RefreshToken
 import uuid
 from datetime import datetime
+from routes_chat import broadcast_to_all_globals
+
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 # Connexion Redis pour le stockage des OTP
 redis_client = redis.from_url(REDIS_URL, decode_responses=True)
 
 
+async def _broadcast_user_registered(user_data: dict):
+    """Helper async pour broadcaster l'inscription d'un utilisateur."""
+    await broadcast_to_all_globals(user_data)
+
+
 @router.post("/register", response_model=TokenResponse)
-def register(request: RegisterRequest, db: Session = Depends(get_db)):
+def register(request: RegisterRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """Créer un nouveau compte utilisateur."""
     if not request.email and not request.phone_number:
         raise HTTPException(
@@ -49,6 +56,14 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
 
     token = create_access_token(data={"sub": str(new_user.id)})
     refresh_token = create_refresh_token(db, str(new_user.id))
+
+    # --- Broadcast temps réel : Notifier tous les utilisateurs connectés ---
+    background_tasks.add_task(_broadcast_user_registered, {
+        "type": "user_registered",
+        "user_id": str(new_user.id),
+        "full_name": new_user.full_name,
+        "username": new_user.username,
+    })
     
     return TokenResponse(
         access_token=token,

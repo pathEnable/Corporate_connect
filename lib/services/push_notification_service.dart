@@ -44,7 +44,7 @@ class PushNotificationService {
 
     // 3. Configuration des notifications locales pour l'avant-plan
     await _localNotifications.initialize(
-      settings: const InitializationSettings(
+      const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
       ),
       onDidReceiveNotificationResponse: (NotificationResponse response) {
@@ -128,10 +128,10 @@ class PushNotificationService {
     const NotificationDetails platformChannelSpecifics = NotificationDetails(android: androidPlatformChannelSpecifics);
     
     await _localNotifications.show(
-      id: 0,
-      title: message.notification?.title ?? "Nouveau message",
-      body: message.notification?.body ?? "",
-      notificationDetails: platformChannelSpecifics,
+      0,
+      message.notification?.title ?? "Nouveau message",
+      message.notification?.body ?? "",
+      platformChannelSpecifics,
       payload: jsonEncode(message.data),
     );
   }

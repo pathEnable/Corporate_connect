@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, FileResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 from sqlalchemy.orm import Session
 from database import engine, get_db
@@ -92,8 +92,23 @@ app.add_middleware(
     expose_headers=["*"],  # Permet au frontend de voir tous les headers si nécessaire
 )
 
-# Fichiers statiques pour les uploads
+# Fichiers statiques pour les uploads et la page de téléchargement
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/download")
+async def download_page():
+    """Page web pour télécharger l'APK."""
+    return FileResponse("static/download.html")
+
+@app.get("/version")
+async def get_latest_version():
+    """Retourne la dernière version disponible (version_code)."""
+    return {
+        "version_code": 2, 
+        "version_name": "1.0.1",
+        "apk_url": "https://corporate-connect.onrender.com/uploads/app-release.apk"
+    }
 
 # Enregistrement des routes
 app.include_router(auth_router)

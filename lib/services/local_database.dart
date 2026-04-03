@@ -22,7 +22,7 @@ class LocalDatabase {
 
     return await openDatabase(
       path,
-      version: 7,
+      version: 10,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -83,6 +83,24 @@ class LocalDatabase {
       await db.execute('CREATE INDEX IF NOT EXISTS idx_messages_room ON messages(room_id, created_at)');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_rooms_id ON rooms(id)');
     }
+    if (oldVersion < 8) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS profiles (
+          id TEXT PRIMARY KEY,
+          username TEXT,
+          full_name TEXT,
+          job_title TEXT,
+          avatar_url TEXT,
+          is_online INTEGER DEFAULT 0
+        )
+      ''');
+    }
+    if (oldVersion < 9) {
+      await db.execute("ALTER TABLE messages ADD COLUMN caption TEXT");
+    }
+    if (oldVersion < 10) {
+      await db.execute("ALTER TABLE messages ADD COLUMN local_path TEXT");
+    }
   }
 
   Future<void> _createDB(Database db, int version) async {
@@ -97,6 +115,8 @@ class LocalDatabase {
         is_read INTEGER DEFAULT 0,
         reply_to_id TEXT,
         reply_to_content TEXT,
+        caption TEXT,
+        local_path TEXT,
         created_at TEXT NOT NULL
       )
     ''');
@@ -127,6 +147,17 @@ class LocalDatabase {
 
     await db.execute('CREATE INDEX IF NOT EXISTS idx_messages_room ON messages(room_id, created_at)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_rooms_id ON rooms(id)');
+
+    await db.execute('''
+      CREATE TABLE profiles (
+        id TEXT PRIMARY KEY,
+        username TEXT,
+        full_name TEXT,
+        job_title TEXT,
+        avatar_url TEXT,
+        is_online INTEGER DEFAULT 0
+      )
+    ''');
   }
 
   Future<void> saveMessage(Map<String, dynamic> msg) async {
@@ -148,6 +179,8 @@ class LocalDatabase {
           'is_read': (msg['is_read'] == true || msg['is_read'] == 1) ? 1 : 0,
           'reply_to_id': msg['reply_to_id'],
           'reply_to_content': msg['reply_to_content'],
+          'caption': msg['caption'] ?? (msg['data'] != null ? msg['data']['caption'] : null),
+          'local_path': msg['local_path'],
           'created_at': msg['created_at'] ?? msg['timestamp'],
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
@@ -203,6 +236,17 @@ class LocalDatabase {
     );
   }
 
+  Future<void> updateLocalPath(String id, String path) async {
+    if (kIsWeb) return;
+    final db = await instance.database;
+    await db.update(
+      'messages',
+      {'local_path': path},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   Future<List<Map<String, dynamic>>> getMessages(String roomId) async {
     if (kIsWeb) return [];
     final db = await instance.database;
@@ -241,6 +285,39 @@ class LocalDatabase {
       return {
         ...row,
         'is_group': row['is_group'] == 1,
+      };
+    }).toList();
+  }
+
+  Future<void> saveProfiles(List<Map<String, dynamic>> profiles) async {
+    if (kIsWeb) return;
+    final db = await instance.database;
+    final batch = db.batch();
+    for (var profile in profiles) {
+      batch.insert(
+        'profiles',
+        {
+          'id': profile['id'],
+          'username': profile['username'],
+          'full_name': profile['full_name'],
+          'job_title': profile['job_title'],
+          'avatar_url': profile['avatar_url'],
+          'is_online': profile['is_online'] == true ? 1 : 0,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<Map<String, dynamic>>> getProfiles() async {
+    if (kIsWeb) return [];
+    final db = await instance.database;
+    final result = await db.query('profiles');
+    return result.map((row) {
+      return {
+        ...row,
+        'is_online': row['is_online'] == 1,
       };
     }).toList();
   }

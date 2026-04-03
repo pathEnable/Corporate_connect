@@ -10,6 +10,7 @@ import '../widgets/chat/typing_indicator.dart';
 import '../widgets/chat/skeleton_message.dart';
 import '../services/room_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../widgets/premium_background.dart';
 import 'room_details_screen.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
@@ -86,10 +87,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
     });
 
-    final theme = Theme.of(context);
-
-    return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
+    return PremiumBackground(
+      showPattern: true,
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
       appBar: ChatAppBar(
         roomId: widget.roomId,
         roomName: widget.roomName,
@@ -120,6 +121,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         isRead: msg['is_read'] == true || msg['is_read'] == 1,
                         isEncrypted: msg['is_encrypted'] == true,
                         replyToContent: msg['reply_to_content'],
+                        caption: msg['caption'],
+                        localPath: msg['local_path'],
                         onReply: () => setState(() => _replyingTo = msg),
                       );
                     },
@@ -141,6 +144,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
         ],
       ),
+    ),
     );
   }
 
