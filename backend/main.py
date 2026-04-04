@@ -95,9 +95,7 @@ app.add_middleware(
     expose_headers=["*"],  # Permet au frontend de voir tous les headers si nécessaire
 )
 
-# Fichiers statiques pour les uploads et la page de téléchargement
-app.mount("/uploads", StaticFiles(directory=os.path.join(BASE_DIR, "uploads")), name="uploads")
-app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+# Les montages statiques seront placés après l'enregistrement des routes pour éviter les conflits.
 
 @app.get("/download")
 async def download_page():
@@ -126,6 +124,25 @@ app.include_router(notifications_router)
 app.include_router(agora_router)
 app.include_router(calls_router)
 
+# ── Diagnostic & Fichiers statiques ──
+
+@app.get("/debug/files")
+async def debug_files():
+    """Route de diagnostic pour vérifier la présence des APK."""
+    uploads_path = os.path.join(BASE_DIR, "uploads")
+    exists = os.path.exists(uploads_path)
+    files = os.listdir(uploads_path) if exists else []
+    return {
+        "base_dir": BASE_DIR,
+        "uploads_path": uploads_path,
+        "exists": exists,
+        "files": files,
+        "cwd": os.getcwd()
+    }
+
+# Fichiers statiques (après les routes pour priorité)
+app.mount("/uploads", StaticFiles(directory=os.path.join(BASE_DIR, "uploads")), name="uploads")
+app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 
 @app.get("/")
 async def root():
