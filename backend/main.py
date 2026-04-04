@@ -18,7 +18,10 @@ from routes_notifications import router as notifications_router
 from routes_agora import router as agora_router
 from routes_calls import router as calls_router
 import time
+import os
 from collections import defaultdict
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Créer les tables au démarrage
 Base.metadata.create_all(bind=engine)
@@ -93,13 +96,13 @@ app.add_middleware(
 )
 
 # Fichiers statiques pour les uploads et la page de téléchargement
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/uploads", StaticFiles(directory=os.path.join(BASE_DIR, "uploads")), name="uploads")
+app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 
 @app.get("/download")
 async def download_page():
     """Page web pour télécharger l'APK."""
-    return FileResponse("static/download.html")
+    return FileResponse(os.path.join(BASE_DIR, "static/download.html"))
 
 @app.get("/version")
 async def get_latest_version():
