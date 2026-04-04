@@ -108,7 +108,7 @@ async def get_latest_version():
     return {
         "version_code": 3, 
         "version_name": "2.0.0",
-        "apk_url": "https://corporate-connect.onrender.com/uploads/app-release.apk"
+        "apk_url": "https://corporate-connect.onrender.com/uploads/app-v2.0.0-arm64-v8a.apk"
     }
 
 # Enregistrement des routes

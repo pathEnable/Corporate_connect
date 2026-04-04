@@ -67,3 +67,5 @@ firebase-adminsdk.json
 # Téléchargements locaux (uploads ou media)
 uploads/
 /backend/uploads/
+# Mais on autorise explicitement les APK de release pour le téléchargement direct
+!/backend/uploads/*.apk
