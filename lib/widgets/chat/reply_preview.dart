@@ -16,9 +16,10 @@ class ReplyPreview extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withAlpha(80),
+        color: theme.brightness == Brightness.dark ? const Color(0xFF121212) : const Color(0xFFF0F0FB),
         border: Border(
-          left: BorderSide(color: theme.colorScheme.primary, width: 4),
+          left: BorderSide(color: theme.colorScheme.primary, width: 3),
+          bottom: BorderSide(color: theme.colorScheme.primary.withValues(alpha: 0.1), width: 0.5),
         ),
       ),
       child: Row(

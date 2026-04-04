@@ -1,4 +1,4 @@
-import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -79,8 +79,14 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
       expandedHeight: 300,
       pinned: true,
       stretch: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.03),
       elevation: 0,
+      shape: Border(
+        bottom: BorderSide(
+          color: theme.colorScheme.primary.withValues(alpha: 0.15),
+          width: 0.5,
+        ),
+      ),
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
         onPressed: () => Navigator.pop(context),
@@ -121,11 +127,8 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
                 Hero(
                   tag: 'room_avatar_${widget.roomId}',
                   child: Container(
-                    decoration: BoxDecoration(
+                    decoration: const BoxDecoration(
                       shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(color: theme.colorScheme.primary.withValues(alpha: 0.2), blurRadius: 40, spreadRadius: 5),
-                      ],
                     ),
                     child: CircleAvatar(
                       radius: 50,
@@ -150,8 +153,13 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
   Widget _buildTabHeader(ThemeData theme) {
     return Container(
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface.withValues(alpha: 0.5),
-        border: Border(bottom: BorderSide(color: theme.colorScheme.onSurface.withValues(alpha: 0.05))),
+        color: theme.brightness == Brightness.dark ? const Color(0xFF040301) : Colors.white,
+        border: Border(
+          bottom: BorderSide(
+            color: theme.colorScheme.primary.withValues(alpha: 0.15),
+            width: 0.5,
+          ),
+        ),
       ),
       child: TabBar(
         controller: _tabController,
@@ -175,15 +183,11 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => ClipRRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.9),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-            ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+        ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -201,8 +205,6 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
               ],
             ),
           ),
-        ),
-      ),
     );
   }
 

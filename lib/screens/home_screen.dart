@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'dart:ui';
+
 import '../widgets/premium_background.dart';
+import '../providers/connectivity_provider.dart';
 
 import 'contacts_screen.dart';
 import 'calls_screen.dart';
@@ -49,30 +50,37 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return PremiumBackground(
-      child: Scaffold(
-        extendBody: true,
-        backgroundColor: Colors.transparent,
-        appBar: _currentIndex == 0 ? _buildHomeAppBar() : null,
-        body: Stack(
-          children: [
-            IndexedStack(
-              index: _currentIndex,
-              children: _pages,
-            ),
-            // Barre de navigation flottante avec Glassmorphism
-            Positioned(
-            bottom: 24,
-            left: 12,
-            right: 12,
-            child: _buildFloatingNavBar(theme),
-          ),
-        ],
+    final isDark = theme.brightness == Brightness.dark;
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarDividerColor: Colors.transparent,
+        systemNavigationBarContrastEnforced: false,
+        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+        systemNavigationBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
       ),
-      floatingActionButton: _currentIndex == 0 
-        ? Padding(
-            padding: const EdgeInsets.only(bottom: 90),
-            child: FloatingActionButton(
+      child: PremiumBackground(
+        child: Scaffold(
+          extendBody: true,
+          backgroundColor: Colors.transparent,
+          appBar: _currentIndex == 0 ? _buildHomeAppBar() : null,
+          body: Column(
+            children: [
+              // --- Bandeau Hors-ligne ---
+              _OfflineBanner(),
+              Expanded(
+                child: IndexedStack(
+                  index: _currentIndex,
+                  children: _pages,
+                ),
+              ),
+            ],
+          ),
+          bottomNavigationBar: _buildNavBar(theme),
+          floatingActionButton: _currentIndex == 0 
+            ? FloatingActionButton(
                 backgroundColor: theme.colorScheme.primary,
                 foregroundColor: Colors.black,
                 elevation: 4,
@@ -81,35 +89,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   HapticFeedback.lightImpact();
                   Navigator.push(context, FadeSlideRoute(page: const NewGroupScreen()));
                 },
-              ).animate().scale(delay: 400.ms, curve: Curves.easeOutBack),
-          ) 
-        : null,
+              ).animate().scale(delay: 400.ms, curve: Curves.easeOutBack)
+            : null,
+        ),
       ),
     );
   }
 
-  Widget _buildFloatingNavBar(ThemeData theme) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          height: 70,
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface.withValues(alpha: 0.8),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.1),
-              width: 0.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.15),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
-              ),
-            ],
+  Widget _buildNavBar(ThemeData theme) {
+    final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.brightness == Brightness.dark ? const Color(0xFF040301) : Colors.white,
+        border: Border(
+          top: BorderSide(
+            color: theme.colorScheme.primary.withValues(alpha: 0.15),
+            width: 0.5,
           ),
+        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.only(bottom: bottomPadding),
+        child: SizedBox(
+          height: 65,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
@@ -142,7 +144,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? theme.colorScheme.primary.withValues(alpha: 0.15) : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(4),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -151,7 +153,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               icon,
               color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurface.withValues(alpha: 0.5),
               size: isSelected ? 26 : 24,
-            ).animate(target: isSelected ? 1 : 0).scale(duration: 200.ms).shimmer(delay: 200.ms),
+            ),
             if (isSelected)
               Text(
                 label,
@@ -169,14 +171,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   PreferredSizeWidget _buildHomeAppBar() {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return AppBar(
       title: const Text(
         'Corporate Connect',
         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
       ),
-      backgroundColor: theme.colorScheme.surface,
+      backgroundColor: isDark ? const Color(0xFF040301) : Colors.white,
       foregroundColor: theme.colorScheme.onSurface,
       elevation: 0,
+      centerTitle: false,
+      shape: Border(
+        bottom: BorderSide(
+          color: theme.colorScheme.primary.withValues(alpha: 0.15),
+          width: 0.5,
+        ),
+      ),
       actions: [
         IconButton(
           icon: const Icon(Icons.search_rounded),
@@ -193,6 +203,42 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           },
         ),
       ],
+    );
+  }
+}
+
+/// Bandeau affiché en haut quand il n'y a pas de connexion Internet (style WhatsApp)
+class _OfflineBanner extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final asyncConnectivity = ref.watch(connectivityProvider);
+
+    return asyncConnectivity.when(
+      data: (isConnected) {
+        if (isConnected) return const SizedBox.shrink();
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          color: Colors.redAccent.shade700,
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.wifi_off_rounded, color: Colors.white, size: 16),
+              SizedBox(width: 8),
+              Text(
+                'Pas de connexion Internet',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
     );
   }
 }

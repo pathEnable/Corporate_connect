@@ -88,8 +88,14 @@ class _AddMemberPickerScreenState extends State<AddMemberPickerScreen> {
         backgroundColor: Colors.transparent,
         appBar: AppBar(
           title: const Text('Ajouter des membres', style: TextStyle(fontWeight: FontWeight.bold)),
-          backgroundColor: Colors.transparent,
+          backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.03),
           elevation: 0,
+          shape: Border(
+            bottom: BorderSide(
+              color: theme.colorScheme.primary.withValues(alpha: 0.15),
+              width: 0.5,
+            ),
+          ),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
             onPressed: () => Navigator.pop(context),

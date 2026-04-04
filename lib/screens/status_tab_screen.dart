@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'dart:ui';
+
 
 import '../providers/home_provider.dart';
 import '../models/status_model.dart';
@@ -44,8 +44,16 @@ class StatusTabScreen extends ConsumerWidget {
         backgroundColor: Colors.transparent,
         appBar: AppBar(
           title: const Text('Stories', style: TextStyle(fontWeight: FontWeight.bold)),
-          backgroundColor: Colors.transparent,
+          backgroundColor: theme.brightness == Brightness.dark ? const Color(0xFF040301) : Colors.white,
+          foregroundColor: theme.colorScheme.onSurface,
           elevation: 0,
+          centerTitle: false,
+          shape: Border(
+            bottom: BorderSide(
+              color: theme.colorScheme.primary.withValues(alpha: 0.15),
+              width: 0.5,
+            ),
+          ),
         ),
         body: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -59,7 +67,7 @@ class StatusTabScreen extends ConsumerWidget {
               _buildSectionHeader(theme, 'VUES'),
               ...viewedStatuses.map((list) => _buildStatusTile(context, ref, list, true)),
             ],
-            const SizedBox(height: 100), // Space for nav bar
+            const SizedBox(height: 20), 
           ],
         ),
       ),
@@ -82,18 +90,13 @@ class StatusTabScreen extends ConsumerWidget {
   }
 
   Widget _buildMyStatusTile(BuildContext context, ThemeData theme) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-        child: Container(
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface.withValues(alpha: 0.5),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: theme.colorScheme.onSurface.withValues(alpha: 0.1)),
-          ),
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withValues(alpha: 0.05),
+        border: Border(bottom: BorderSide(color: theme.colorScheme.onSurface.withValues(alpha: 0.05), width: 0.5)),
+      ),
           child: ListTile(
-            contentPadding: const EdgeInsets.all(12),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             leading: Stack(
               children: [
                 CircleAvatar(
@@ -121,8 +124,6 @@ class StatusTabScreen extends ConsumerWidget {
               );
             },
           ),
-        ),
-      ),
     );
   }
 
@@ -130,52 +131,42 @@ class StatusTabScreen extends ConsumerWidget {
     final theme = Theme.of(context);
     final first = stories.first;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-          child: Container(
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surface.withValues(alpha: isViewed ? 0.3 : 0.5),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: theme.colorScheme.onSurface.withValues(alpha: 0.1)),
-            ),
-            child: ListTile(
-              contentPadding: const EdgeInsets.all(12),
-              onTap: () {
-                final allStatuses = ref.read(homeProvider).statuses;
-                final index = allStatuses.indexOf(first);
-                Navigator.push(
-                  context,
-                  FadeSlideRoute(page: StoryViewScreen(stories: allStatuses, initialIndex: index)),
-                );
-              },
-              leading: Container(
-                padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: isViewed ? Colors.grey : theme.colorScheme.primary,
-                    width: 2.5,
-                  ),
-                ),
-                child: CircleAvatar(
-                  radius: 26,
-                  backgroundImage: first.userAvatar != null ? NetworkImage(first.userAvatar!) : null,
-                  child: first.userAvatar == null ? const Icon(Icons.person) : null,
-                ),
-              ),
-              title: Text(first.userName, style: const TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: Text(
-                '${DateTime.now().difference(first.createdAt).inHours}h ago',
-                style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
-              ),
-            ),
-          ),
-        ),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.transparent,
+        border: Border(bottom: BorderSide(color: theme.colorScheme.onSurface.withValues(alpha: 0.05), width: 0.5)),
       ),
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            onTap: () {
+              final allStatuses = ref.read(homeProvider).statuses;
+              final index = allStatuses.indexOf(first);
+              Navigator.push(
+                context,
+                FadeSlideRoute(page: StoryViewScreen(stories: allStatuses, initialIndex: index)),
+              );
+            },
+            leading: Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isViewed ? Colors.grey : theme.colorScheme.primary,
+                  width: 2.5,
+                ),
+              ),
+              child: CircleAvatar(
+                radius: 26,
+                backgroundImage: first.userAvatar != null ? NetworkImage(first.userAvatar!) : null,
+                child: first.userAvatar == null ? const Icon(Icons.person) : null,
+              ),
+            ),
+            title: Text(first.userName, style: const TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: Text(
+              '${DateTime.now().difference(first.createdAt).inHours}h ago',
+              style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
+            ),
+            ),
     ).animate().fadeIn().slideX(begin: 0.1);
   }
 }

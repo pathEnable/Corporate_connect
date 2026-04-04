@@ -22,7 +22,7 @@ class LocalDatabase {
 
     return await openDatabase(
       path,
-      version: 10,
+      version: 11,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -101,6 +101,12 @@ class LocalDatabase {
     if (oldVersion < 10) {
       await db.execute("ALTER TABLE messages ADD COLUMN local_path TEXT");
     }
+    if (oldVersion < 11) {
+      await db.execute("ALTER TABLE rooms ADD COLUMN last_message_at TEXT");
+      await db.execute("ALTER TABLE rooms ADD COLUMN unread_count INTEGER DEFAULT 0");
+      await db.execute("ALTER TABLE rooms ADD COLUMN last_sender_name TEXT");
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_rooms_last_msg ON rooms(last_message_at)');
+    }
   }
 
   Future<void> _createDB(Database db, int version) async {
@@ -141,12 +147,16 @@ class LocalDatabase {
         id TEXT PRIMARY KEY,
         name TEXT,
         is_group INTEGER,
-        last_message TEXT
+        last_message TEXT,
+        last_message_at TEXT,
+        unread_count INTEGER DEFAULT 0,
+        last_sender_name TEXT
       )
     ''');
 
     await db.execute('CREATE INDEX IF NOT EXISTS idx_messages_room ON messages(room_id, created_at)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_rooms_id ON rooms(id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_rooms_last_msg ON rooms(last_message_at)');
 
     await db.execute('''
       CREATE TABLE profiles (
@@ -270,6 +280,9 @@ class LocalDatabase {
           'name': room['name'],
           'is_group': room['is_group'] == true ? 1 : 0,
           'last_message': room['last_message'],
+          'last_message_at': room['last_message_time'] ?? room['last_message_at'],
+          'unread_count': room['unread_count'] ?? 0,
+          'last_sender_name': room['last_sender_name'],
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -280,14 +293,48 @@ class LocalDatabase {
   Future<List<Map<String, dynamic>>> getRooms() async {
     if (kIsWeb) return [];
     final db = await instance.database;
-    final result = await db.query('rooms');
+    final result = await db.query('rooms', orderBy: 'last_message_at DESC');
     return result.map((row) {
       return {
         ...row,
         'is_group': row['is_group'] == 1,
+        'last_message_time': row['last_message_at'],
       };
     }).toList();
   }
+
+  /// Met à jour le dernier message d'un salon (appelé quand un message arrive via WebSocket)
+  Future<void> updateRoomLastMessage({
+    required String roomId,
+    required String lastMessage,
+    required String lastMessageAt,
+    String? lastSenderName,
+    bool incrementUnread = false,
+  }) async {
+    if (kIsWeb) return;
+    final db = await instance.database;
+    await db.rawUpdate(
+      '''UPDATE rooms SET 
+         last_message = ?, 
+         last_message_at = ?,
+         last_sender_name = ?
+         ${incrementUnread ? ', unread_count = unread_count + 1' : ''}
+         WHERE id = ?''',
+      [lastMessage, lastMessageAt, lastSenderName, roomId],
+    );
+  }
+
+  /// Réinitialise le compteur de non-lus quand l'utilisateur ouvre un salon
+  Future<void> resetUnreadCount(String roomId) async {
+    if (kIsWeb) return;
+    final db = await instance.database;
+    await db.update(
+      'rooms',
+      {'unread_count': 0},
+      where: 'id = ?',
+      whereArgs: [roomId],
+    );
+   }
 
   Future<void> saveProfiles(List<Map<String, dynamic>> profiles) async {
     if (kIsWeb) return;

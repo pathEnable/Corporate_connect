@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -6,6 +7,8 @@ import '../models/profile_state.dart';
 import '../services/auth_service.dart';
 import '../services/media_service.dart';
 import '../services/encryption_service.dart';
+import '../services/local_database.dart';
+import '../services/global_presence_service.dart';
 
 final profileProvider = NotifierProvider<ProfileNotifier, ProfileState>(() {
   return ProfileNotifier();
@@ -103,7 +106,29 @@ class ProfileNotifier extends Notifier<ProfileState> {
     }
   }
 
+  /// Déconnexion complète : vider tokens, cache, clés E2EE, présence
   Future<void> logout() async {
-    await _authService.logout();
+    try {
+      // 1. Déconnecter le WebSocket global de présence
+      GlobalPresenceService.instance.disconnect();
+      
+      // 2. Vider le cache SQLite (messages, rooms, profils)
+      if (!kIsWeb) {
+        try {
+          await LocalDatabase.instance.clearCache();
+        } catch (_) {}
+      }
+
+      // 3. Vider le stockage sécurisé (clés E2EE)
+      try {
+        await _secureStorage.deleteAll();
+      } catch (_) {}
+
+      // 4. Vider SharedPreferences (tokens, user_id, etc.)
+      await _authService.logout();
+    } catch (_) {}
+    
+    // 5. Réinitialiser l'état du provider
+    state = const ProfileState(isLoading: false);
   }
 }

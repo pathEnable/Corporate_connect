@@ -1,4 +1,4 @@
-import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
@@ -192,18 +192,15 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                   ],
                 ),
               ),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    color: Colors.white.withAlpha(30),
-                    child: IconButton(
-                      icon: const Icon(Icons.picture_in_picture_alt_rounded, color: Colors.white, size: 24),
-                      onPressed: () => SimplePip().enterPipMode(),
-                    ),
-                  ),
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withAlpha(100),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.picture_in_picture_alt_rounded, color: Colors.white, size: 24),
+                  onPressed: () => SimplePip().enterPipMode(),
                 ),
               ),
             ],
@@ -215,17 +212,13 @@ class _CallScreenState extends ConsumerState<CallScreen> {
           bottom: 40,
           left: 24,
           right: 24,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(35),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
-                decoration: BoxDecoration(
-                  color: Colors.white.withAlpha(30),
-                  borderRadius: BorderRadius.circular(35),
-                  border: Border.all(color: Colors.white.withAlpha(40)),
-                ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
+            decoration: BoxDecoration(
+              color: Colors.black.withAlpha(150),
+              borderRadius: BorderRadius.circular(35),
+              border: Border.all(color: Colors.white.withAlpha(20)),
+            ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
@@ -270,9 +263,6 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                 ),
               ),
             ),
-          ),
-        ),
-
         if (state.isLoading)
           const Center(child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3)),
         
@@ -306,10 +296,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
           const Center(
             child: Icon(Icons.person_rounded, size: 240, color: Colors.white10),
           ),
-          BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
-            child: Container(color: Colors.black.withAlpha(120)),
-          ),
+          Container(color: Colors.black.withAlpha(200)),
           Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,

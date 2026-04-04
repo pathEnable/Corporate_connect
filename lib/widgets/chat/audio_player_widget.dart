@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../../theme/app_theme.dart';
+import '../../services/media_service.dart';
 
 class AudioPlayerWidget extends StatefulWidget {
   final String url;
@@ -71,7 +72,12 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
       if (widget.localPath != null && File(widget.localPath!).existsSync()) {
         source = DeviceFileSource(widget.localPath!);
       } else {
-        source = UrlSource(widget.url);
+        try {
+          final fullUrl = await MediaService().getDownloadUrl(widget.url);
+          source = UrlSource(fullUrl);
+        } catch (e) {
+          source = UrlSource(widget.url);
+        }
       }
       await _audioPlayer.play(source);
     }

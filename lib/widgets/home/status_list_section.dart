@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'dart:ui';
+
 
 import '../../models/status_model.dart';
 import '../../providers/home_provider.dart';
@@ -44,8 +44,8 @@ class StatusListSection extends ConsumerWidget {
     }
 
     return Container(
-      height: 120,
-      margin: const EdgeInsets.only(top: 10, bottom: 20),
+      height: 105,
+      margin: const EdgeInsets.only(top: 10, bottom: 10),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
@@ -78,9 +78,7 @@ class _AddStatusItem extends StatelessWidget {
     final controller = TextEditingController();
     showDialog(
       context: context,
-      builder: (context) => BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-        child: AlertDialog(
+      builder: (context) => AlertDialog(
           backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.9),
           title: const Text('Nouveau statut', style: TextStyle(fontWeight: FontWeight.bold)),
           content: TextField(
@@ -115,7 +113,6 @@ class _AddStatusItem extends StatelessWidget {
             ),
           ],
         ),
-      ),
     );
   }
 

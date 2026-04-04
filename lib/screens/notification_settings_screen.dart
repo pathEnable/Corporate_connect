@@ -47,12 +47,19 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
     final theme = Theme.of(context);
     
     return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('Notifications'),
-        backgroundColor: theme.colorScheme.surface,
+        title: const Text('Notifications', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.03),
         foregroundColor: theme.colorScheme.onSurface,
         elevation: 0,
+        centerTitle: false,
+        shape: Border(
+          bottom: BorderSide(
+            color: theme.colorScheme.primary.withValues(alpha: 0.15),
+            width: 0.5,
+          ),
+        ),
       ),
       body: _isLoading 
         ? const Center(child: CircularProgressIndicator())

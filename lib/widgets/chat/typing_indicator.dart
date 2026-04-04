@@ -1,4 +1,4 @@
-import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 class TypingIndicator extends StatefulWidget {
@@ -35,14 +35,10 @@ class _TypingIndicatorState extends State<TypingIndicator> with SingleTickerProv
       child: Row(
         mainAxisAlignment: MainAxisAlignment.start,
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(18),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withAlpha(180),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(color: theme.colorScheme.onSurface.withAlpha(20)),
                   boxShadow: [
@@ -69,8 +65,6 @@ class _TypingIndicatorState extends State<TypingIndicator> with SingleTickerProv
                     ),
                   ],
                 ),
-              ),
-            ),
           ),
         ],
       ),

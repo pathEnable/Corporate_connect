@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'dart:ui';
+
 import '../providers/home_provider.dart';
 import '../widgets/premium_background.dart';
 
@@ -19,6 +19,24 @@ class _StoryCreatorScreenState extends ConsumerState<StoryCreatorScreen> {
   File? _imageFile;
   final ImagePicker _picker = ImagePicker();
   bool _isUploading = false;
+  
+  int _colorIndex = 0;
+  final List<Color> _statusColors = [
+    const Color(0xFF00796B), // Vert Emini
+    const Color(0xFF8E24AA), // Violet
+    const Color(0xFFE53935), // Rouge
+    const Color(0xFF3949AB), // Indigo
+    const Color(0xFFF4511E), // Orange
+    const Color(0xFF00B0FF), // Bleu
+    const Color(0xFF43A047), // Vert Clair
+    const Color(0xFF212121), // Sombre
+  ];
+
+  void _cycleColor() {
+    setState(() {
+      _colorIndex = (_colorIndex + 1) % _statusColors.length;
+    });
+  }
 
   Future<void> _pickImage() async {
     final XFile? pickedFile = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
@@ -104,19 +122,18 @@ class _StoryCreatorScreenState extends ConsumerState<StoryCreatorScreen> {
                       child: Stack(
                         children: [
                           // Background Image or Gradient
-                          _imageFile != null
-                              ? Image.file(_imageFile!, fit: BoxFit.cover, width: double.infinity, height: double.infinity)
-                              : Container(
-                                  decoration: const BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [Color(0xFF00BFA5), Color(0xFF004D40)],
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                    ),
-                                  ),
-                                ),
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
+                            width: double.infinity,
+                            height: double.infinity,
+                            color: _imageFile != null ? Colors.transparent : _statusColors[_colorIndex],
+                            child: _imageFile != null
+                                ? Image.file(_imageFile!, fit: BoxFit.cover)
+                                : null,
+                          ),
                           
                           // Glassy Overlay for Text
+                          // Text Input
                           Center(
                             child: Padding(
                               padding: const EdgeInsets.all(20.0),
@@ -125,13 +142,12 @@ class _StoryCreatorScreenState extends ConsumerState<StoryCreatorScreen> {
                                 textAlign: TextAlign.center,
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                  shadows: [Shadow(color: Colors.black45, blurRadius: 10)],
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.w800,
                                 ),
                                 decoration: InputDecoration(
-                                  hintText: "Écrivez quelque chose...",
-                                  hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+                                  hintText: "Tapez un statut...",
+                                  hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 28),
                                   border: InputBorder.none,
                                 ),
                                 maxLines: null,
@@ -139,14 +155,27 @@ class _StoryCreatorScreenState extends ConsumerState<StoryCreatorScreen> {
                             ),
                           ),
 
-                          // Image Picker Button
+                          // Floating Controls
                           Positioned(
                             bottom: 20,
                             right: 20,
-                            child: _buildGlassButton(
-                              icon: Icons.image_rounded,
-                              onTap: _pickImage,
-                              theme: theme,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_imageFile == null) ...[
+                                  _buildGlassButton(
+                                    icon: Icons.palette_rounded,
+                                    onTap: _cycleColor,
+                                    theme: theme,
+                                  ),
+                                  const SizedBox(height: 12),
+                                ],
+                                _buildGlassButton(
+                                  icon: Icons.image_rounded,
+                                  onTap: _pickImage,
+                                  theme: theme,
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -164,22 +193,16 @@ class _StoryCreatorScreenState extends ConsumerState<StoryCreatorScreen> {
   }
 
   Widget _buildGlassButton({required IconData icon, required VoidCallback onTap, required ThemeData theme}) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(15),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: GestureDetector(
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(15),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-            ),
-            child: Icon(icon, color: Colors.white),
-          ),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.black,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
         ),
+        child: Icon(icon, color: Colors.white),
       ),
     );
   }

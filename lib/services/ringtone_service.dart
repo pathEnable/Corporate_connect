@@ -10,8 +10,8 @@ class RingtoneService {
   Future<void> playRingtone() async {
     try {
       await _player.setReleaseMode(ReleaseMode.loop);
-      // URL générique d'une sonnerie de téléphone
-      await _player.play(UrlSource('https://www.soundjay.com/phone/telephone-ring-01a.mp3'));
+      // Utilisation du son local généré ou téléchargé
+      await _player.play(AssetSource('audio/ringtone.wav'));
     } catch (e) {
       debugPrint('Erreur RingtoneService: $e');
     }

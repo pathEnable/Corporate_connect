@@ -102,67 +102,83 @@ class _CallsScreenState extends ConsumerState<CallsScreen> {
       );
     }
 
-    return RefreshIndicator(
-      color: theme.colorScheme.primary,
-      onRefresh: _loadHistory,
-      child: ListView.builder(
-        itemCount: _calls.length,
-        itemBuilder: (context, index) {
-          final call = _calls[index];
-          final isOutgoing = call.callerId == _currentUserId;
-          final isMissed = call.status == 'missed' || call.status == 'rejected' || call.duration == 0;
-          
-          final otherName = isOutgoing ? call.receiverName : call.callerName;
-          final iconColor = isMissed 
-              ? theme.colorScheme.error 
-              : (isOutgoing ? theme.colorScheme.secondary : Colors.green);
-              
-          final iconData = isOutgoing 
-              ? Icons.call_made_rounded 
-              : (isMissed ? Icons.call_missed_rounded : Icons.call_received_rounded);
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('Appels', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: theme.brightness == Brightness.dark ? const Color(0xFF040301) : Colors.white,
+        foregroundColor: theme.colorScheme.onSurface,
+        elevation: 0,
+        centerTitle: false,
+        shape: Border(
+          bottom: BorderSide(
+            color: theme.colorScheme.primary.withValues(alpha: 0.15),
+            width: 0.5,
+          ),
+        ),
+      ),
+      body: RefreshIndicator(
+        color: theme.colorScheme.primary,
+        onRefresh: _loadHistory,
+        child: ListView.builder(
+          itemCount: _calls.length,
+          itemBuilder: (context, index) {
+            final call = _calls[index];
+            final isOutgoing = call.callerId == _currentUserId;
+            final isMissed = call.status == 'missed' || call.status == 'rejected' || call.duration == 0;
+            
+            final otherName = isOutgoing ? call.receiverName : call.callerName;
+            final iconColor = isMissed 
+                ? theme.colorScheme.error 
+                : (isOutgoing ? theme.colorScheme.secondary : Colors.green);
+                
+            final iconData = isOutgoing 
+                ? Icons.call_made_rounded 
+                : (isMissed ? Icons.call_missed_rounded : Icons.call_received_rounded);
 
-          return ListTile(
-            leading: CircleAvatar(
-              backgroundColor: theme.colorScheme.primaryContainer,
-              child: Icon(
-                call.callType == 'video' ? Icons.videocam_rounded : Icons.call_rounded,
-                color: theme.colorScheme.primary,
+            return ListTile(
+              leading: CircleAvatar(
+                backgroundColor: theme.colorScheme.primaryContainer,
+                child: Icon(
+                  call.callType == 'video' ? Icons.videocam_rounded : Icons.call_rounded,
+                  color: theme.colorScheme.primary,
+                ),
               ),
-            ),
-            title: Text(
-              otherName ?? 'Utilisateur inconnu',
-              style: TextStyle(
-                fontWeight: isMissed ? FontWeight.bold : FontWeight.w500,
-                color: isMissed ? theme.colorScheme.error : theme.colorScheme.onSurface,
+              title: Text(
+                otherName ?? 'Utilisateur inconnu',
+                style: TextStyle(
+                  fontWeight: isMissed ? FontWeight.bold : FontWeight.w500,
+                  color: isMissed ? theme.colorScheme.error : theme.colorScheme.onSurface,
+                ),
               ),
-            ),
-            subtitle: Row(
-              children: [
-                Icon(iconData, size: 14, color: iconColor),
-                const SizedBox(width: 4),
-                Text(
-                  _formatDate(call.startTime),
-                  style: TextStyle(color: theme.colorScheme.onSurface.withAlpha(180), fontSize: 13),
-                ),
-                Text(
-                  ' • ${_formatDuration(call.duration)}',
-                  style: TextStyle(color: theme.colorScheme.onSurface.withAlpha(120), fontSize: 13),
-                ),
-              ],
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: Icon(Icons.info_outline, color: theme.colorScheme.primary.withAlpha(150)),
-                  onPressed: () {
-                    // Actions on this call history
-                  },
-                ),
-              ],
-            ),
-          );
-        },
+              subtitle: Row(
+                children: [
+                  Icon(iconData, size: 14, color: iconColor),
+                  const SizedBox(width: 4),
+                  Text(
+                    _formatDate(call.startTime),
+                    style: TextStyle(color: theme.colorScheme.onSurface.withAlpha(180), fontSize: 13),
+                  ),
+                  Text(
+                    ' • ${_formatDuration(call.duration)}',
+                    style: TextStyle(color: theme.colorScheme.onSurface.withAlpha(120), fontSize: 13),
+                  ),
+                ],
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: Icon(Icons.info_outline, color: theme.colorScheme.primary.withAlpha(150)),
+                    onPressed: () {
+                      // Actions on this call history
+                    },
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }

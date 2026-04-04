@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/home_state.dart';
@@ -16,10 +17,14 @@ class HomeNotifier extends Notifier<HomeState> {
   final RoomService _roomService = RoomService();
   final StatusService _statusService = StatusService();
   bool _isDisposed = false;
+  StreamSubscription? _globalEventsSub;
 
   @override
   HomeState build() {
-    ref.onDispose(() => _isDisposed = true);
+    ref.onDispose(() {
+      _isDisposed = true;
+      _globalEventsSub?.cancel();
+    });
     
     // Chargement initial
     _init();
@@ -31,28 +36,85 @@ class HomeNotifier extends Notifier<HomeState> {
     final prefs = await SharedPreferences.getInstance();
     final viewedIds = prefs.getStringList('viewed_status_ids')?.toSet() ?? {};
 
-    // 1. Charger tout le cache local en parallèle
-    final futures = await Future.wait([
-      LocalDatabase.instance.getRooms(),
-      _statusService.getStatuses(),
-    ]);
+    // ═══ PHASE 1 : Chargement INSTANTANÉ depuis SQLite (< 50ms) ═══
+    try {
+      final cachedRooms = await LocalDatabase.instance.getRooms();
+      if (!_isDisposed && cachedRooms.isNotEmpty) {
+        state = state.copyWith(
+          rooms: cachedRooms,
+          viewedStatusIds: viewedIds,
+          isLoadingRooms: false,  // Pas de spinner si on a du cache !
+          isLoadingStatus: true,
+        );
+      }
+    } catch (e) {
+      debugPrint("⚠️ Erreur cache rooms SQLite: $e");
+    }
 
-    if (_isDisposed) return;
-
-    // 2. Global presence connection
+    // ═══ PHASE 2 : Connexion au WS Global pour les événements temps réel ═══
     GlobalPresenceService.instance.connect();
-    
-    state = state.copyWith(
-      rooms: futures[0] as List<Map<String, dynamic>>,
-      statuses: futures[1] as List<StatusModel>,
-      viewedStatusIds: viewedIds,
-      isLoadingRooms: (futures[0] as List).isEmpty,
-      isLoadingStatus: false,
-    );
+    _listenToGlobalEvents();
 
-    // Refresh API
+    // ═══ PHASE 3 : Synchronisation API en arrière-plan (non bloquant) ═══
     refreshRooms();
     refreshStatus();
+  }
+
+  /// Écoute les événements globaux (nouveaux messages dans d'autres rooms)
+  /// pour mettre à jour la liste de conversations en temps réel
+  void _listenToGlobalEvents() {
+    _globalEventsSub = GlobalPresenceService.instance.globalEventsStream.listen((event) {
+      if (_isDisposed) return;
+
+      final type = event['type'];
+      if (type == 'new_message_notification') {
+        final roomId = event['room_id']?.toString();
+        final content = event['content']?.toString() ?? '';
+        final senderName = event['sender_name']?.toString();
+        final timestamp = event['created_at']?.toString() ?? DateTime.now().toIso8601String();
+
+        if (roomId != null) {
+          // Mise à jour atomique de la DB locale
+          LocalDatabase.instance.updateRoomLastMessage(
+            roomId: roomId,
+            lastMessage: content,
+            lastMessageAt: timestamp,
+            lastSenderName: senderName,
+            incrementUnread: true,
+          );
+
+          // Mise à jour instantanée de l'UI
+          _updateRoomInState(roomId, content, timestamp, senderName, incrementUnread: true);
+        }
+      }
+    });
+  }
+
+  /// Met à jour un salon dans l'état actuel et re-trie la liste par date
+  void _updateRoomInState(String roomId, String lastMessage, String lastMessageAt, String? senderName, {bool incrementUnread = false}) {
+    final updatedRooms = state.rooms.map((room) {
+      if (room['id'] == roomId) {
+        return {
+          ...room,
+          'last_message': lastMessage,
+          'last_message_time': lastMessageAt,
+          'last_sender_name': senderName,
+          'unread_count': incrementUnread ? ((room['unread_count'] ?? 0) as int) + 1 : room['unread_count'],
+        };
+      }
+      return room;
+    }).toList();
+
+    // Trier par dernier message (le plus récent en premier)
+    updatedRooms.sort((a, b) {
+      final aTime = a['last_message_time']?.toString() ?? '';
+      final bTime = b['last_message_time']?.toString() ?? '';
+      return bTime.compareTo(aTime);
+    });
+
+    if (!_isDisposed) {
+      state = state.copyWith(rooms: updatedRooms);
+    }
   }
 
   Future<void> markStatusAsRead(String id) async {
@@ -66,15 +128,38 @@ class HomeNotifier extends Notifier<HomeState> {
   Future<void> refreshRooms() async {
     try {
       final rooms = await _roomService.getRooms();
-      await LocalDatabase.instance.saveRooms(rooms);
+      
+      // Sauvegarder en cache SQLite (non bloquant)
+      LocalDatabase.instance.saveRooms(rooms);
       
       if (!_isDisposed) {
+        // Trier par dernier message
+        rooms.sort((a, b) {
+          final aTime = a['last_message_time']?.toString() ?? '';
+          final bTime = b['last_message_time']?.toString() ?? '';
+          return bTime.compareTo(aTime);
+        });
         state = state.copyWith(rooms: rooms, isLoadingRooms: false);
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint("⚠️ Erreur sync rooms API: $e");
       if (!_isDisposed) {
         state = state.copyWith(isLoadingRooms: false);
       }
+    }
+  }
+
+  /// Réinitialise le compteur de non-lus quand l'utilisateur ouvre un salon
+  void markRoomAsRead(String roomId) {
+    LocalDatabase.instance.resetUnreadCount(roomId);
+    final updatedRooms = state.rooms.map((room) {
+      if (room['id'] == roomId) {
+        return {...room, 'unread_count': 0};
+      }
+      return room;
+    }).toList();
+    if (!_isDisposed) {
+      state = state.copyWith(rooms: updatedRooms);
     }
   }
 
@@ -100,3 +185,4 @@ class HomeNotifier extends Notifier<HomeState> {
     }
   }
 }
+

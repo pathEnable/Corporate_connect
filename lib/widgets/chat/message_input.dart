@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -43,8 +43,6 @@ class _MessageInputState extends ConsumerState<MessageInput> {
 
   int _recordDuration = 0;
   Timer? _recordTimer;
-  double _dragOffset = 0.0;
-  final double _cancelThreshold = 80.0;
 
   @override
   void initState() {
@@ -96,23 +94,17 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
-    return ClipRRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          decoration: BoxDecoration(
-            color: isDark 
-                ? const Color(0xFF0D1B1E).withValues(alpha: 0.8)
-                : Colors.white.withValues(alpha: 0.85),
-            border: Border(
-              top: BorderSide(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.08),
-                width: 0.5,
-              ),
-            ),
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.brightness == Brightness.dark ? const Color(0xFF040301) : Colors.white,
+        border: Border(
+          top: BorderSide(
+            color: theme.colorScheme.primary.withValues(alpha: 0.15),
+            width: 0.5,
           ),
+        ),
+      ),
           padding: EdgeInsets.only(
             left: 12, 
             right: 12, 
@@ -143,8 +135,6 @@ class _MessageInputState extends ConsumerState<MessageInput> {
               ),
             ],
           ),
-        ),
-      ),
     );
   }
 
@@ -153,9 +143,8 @@ class _MessageInputState extends ConsumerState<MessageInput> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: theme.colorScheme.primary.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border(left: BorderSide(color: theme.colorScheme.primary, width: 4)),
+        color: theme.colorScheme.primary.withValues(alpha: 0.05),
+        border: Border(left: BorderSide(color: theme.colorScheme.primary, width: 3)),
       ),
       child: Row(
         children: [
@@ -204,9 +193,8 @@ class _MessageInputState extends ConsumerState<MessageInput> {
     return Container(
       constraints: const BoxConstraints(minHeight: 48),
       decoration: BoxDecoration(
-        color: theme.brightness == Brightness.dark ? Colors.black26 : Colors.black.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: theme.colorScheme.onSurface.withValues(alpha: 0.05)),
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.05),
+        border: Border.all(color: theme.colorScheme.onSurface.withValues(alpha: 0.1)),
       ),
       child: TextField(
         controller: _controller,
@@ -225,29 +213,33 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   }
 
   Widget _buildRecordingUI(ThemeData theme) {
-    bool shouldCancel = _dragOffset.abs() > _cancelThreshold;
     return Container(
       height: 48,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: shouldCancel ? Colors.red.withValues(alpha: 0.1) : theme.colorScheme.primary.withValues(alpha: 0.1),
+        color: theme.colorScheme.primary.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(24),
       ),
       child: Row(
         children: [
+          IconButton(
+            icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
+            onPressed: () => _stopRecording(cancel: true),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+          const SizedBox(width: 12),
           const _RecordingBlinkDot(),
           const SizedBox(width: 8),
           Text(_formatDuration(_recordDuration), 
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              shouldCancel ? "Lâcher pour annuler" : "Glisser pour annuler <",
-              style: TextStyle(
-                color: shouldCancel ? Colors.red : Colors.grey[600],
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
+          const Spacer(),
+          const Text(
+            "Enregistrement...",
+            style: TextStyle(
+              color: Colors.red,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ],
@@ -260,35 +252,31 @@ class _MessageInputState extends ConsumerState<MessageInput> {
     bool isRec = _isRecording;
 
     return GestureDetector(
-      onTap: canSend ? _handleSend : null,
-      onLongPressStart: canSend ? null : (_) => _startRecording(),
-      onLongPressMoveUpdate: canSend ? null : (details) {
-        if (mounted) setState(() => _dragOffset = details.localPosition.dx);
+      onTap: () {
+        if (canSend) {
+          _handleSend();
+        } else if (isRec) {
+          _stopRecording(cancel: false); // Envoie l'audio
+        } else {
+          _startRecording();
+        }
       },
-      onLongPressEnd: canSend ? null : (_) => _stopRecording(cancel: _dragOffset.abs() > _cancelThreshold),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         width: 48,
         height: 48,
         decoration: BoxDecoration(
-          color: isRec ? Colors.red : theme.colorScheme.primary,
+          color: theme.colorScheme.primary,
           shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: (isRec ? Colors.red : theme.colorScheme.primary).withValues(alpha: 0.4),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            )
-          ],
         ),
         child: Center(
           child: Icon(
-            canSend ? Icons.send_rounded : (isRec ? Icons.mic_rounded : Icons.mic_none_rounded),
+            (canSend || isRec) ? Icons.send_rounded : Icons.mic_none_rounded,
             color: Colors.black,
             size: 22,
           ),
         ),
-      ).animate(target: isRec ? 1 : 0).scale(begin: const Offset(1, 1), end: const Offset(1.2, 1.2)),
+      ),
     );
   }
 
@@ -306,13 +294,10 @@ class _MessageInputState extends ConsumerState<MessageInput> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => ClipRRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.9),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
               borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
             ),
             child: Column(
@@ -331,8 +316,6 @@ class _MessageInputState extends ConsumerState<MessageInput> {
                 const SizedBox(height: 20),
               ],
             ),
-          ),
-        ),
       ),
     );
   }
@@ -368,7 +351,6 @@ class _MessageInputState extends ConsumerState<MessageInput> {
         if (mounted) {
           setState(() {
             _isRecording = true;
-            _dragOffset = 0.0;
           });
         }
         _startTimer();
@@ -383,7 +365,6 @@ class _MessageInputState extends ConsumerState<MessageInput> {
       if (mounted) {
         setState(() {
           _isRecording = false;
-          _dragOffset = 0.0;
         });
       }
 

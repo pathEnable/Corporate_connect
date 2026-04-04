@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:http/http.dart' as http;
 import '../services/auth_service.dart';
 import '../services/room_service.dart';
@@ -123,12 +124,19 @@ class _ContactsScreenState extends State<ContactsScreen> {
     final theme = Theme.of(context);
     
     return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('Annuaire'),
-        backgroundColor: theme.colorScheme.surface,
+        title: const Text('Annuaire', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.03),
         foregroundColor: theme.colorScheme.onSurface,
         elevation: 0,
+        centerTitle: false,
+        shape: Border(
+          bottom: BorderSide(
+            color: theme.colorScheme.primary.withValues(alpha: 0.15),
+            width: 0.5,
+          ),
+        ),
       ),
       body: Column(
         children: [
@@ -251,7 +259,7 @@ class _ContactAvatar extends StatelessWidget {
         if (snapshot.hasData) {
           return CircleAvatar(
             radius: 26,
-            backgroundImage: NetworkImage(snapshot.data!),
+            backgroundImage: CachedNetworkImageProvider(snapshot.data!),
             backgroundColor: theme.colorScheme.primary.withAlpha(40),
           );
         }

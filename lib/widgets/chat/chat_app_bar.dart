@@ -1,8 +1,7 @@
-import 'dart:ui';
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import '../../screens/call_screen.dart';
 import '../../providers/chat_provider.dart';
 
@@ -27,25 +26,19 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(chatProvider(roomId));
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
-    return ClipRRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          height: 110, // Adjusted for safe area
-          padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
-          decoration: BoxDecoration(
-            color: isDark 
-                ? const Color(0xFF0D1B1E).withValues(alpha: 0.7)
-                : Colors.white.withValues(alpha: 0.8),
-            border: Border(
-              bottom: BorderSide(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.08),
-                width: 0.5,
-              ),
-            ),
+    return Container(
+      height: 110, // Adjusted for safe area
+      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
+      decoration: BoxDecoration(
+        color: theme.brightness == Brightness.dark ? const Color(0xFF040301) : Colors.white,
+        border: Border(
+          bottom: BorderSide(
+            color: theme.colorScheme.primary.withValues(alpha: 0.15),
+            width: 0.5,
           ),
+        ),
+      ),
           child: AppBar(
             backgroundColor: Colors.transparent,
             elevation: 0,
@@ -60,7 +53,7 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                 child: Row(
                   children: [
-                    _buildAvatar(theme),
+                    _buildAvatar(theme, state.otherUserOnline),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -75,7 +68,7 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
                               letterSpacing: -0.3,
                             ),
                           ),
-                          _buildStatusIndicator(theme, state.isConnected),
+                          _buildStatusIndicator(theme, state),
                         ],
                       ),
                     ),
@@ -95,59 +88,185 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
               const SizedBox(width: 8),
             ],
           ),
-        ),
-      ),
     );
   }
 
-  Widget _buildAvatar(ThemeData theme) {
-    return Container(
-      width: 40,
-      height: 40,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          colors: [theme.colorScheme.primary, theme.colorScheme.primary.withValues(alpha: 0.7)],
-        ),
-      ),
-      child: Center(
-        child: Text(
-          roomName[0].toUpperCase(),
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatusIndicator(ThemeData theme, bool isOnline) {
-    return Row(
+  Widget _buildAvatar(ThemeData theme, bool isOnline) {
+    return Stack(
       children: [
         Container(
-          width: 8,
-          height: 8,
+          width: 40,
+          height: 40,
           decoration: BoxDecoration(
-            color: isOnline ? const Color(0xFF26E9CF) : Colors.grey,
             shape: BoxShape.circle,
-            boxShadow: isOnline ? [
-              BoxShadow(
-                color: const Color(0xFF26E9CF).withValues(alpha: 0.5),
-                blurRadius: 4,
-                spreadRadius: 1,
-              )
-            ] : null,
+            gradient: LinearGradient(
+              colors: [theme.colorScheme.primary, theme.colorScheme.primary.withValues(alpha: 0.7)],
+            ),
           ),
-        ).animate(onPlay: (controller) => controller.repeat(reverse: true))
-         .scale(end: const Offset(1.2, 1.2), duration: 1000.ms, curve: Curves.easeInOut),
-        const SizedBox(width: 6),
-        Text(
-          isOnline ? 'En ligne' : 'Hors ligne',
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+          child: Center(
+            child: Text(
+              roomName[0].toUpperCase(),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+          ),
+        ),
+        // Petit indicateur de présence en bas à droite de l'avatar
+        Positioned(
+          bottom: 0,
+          right: 0,
+          child: Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(
+              color: isOnline ? const Color(0xFF26E9CF) : Colors.grey,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: theme.brightness == Brightness.dark ? const Color(0xFF040301) : Colors.white,
+                width: 2,
+              ),
+            ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildStatusIndicator(ThemeData theme, dynamic chatState) {
+    Widget statusWidget;
+
+    // 1. Si pas connecté au WebSocket, afficher "Connexion..."
+    if (!chatState.isConnected) {
+      statusWidget = Row(
+        key: const ValueKey('connecting'),
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 10,
+            height: 10,
+            child: CircularProgressIndicator(
+              strokeWidth: 1.5,
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            'Connexion...',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+            ),
+          ),
+        ],
+      );
+    }
+    // 2. En train d'écrire (priorité haute)
+    else if (chatState.typingUsers.isNotEmpty && !isGroup) {
+      statusWidget = Row(
+        key: const ValueKey('typing'),
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _TypingDots(color: theme.colorScheme.primary),
+          const SizedBox(width: 6),
+          Text(
+            'Écrit...',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: theme.colorScheme.primary,
+            ),
+          ),
+        ],
+      );
+    }
+    // 3. Groupe
+    else if (isGroup) {
+      final typingCount = chatState.typingUsers.length;
+      statusWidget = Text(
+        key: ValueKey('group_$typingCount'),
+        typingCount > 0 ? '$typingCount personne(s) écri(ven)t...' : 'Groupe',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: typingCount > 0 ? FontWeight.w600 : FontWeight.w500,
+          color: typingCount > 0 ? theme.colorScheme.primary : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+        ),
+      );
+    }
+    // 4. Statut de présence réel
+    else {
+      final bool isOnline = chatState.otherUserOnline;
+      final String? presenceStatus = chatState.otherUserStatus;
+
+      String statusText;
+      Color statusColor;
+
+      if (!isOnline) {
+        statusText = 'Hors ligne';
+        statusColor = Colors.grey;
+      } else {
+        switch (presenceStatus) {
+          case 'busy':
+            statusText = 'Occupé';
+            statusColor = Colors.amber;
+            break;
+          case 'dnd':
+            statusText = 'Ne pas déranger';
+            statusColor = Colors.redAccent;
+            break;
+          case 'meeting':
+            statusText = 'En réunion';
+            statusColor = Colors.purpleAccent;
+            break;
+          case 'remote':
+            statusText = 'Télétravail';
+            statusColor = Colors.lightBlueAccent;
+            break;
+          default:
+            statusText = 'En ligne';
+            statusColor = const Color(0xFF26E9CF);
+        }
+      }
+
+      statusWidget = Row(
+        key: ValueKey('status_$statusText'),
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: statusColor,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            statusText,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 250),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 0.3),
+            end: Offset.zero,
+          ).animate(animation),
+          child: child,
+        ),
+      ),
+      child: statusWidget,
     );
   }
 
@@ -176,6 +295,65 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
           channelId: roomId,
           isVideo: isVideo,
         ),
+      ),
+    );
+  }
+}
+
+/// Widget d'animation des 3 points (écriture en cours)
+class _TypingDots extends StatefulWidget {
+  final Color color;
+  const _TypingDots({required this.color});
+
+  @override
+  State<_TypingDots> createState() => _TypingDotsState();
+}
+
+class _TypingDotsState extends State<_TypingDots> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 24,
+      height: 10,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: List.generate(3, (index) {
+          return AnimatedBuilder(
+            animation: _controller,
+            builder: (_, __) {
+              final offset = (_controller.value * 3 - index).clamp(0.0, 1.0);
+              final bounce = (offset < 0.5) ? offset * 2 : 2 - offset * 2;
+              return Transform.translate(
+                offset: Offset(0, -bounce * 4),
+                child: Container(
+                  width: 5,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: widget.color.withValues(alpha: 0.4 + bounce * 0.6),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              );
+            },
+          );
+        }),
       ),
     );
   }

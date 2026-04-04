@@ -102,11 +102,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           Expanded(
             child: isLoading
                 ? ListView.builder(
+                    reverse: true,
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     itemCount: 8,
                     itemBuilder: (context, index) => SkeletonMessage(isMe: index % 2 == 0),
                   )
                 : ListView.builder(
+                    reverse: true,
                     controller: _scrollController,
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     itemCount: messages.length,

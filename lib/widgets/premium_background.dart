@@ -1,4 +1,4 @@
-import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 class PremiumBackground extends StatelessWidget {
@@ -96,10 +96,6 @@ class _GradientBlob extends StatelessWidget {
         gradient: RadialGradient(
           colors: [color, color.withValues(alpha: 0)],
         ),
-      ),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
-        child: Container(color: Colors.transparent),
       ),
     );
   }

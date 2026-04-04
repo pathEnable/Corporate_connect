@@ -33,10 +33,12 @@ class RoomService {
       },
     );
 
-    if (response.statusCode == 200) {
+    if (response.statusCode == 200 || response.statusCode == 201) {
       return jsonDecode(response.body);
     }
-    throw Exception('Erreur lors de la création de la conversation');
+    // Si la room existe (ex: 409 Conflict ou 400), on tente de récupérer la room existante
+    // En théorie, Backend devrait retourner la room existante sur un POST
+    throw Exception('Erreur lors de la création de la conversation (code: ${response.statusCode})');
   }
 
   /// Créer un groupe

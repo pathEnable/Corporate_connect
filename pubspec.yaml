@@ -2,7 +2,7 @@ name: connect_app
 description: "A new Flutter project for Corporate Connect"
 publish_to: 'none'
 
-version: 1.0.1+2
+version: 2.0.0+3
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -39,7 +39,7 @@ dependencies:
   record: ^5.1.2
   audioplayers: ^5.2.1
   agora_rtc_engine: ^6.3.0
-  cached_network_image: ^3.3.1
+  cached_network_image: ^3.4.1
   cryptography: ^2.5.0
   firebase_core: ^2.27.0
   firebase_messaging: ^14.7.10
@@ -51,6 +51,7 @@ dependencies:
   web_socket_channel: ^2.4.0
   flutter_animate: ^4.5.2
   lottie: ^3.1.0
+  connectivity_plus: ^6.0.3
 
 dev_dependencies:
   flutter_test:
@@ -65,12 +66,13 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
+    - assets/audio/
 
 flutter_native_splash:
   color: "#040301"
   image: assets/images/logo_emini.png
   android_12:
-    image: assets/images/logo_emini.png
+    image: assets/images/logo_emini_splash_12.png
     color: "#040301"
   fullscreen: true
 

@@ -59,30 +59,19 @@ class MessageBubble extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
           decoration: BoxDecoration(
-            gradient: isMe 
-              ? const LinearGradient(
-                  colors: [Color(0xFF26E9CF), Color(0xFF1AA18E)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                )
-              : null,
-            color: isMe ? null : notMeBgColor,
+            color: isMe ? const Color(0xFF26E9CF) : notMeBgColor,
             borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(24),
-              topRight: const Radius.circular(24),
-              bottomLeft: isMe ? const Radius.circular(24) : const Radius.circular(6),
-              bottomRight: isMe ? const Radius.circular(6) : const Radius.circular(24),
+              topLeft: const Radius.circular(16),
+              topRight: const Radius.circular(16),
+              bottomLeft: isMe ? const Radius.circular(16) : const Radius.circular(4),
+              bottomRight: isMe ? const Radius.circular(4) : const Radius.circular(16),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: isMe 
-                  ? const Color(0xFF26E9CF).withAlpha(60) 
-                  : Colors.black.withAlpha(isDark ? 80 : 13),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
-            border: isMe ? null : Border.all(color: Colors.grey.withAlpha(25), width: 1),
+            border: Border.all(
+              color: isMe 
+                ? const Color(0xFF1AA18E).withValues(alpha: 0.2)
+                : theme.colorScheme.onSurface.withValues(alpha: 0.1),
+              width: 1,
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,

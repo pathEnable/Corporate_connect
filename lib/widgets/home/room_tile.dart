@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../screens/chat_screen.dart';
 import '../../services/media_service.dart';
 import '../ui_helpers.dart';
@@ -96,13 +97,6 @@ class HomeRoomTile extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: theme.colorScheme.primary,
                             borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: theme.colorScheme.primary.withValues(alpha: 0.3),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
                           ),
                           child: Text(
                             '${room['unread_count']}',
@@ -151,15 +145,8 @@ class _RoomAvatar extends StatelessWidget {
     final theme = Theme.of(context);
     
     return Container(
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
       child: avatarPath == null || avatarPath!.isEmpty
           ? CircleAvatar(
@@ -178,7 +165,7 @@ class _RoomAvatar extends StatelessWidget {
                   return CircleAvatar(
                     radius: 28,
                     backgroundColor: theme.colorScheme.primary.withAlpha(40),
-                    backgroundImage: NetworkImage(snapshot.data!),
+                    backgroundImage: CachedNetworkImageProvider(snapshot.data!),
                   );
                 }
                 return CircleAvatar(

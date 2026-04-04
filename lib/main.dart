@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/auth_service.dart';
@@ -11,13 +12,24 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'providers/settings_provider.dart';
 import 'theme/app_theme.dart';
 import 'dart:async';
-import 'package:lottie/lottie.dart';
+
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
+  // Activer le mode edge-to-edge (plein écran)
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    systemNavigationBarColor: Colors.transparent,
+    systemNavigationBarDividerColor: Colors.transparent,
+    systemNavigationBarContrastEnforced: false,
+    statusBarIconBrightness: Brightness.light, // Souvent blanc sur le splash
+    systemNavigationBarIconBrightness: Brightness.light,
+  ));
+
   // Préchauffage de la base de données locale pour un accès instantané au cache
   if (!kIsWeb) {
     await LocalDatabase.instance.database;
@@ -58,8 +70,8 @@ class CorporateConnectApp extends ConsumerWidget {
           child: child!,
         );
       },
-      theme: AppTheme.lightTheme(settings.fontScale),
-      darkTheme: AppTheme.darkTheme(settings.fontScale),
+      theme: AppTheme.lightTheme(settings.fontScale, accentColorValue: settings.accentColor),
+      darkTheme: AppTheme.darkTheme(settings.fontScale, accentColorValue: settings.accentColor),
       navigatorKey: navigatorKey,
       home: const AuthGate(),
     );
@@ -74,27 +86,18 @@ class AuthGate extends StatefulWidget {
   State<AuthGate> createState() => _AuthGateState();
 }
 
-class _AuthGateState extends State<AuthGate> with TickerProviderStateMixin {
-  late final AnimationController _lottieController;
+class _AuthGateState extends State<AuthGate> {
   bool _isLoggedIn = false;
   bool _authChecked = false;
-  bool _animationComplete = false;
 
   @override
   void initState() {
     super.initState();
-    _lottieController = AnimationController(vsync: this);
     _checkAuth();
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkUpdate();
     });
-  }
-
-  @override
-  void dispose() {
-    _lottieController.dispose();
-    super.dispose();
   }
 
   Future<void> _checkAuth() async {
@@ -104,12 +107,12 @@ class _AuthGateState extends State<AuthGate> with TickerProviderStateMixin {
         _isLoggedIn = loggedIn;
         _authChecked = true;
       });
-      _navigateIfReady();
+      _navigate();
     }
   }
 
-  void _navigateIfReady() {
-    if (_authChecked && _animationComplete && mounted) {
+  void _navigate() {
+    if (_authChecked && mounted) {
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(
@@ -118,7 +121,7 @@ class _AuthGateState extends State<AuthGate> with TickerProviderStateMixin {
           transitionsBuilder: (_, animation, __, child) {
             return FadeTransition(opacity: animation, child: child);
           },
-          transitionDuration: const Duration(milliseconds: 500),
+          transitionDuration: const Duration(milliseconds: 300),
         ),
       );
     }
@@ -140,34 +143,10 @@ class _AuthGateState extends State<AuthGate> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    
-    return Scaffold(
+    return const Scaffold(
       backgroundColor: Colors.white,
-      body: AnimatedOpacity(
-        opacity: _animationComplete ? 0.0 : 1.0,
-        duration: const Duration(milliseconds: 400),
-        child: Center(
-          child: SizedBox(
-            width: size.width * 0.85,
-            child: Lottie.asset(
-              'assets/images/logo_animation.json',
-              controller: _lottieController,
-              fit: BoxFit.contain,
-              onLoaded: (composition) {
-                _lottieController
-                  ..duration = composition.duration
-                  ..forward().whenComplete(() {
-                    setState(() => _animationComplete = true);
-                    // Petit délai pour laisser le fade-out se jouer
-                    Future.delayed(const Duration(milliseconds: 500), () {
-                      _navigateIfReady();
-                    });
-                  });
-              },
-            ),
-          ),
-        ),
+      body: Center(
+        child: CircularProgressIndicator(), // Simple loader
       ),
     );
   }

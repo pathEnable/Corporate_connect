@@ -113,8 +113,14 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
         backgroundColor: Colors.transparent,
         appBar: AppBar(
           title: const Text('Nouveau Groupe', style: TextStyle(fontWeight: FontWeight.bold)),
-          backgroundColor: Colors.transparent,
+          backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.03),
           elevation: 0,
+          shape: Border(
+            bottom: BorderSide(
+              color: theme.colorScheme.primary.withValues(alpha: 0.15),
+              width: 0.5,
+            ),
+          ),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
             onPressed: () => Navigator.pop(context),
@@ -142,9 +148,9 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
               child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surface.withValues(alpha: 0.5),
+                  color: theme.colorScheme.primary.withValues(alpha: 0.03),
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: theme.colorScheme.onSurface.withValues(alpha: 0.05)),
+                  border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.1)),
                 ),
                 child: Row(
                   children: [

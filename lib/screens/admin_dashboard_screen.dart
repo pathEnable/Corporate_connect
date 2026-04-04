@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/admin_service.dart';
+import '../widgets/premium_background.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -41,44 +42,54 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
-      appBar: AppBar(
-        title: const Text('Administration', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: const Color(0xFF004D40),
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF004D40)))
-          : RefreshIndicator(
-              onRefresh: _loadData,
-              color: const Color(0xFF004D40),
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  // -- Section Stats --
-                  const Text('Vue d\'ensemble', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  _buildStatsGrid(),
-                  const SizedBox(height: 32),
-                  // -- Section Utilisateurs --
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Utilisateurs', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                      Text('${_users.length} total', style: TextStyle(color: Colors.grey[600])),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  ..._users.map((user) => _buildUserCard(user)),
-                ],
-              ),
+    final theme = Theme.of(context);
+    return PremiumBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          title: const Text('Administration', style: TextStyle(fontWeight: FontWeight.bold)),
+          backgroundColor: theme.brightness == Brightness.dark ? const Color(0xFF040301) : Colors.white,
+          foregroundColor: theme.colorScheme.onSurface,
+          elevation: 0,
+          centerTitle: false,
+          shape: Border(
+            bottom: BorderSide(
+              color: theme.colorScheme.primary.withValues(alpha: 0.15),
+              width: 0.5,
             ),
+          ),
+        ),
+        body: _isLoading
+            ? Center(child: CircularProgressIndicator(color: theme.colorScheme.primary))
+            : RefreshIndicator(
+                onRefresh: _loadData,
+                color: theme.colorScheme.primary,
+                child: ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    // -- Section Stats --
+                    const Text('Vue d\'ensemble', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 16),
+                    _buildStatsGrid(theme),
+                    const SizedBox(height: 32),
+                    // -- Section Utilisateurs --
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Utilisateurs', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                        Text('${_users.length} total', style: TextStyle(color: Colors.grey[600])),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    ..._users.map((user) => _buildUserCard(user, theme)),
+                  ],
+                ),
+              ),
+      ),
     );
   }
 
-  Widget _buildStatsGrid() {
+  Widget _buildStatsGrid(ThemeData theme) {
     if (_stats == null) return const SizedBox.shrink();
     final items = [
       _StatItem('Utilisateurs', _stats!['total_users'] ?? 0, Icons.people, const Color(0xFF1565C0)),
@@ -104,9 +115,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         final item = items[index];
         return Container(
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 8, offset: const Offset(0, 4))],
+            color: theme.colorScheme.surface.withValues(alpha: 0.05),
+            border: Border.all(color: theme.colorScheme.onSurface.withValues(alpha: 0.1)),
           ),
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -128,18 +138,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  Widget _buildUserCard(Map<String, dynamic> user) {
+  Widget _buildUserCard(Map<String, dynamic> user, ThemeData theme) {
     final isActive = user['is_active'] == true;
     final isAdmin = user['is_admin'] == true;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: theme.colorScheme.onSurface.withValues(alpha: 0.05), width: 0.5)),
+      ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: CircleAvatar(
-          backgroundColor: isActive ? const Color(0xFF004D40) : Colors.grey,
+          backgroundColor: isActive ? theme.colorScheme.primary : theme.dividerColor.withValues(alpha: 0.1),
           backgroundImage: user['avatar_url'] != null ? NetworkImage(user['avatar_url']) : null,
           child: user['avatar_url'] == null
               ? Text(
@@ -153,8 +163,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             Expanded(child: Text(user['full_name'] ?? 'Inconnu', style: const TextStyle(fontWeight: FontWeight.w600))),
             if (isAdmin) Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(color: const Color(0xFF004D40), borderRadius: BorderRadius.circular(12)),
-              child: const Text('Admin', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+              decoration: const BoxDecoration(color: Color(0xFF26E9CF)),
+              child: const Text('Admin', style: TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -166,10 +176,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               const Spacer(),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: isActive ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                color: isActive ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
                 child: Text(
                   isActive ? 'Actif' : 'Banni',
                   style: TextStyle(color: isActive ? Colors.green[700] : Colors.red[700], fontSize: 12, fontWeight: FontWeight.bold),

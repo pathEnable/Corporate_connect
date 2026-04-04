@@ -4,6 +4,8 @@ class ChatState {
   final bool isConnected;
   final Set<String> typingUsers;
   final Map<String, String> memberKeys;
+  final bool otherUserOnline;
+  final String? otherUserStatus; // 'online', 'busy', 'dnd', 'meeting', 'remote'
 
   ChatState({
     required this.messages,
@@ -11,6 +13,8 @@ class ChatState {
     this.isConnected = false,
     required this.typingUsers,
     required this.memberKeys,
+    this.otherUserOnline = false,
+    this.otherUserStatus,
   });
 
   ChatState copyWith({
@@ -19,6 +23,8 @@ class ChatState {
     bool? isConnected,
     Set<String>? typingUsers,
     Map<String, String>? memberKeys,
+    bool? otherUserOnline,
+    String? otherUserStatus,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
@@ -26,6 +32,8 @@ class ChatState {
       isConnected: isConnected ?? this.isConnected,
       typingUsers: typingUsers ?? this.typingUsers,
       memberKeys: memberKeys ?? this.memberKeys,
+      otherUserOnline: otherUserOnline ?? this.otherUserOnline,
+      otherUserStatus: otherUserStatus ?? this.otherUserStatus,
     );
   }
 }

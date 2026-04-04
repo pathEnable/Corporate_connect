@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../services/encryption_service.dart';
+import '../services/encryption_service.dart';
+import '../widgets/premium_background.dart';
 
 class KeyBackupScreen extends StatefulWidget {
   const KeyBackupScreen({super.key});
@@ -47,14 +48,22 @@ class _KeyBackupScreenState extends State<KeyBackupScreen> {
     final theme = Theme.of(context);
     List<String> words = _mnemonic?.split(' ') ?? [];
 
-    return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
-        title: const Text('Sauvegarde de Sécurité'),
-        backgroundColor: theme.colorScheme.surface,
-        foregroundColor: theme.colorScheme.onSurface,
-        elevation: 0,
-      ),
+    return PremiumBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          title: const Text('Sécurité et Sauvegarde', style: TextStyle(fontWeight: FontWeight.bold)),
+          backgroundColor: theme.brightness == Brightness.dark ? const Color(0xFF040301) : Colors.white,
+          foregroundColor: theme.colorScheme.onSurface,
+          elevation: 0,
+          centerTitle: false,
+          shape: Border(
+            bottom: BorderSide(
+              color: theme.colorScheme.primary.withValues(alpha: 0.15),
+              width: 0.5,
+            ),
+          ),
+        ),
       body: _isLoading 
         ? const Center(child: CircularProgressIndicator())
         : SingleChildScrollView(
@@ -66,7 +75,7 @@ class _KeyBackupScreenState extends State<KeyBackupScreen> {
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withAlpha(20),
+                      color: theme.colorScheme.primary.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(Icons.shield_rounded, size: 64, color: theme.colorScheme.primary),
@@ -80,7 +89,7 @@ class _KeyBackupScreenState extends State<KeyBackupScreen> {
                 const SizedBox(height: 12),
                 Text(
                   'Ces 24 mots sont la seule clé de vos messages chiffrés. Si vous perdez cet appareil, cette phrase vous permettra de tout récupérer.',
-                  style: TextStyle(color: theme.colorScheme.onSurface.withAlpha(150), fontSize: 14),
+                  style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.6), fontSize: 14),
                 ),
                 const SizedBox(height: 8),
                 const Text(
@@ -95,9 +104,8 @@ class _KeyBackupScreenState extends State<KeyBackupScreen> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceContainerHighest.withAlpha(100),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: theme.dividerColor.withAlpha(50)),
+                        color: theme.colorScheme.surface.withValues(alpha: 0.05),
+                        border: Border.all(color: theme.colorScheme.onSurface.withValues(alpha: 0.1)),
                       ),
                       child: Wrap(
                         spacing: 8,
@@ -107,13 +115,12 @@ class _KeyBackupScreenState extends State<KeyBackupScreen> {
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                             decoration: BoxDecoration(
                               color: theme.colorScheme.surface,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: theme.dividerColor.withAlpha(30)),
+                              border: Border.all(color: theme.colorScheme.onSurface.withValues(alpha: 0.1)),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text('${index + 1}. ', style: TextStyle(color: theme.colorScheme.primary.withAlpha(150), fontSize: 10)),
+                                Text('${index + 1}. ', style: TextStyle(color: theme.colorScheme.primary.withValues(alpha: 0.6), fontSize: 10)),
                                 Text(words[index], style: const TextStyle(fontWeight: FontWeight.w500)),
                               ],
                             ),
@@ -127,8 +134,7 @@ class _KeyBackupScreenState extends State<KeyBackupScreen> {
                           onTap: () => setState(() => _isRevealed = true),
                           child: Container(
                             decoration: BoxDecoration(
-                              color: theme.colorScheme.surface.withAlpha(240),
-                              borderRadius: BorderRadius.circular(20),
+                              color: theme.colorScheme.surface.withValues(alpha: 0.95),
                             ),
                             child: Center(
                               child: Column(
@@ -171,7 +177,8 @@ class _KeyBackupScreenState extends State<KeyBackupScreen> {
                 ),
               ],
             ),
-          ),
+        ),
+      ),
     );
   }
 }

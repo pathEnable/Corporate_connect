@@ -31,7 +31,7 @@ class HomeChatsTab extends ConsumerWidget {
                 Expanded(
                   child: ListView.separated(
                     itemCount: state.rooms.length,
-                    padding: const EdgeInsets.only(bottom: 100), // Espace pour la barre flottante
+                    padding: const EdgeInsets.only(bottom: 20), 
                     separatorBuilder: (context, index) => Divider(height: 1, indent: 83, color: theme.dividerColor.withAlpha(30)),
                     itemBuilder: (context, index) {
                       final room = state.rooms[index];

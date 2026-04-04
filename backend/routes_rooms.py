@@ -87,6 +87,40 @@ def create_room(
     is_group = room_data.get("is_group", False)
     member_ids = room_data.get("member_ids", [])
 
+    # --- ANTI-DOUBLON : Pour les discussions privées (1:1), vérifier si un salon existe déjà ---
+    if not is_group and len(member_ids) == 1:
+        target_id = str(member_ids[0])
+        current_id = str(current_user.id)
+        
+        # Trouver tous les salons privés de l'utilisateur courant
+        my_rooms = db.query(RoomMember.room_id).filter(
+            RoomMember.profile_id == current_id
+        ).subquery()
+        
+        # Trouver les salons où l'autre membre est aussi présent ET qui ne sont pas des groupes
+        existing_room = (
+            db.query(Room)
+            .join(RoomMember, Room.id == RoomMember.room_id)
+            .filter(
+                Room.id.in_(db.query(my_rooms.c.room_id)),
+                Room.is_group == False,
+                RoomMember.profile_id == target_id,
+            )
+            .first()
+        )
+        
+        if existing_room:
+            # Résoudre le nom d'affichage (nom de l'autre membre)
+            other_profile = db.query(Profile).filter(Profile.id == target_id).first()
+            display_name = other_profile.full_name if other_profile else existing_room.name
+            
+            return RoomResponse(
+                id=existing_room.id,
+                name=display_name,
+                is_group=False,
+            )
+    # -------------------------------------------------------------------
+
     # Créer le salon
     new_room = Room(id=uuid.uuid4(), name=name, is_group=is_group)
     db.add(new_room)

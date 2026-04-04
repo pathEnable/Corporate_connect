@@ -8,12 +8,13 @@ class AppTheme {
   static const Color surfaceDark = Color(0xFF1A1A1A);
   static const Color surfaceLight = Color(0xFFF8F9FA);
 
-  static ThemeData lightTheme(double fontScale) {
+  static ThemeData lightTheme(double fontScale, {int? accentColorValue}) {
+    final primaryColor = accentColorValue != null ? Color(accentColorValue) : primaryTurquoise;
     return ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: primaryTurquoise,
-        primary: primaryTurquoise,
+        seedColor: primaryColor,
+        primary: primaryColor,
         onPrimary: Colors.black,
         surface: Colors.white,
         surfaceContainerLowest: Colors.white,
@@ -40,13 +41,13 @@ class AppTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: primaryTurquoise,
+          backgroundColor: primaryColor,
           foregroundColor: Colors.black,
           minimumSize: const Size(double.infinity, 56),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
           textStyle: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 16, letterSpacing: 0.5),
           elevation: 2,
-          shadowColor: primaryTurquoise.withAlpha(100),
+          shadowColor: primaryColor.withAlpha(100),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -56,19 +57,20 @@ class AppTheme {
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(18),
-          borderSide: const BorderSide(color: primaryTurquoise, width: 1.5),
+          borderSide: BorderSide(color: primaryColor, width: 1.5),
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       ),
     );
   }
 
-  static ThemeData darkTheme(double fontScale) {
+  static ThemeData darkTheme(double fontScale, {int? accentColorValue}) {
+    final primaryColor = accentColorValue != null ? Color(accentColorValue) : primaryTurquoise;
     return ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: primaryTurquoise,
-        primary: primaryTurquoise,
+        seedColor: primaryColor,
+        primary: primaryColor,
         onPrimary: Colors.black,
         surface: deepBlack,
         surfaceContainerLowest: deepBlack,
@@ -96,13 +98,13 @@ class AppTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: primaryTurquoise,
+          backgroundColor: primaryColor,
           foregroundColor: Colors.black,
           minimumSize: const Size(double.infinity, 56),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
           textStyle: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 16, letterSpacing: 0.5),
           elevation: 4,
-          shadowColor: primaryTurquoise.withAlpha(120),
+          shadowColor: primaryColor.withAlpha(120),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -112,7 +114,7 @@ class AppTheme {
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(18),
-          borderSide: const BorderSide(color: primaryTurquoise, width: 1.5),
+          borderSide: BorderSide(color: primaryColor, width: 1.5),
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       ),

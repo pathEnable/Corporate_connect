@@ -1,4 +1,7 @@
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../widgets/premium_background.dart';
 import '../services/auth_service.dart';
 import 'home_screen.dart';
 import 'register_screen.dart';
@@ -111,34 +114,46 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
 
-    return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            children: [
-              const SizedBox(height: 40),
-              // Logo & Title
-              Hero(
-                tag: 'app_logo',
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primaryContainer.withAlpha(50),
-                    shape: BoxShape.circle,
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarDividerColor: Colors.transparent,
+        systemNavigationBarContrastEnforced: false,
+        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+        systemNavigationBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+      ),
+      child: PremiumBackground(
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          body: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(24, MediaQuery.of(context).viewPadding.top + 24, 24, 24 + MediaQuery.of(context).viewPadding.bottom),
+            child: Column(
+              children: [
+                const SizedBox(height: 40),
+                // Logo & Title
+                Hero(
+                  tag: 'app_logo',
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.chat_bubble_rounded, size: 64, color: colorScheme.primary),
                   ),
-                  child: Icon(Icons.chat_bubble_rounded, size: 64, color: colorScheme.primary),
                 ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Corporate Connect',
-                style: theme.textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: colorScheme.primary,
+                const SizedBox(height: 16),
+                Text(
+                  'Corporate Connect',
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: colorScheme.primary,
+                    letterSpacing: -0.5,
+                  ),
                 ),
-              ),
               const SizedBox(height: 8),
               Text(
                 'Communication interne sécurisée',
@@ -150,30 +165,32 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               Container(
                 height: 50,
                 decoration: BoxDecoration(
-                  color: theme.brightness == Brightness.light ? Colors.grey[100] : Colors.grey[900],
-                  borderRadius: BorderRadius.circular(12),
+                  color: isDark ? const Color(0xFF1A1A1A) : Colors.grey[100],
+                  borderRadius: BorderRadius.zero, // Flat design
+                  border: Border.all(color: colorScheme.primary.withValues(alpha: 0.1)),
                 ),
                 child: TabBar(
                   controller: _tabController,
                   indicator: BoxDecoration(
                     color: colorScheme.primary,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.zero, // Flat design
                   ),
-                  labelColor: colorScheme.onPrimary,
+                  labelColor: isDark ? Colors.black : Colors.white,
                   unselectedLabelColor: theme.hintColor,
                   dividerColor: Colors.transparent,
                   indicatorSize: TabBarIndicatorSize.tab,
+                  labelStyle: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5),
                   tabs: const [
-                    Tab(text: 'Email Pro'),
-                    Tab(text: 'Téléphone'),
+                    Tab(text: 'EMAIL PRO'),
+                    Tab(text: 'TÉLÉPHONE'),
                   ],
                 ),
               ),
               const SizedBox(height: 32),
 
-              // Tab Views (Fixed height for simplicity in scrollable)
+              // Tab Views
               SizedBox(
-                height: 300,
+                height: 280,
                 child: TabBarView(
                   controller: _tabController,
                   children: [
@@ -183,21 +200,26 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 ),
               ),
 
-              const SizedBox(height: 16),
-              // Bouton d'inscription
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                  );
-                },
-                child: Text(
-                  'Pas de compte ? Inscrivez-vous',
-                  style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold),
+                const SizedBox(height: 16),
+                // Bouton d'inscription
+                TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                    );
+                  },
+                  child: Text(
+                    'PAS DE COMPTE ? INSCRIVEZ-VOUS',
+                    style: TextStyle(
+                      color: colorScheme.primary, 
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.0,
+                    ),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -210,9 +232,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         TextField(
           controller: _emailController,
           keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             labelText: 'Email professionnel',
-            prefixIcon: Icon(Icons.email_outlined),
+            prefixIcon: const Icon(Icons.email_outlined),
+            filled: true,
+            fillColor: theme.brightness == Brightness.dark ? const Color(0xFF1A1A1A) : Colors.grey[50],
+            border: const OutlineInputBorder(borderRadius: BorderRadius.zero),
           ),
         ),
         const SizedBox(height: 16),
@@ -226,12 +251,19 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               icon: Icon(_obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
               onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
             ),
+            filled: true,
+            fillColor: theme.brightness == Brightness.dark ? const Color(0xFF1A1A1A) : Colors.grey[50],
+            border: const OutlineInputBorder(borderRadius: BorderRadius.zero),
           ),
         ),
         const SizedBox(height: 32),
         ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            minimumSize: const Size(double.infinity, 56),
+            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          ),
           onPressed: _isLoading ? null : _loginWithEmail,
-          child: _isLoading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Se connecter'),
+          child: _isLoading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('SE CONNECTER'),
         ),
       ],
     );
@@ -243,9 +275,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         TextField(
           controller: _phoneController,
           keyboardType: TextInputType.phone,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             labelText: 'Numéro de téléphone',
-            prefixIcon: Icon(Icons.phone_outlined),
+            prefixIcon: const Icon(Icons.phone_outlined),
+            filled: true,
+            fillColor: theme.brightness == Brightness.dark ? const Color(0xFF1A1A1A) : Colors.grey[50],
+            border: const OutlineInputBorder(borderRadius: BorderRadius.zero),
           ),
         ),
         if (_otpSent) ...[
@@ -253,18 +288,25 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           TextField(
             controller: _otpController,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Code OTP',
-              prefixIcon: Icon(Icons.pin_outlined),
+              prefixIcon: const Icon(Icons.pin_outlined),
+              filled: true,
+              fillColor: theme.brightness == Brightness.dark ? const Color(0xFF1A1A1A) : Colors.grey[50],
+              border: const OutlineInputBorder(borderRadius: BorderRadius.zero),
             ),
           ),
         ],
         const SizedBox(height: 32),
         ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            minimumSize: const Size(double.infinity, 56),
+            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          ),
           onPressed: _isLoading ? null : (_otpSent ? _verifyOtp : _sendOtp),
           child: _isLoading
               ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : Text(_otpSent ? 'Vérifier le code' : 'Envoyer le code SMS'),
+              : Text(_otpSent ? 'VÉRIFIER LE CODE' : 'ENVOYER LE CODE SMS'),
         ),
       ],
     );

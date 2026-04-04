@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../widgets/premium_background.dart';
 import '../services/auth_service.dart';
 import 'home_screen.dart';
 
@@ -114,90 +116,103 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
 
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
-          onPressed: _prevStep,
-        ),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarDividerColor: Colors.transparent,
+        systemNavigationBarContrastEnforced: false,
+        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+        systemNavigationBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
       ),
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ProgressBar
-                  Row(
-                    children: List.generate(3, (index) {
-                      return Expanded(
-                        child: Container(
-                          height: 4,
-                          margin: EdgeInsets.only(right: index < 2 ? 8.0 : 0),
-                          decoration: BoxDecoration(
-                            color: _currentStep >= index ? colorScheme.primary : colorScheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(2),
+      child: PremiumBackground(
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: AppBar(
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_ios_new_rounded),
+              onPressed: _prevStep,
+            ),
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+          ),
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ProgressBar
+                    Row(
+                      children: List.generate(3, (index) {
+                        return Expanded(
+                          child: Container(
+                            height: 4,
+                            margin: EdgeInsets.only(right: index < 2 ? 8.0 : 0),
+                            decoration: BoxDecoration(
+                              color: _currentStep >= index ? colorScheme.primary : colorScheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.zero, // Flat design
+                            ),
                           ),
+                        );
+                      }),
+                    ),
+                    const SizedBox(height: 24),
+                    Hero(
+                      tag: 'app_logo_text',
+                      child: Text(
+                        'Créer un compte',
+                        style: theme.textTheme.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.primary,
                         ),
-                      );
-                    }),
-                  ),
-                  const SizedBox(height: 24),
-                  Hero(
-                    tag: 'app_logo_text',
-                    child: Text(
-                      'Créer un compte',
-                      style: theme.textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.primary,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Rejoignez la plateforme Corporate Connect',
-                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor),
-                  ),
-                  const SizedBox(height: 32),
-                ],
-              ),
-            ),
-            
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                physics: const NeverScrollableScrollPhysics(), // Disable swipe
-                children: [
-                  _buildStep1(theme),
-                  _buildStep2(theme),
-                  _buildStep3(theme),
-                ],
-              ),
-            ),
-
-            Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _nextStep,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : Text(_currentStep == 2 ? "Valider l'inscription" : "Suivant"),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Rejoignez la plateforme Corporate Connect',
+                      style: theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor),
+                    ),
+                    const SizedBox(height: 32),
+                  ],
                 ),
               ),
-            ),
-          ],
+              
+              Expanded(
+                child: PageView(
+                  controller: _pageController,
+                  physics: const NeverScrollableScrollPhysics(),
+                  children: [
+                    _buildStep1(theme),
+                    _buildStep2(theme),
+                    _buildStep3(theme),
+                  ],
+                ),
+              ),
+  
+              Padding(
+                padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + MediaQuery.of(context).viewPadding.bottom),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _nextStep,
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero), // Flat design
+                      elevation: 0,
+                    ),
+                    child: _isLoading
+                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : Text(_currentStep == 2 ? "Valider l'inscription" : "Suivant"),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
