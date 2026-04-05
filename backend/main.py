@@ -127,7 +127,8 @@ async def redirect_to_github_apk(variant: str):
             # Récupérer les infos de la dernière release
             response = await client.get(
                 f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
-                follow_redirects=True
+                follow_redirects=True,
+                headers={"User-Agent": "Corporate-Connect-Server"}
             )
             if response.status_code != 200:
                 return JSONResponse(status_code=502, content={"detail": "Impossible de contacter GitHub."})
@@ -160,7 +161,8 @@ async def get_releases_history():
         try:
             response = await client.get(
                 f"https://api.github.com/repos/{GITHUB_REPO}/releases",
-                follow_redirects=True
+                follow_redirects=True,
+                headers={"User-Agent": "Corporate-Connect-Server"}
             )
             if response.status_code != 200:
                 return JSONResponse(status_code=502, content={"detail": "GitHub API inaccessible."})
