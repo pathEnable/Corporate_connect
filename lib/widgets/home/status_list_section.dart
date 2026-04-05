@@ -6,6 +6,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../models/status_model.dart';
 import '../../providers/home_provider.dart';
 import '../../screens/story_view_screen.dart';
+import '../../screens/story_creator_screen.dart';
 import '../ui_helpers.dart';
 
 class StatusListSection extends ConsumerWidget {
@@ -72,47 +73,10 @@ class _AddStatusItem extends StatelessWidget {
   final WidgetRef ref;
   const _AddStatusItem({required this.ref});
 
-  void _showCreateStatusDialog(BuildContext context) {
-    // Current simplified dialog - later replaced by StoryCreatorScreen
-    final theme = Theme.of(context);
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-          backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.9),
-          title: const Text('Nouveau statut', style: TextStyle(fontWeight: FontWeight.bold)),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: InputDecoration(
-              hintText: "Quoi de neuf ?",
-              filled: true,
-              fillColor: theme.colorScheme.onSurface.withValues(alpha: 0.05),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-            ),
-            maxLength: 100,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context), 
-              child: Text('Annuler', style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.5)))
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (controller.text.isNotEmpty) {
-                  ref.read(homeProvider.notifier).createStatus(text: controller.text);
-                  Navigator.pop(context);
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: theme.colorScheme.primary,
-                foregroundColor: Colors.black,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              child: const Text('Publier'),
-            ),
-          ],
-        ),
+  void _navigateToCreator(BuildContext context) {
+    Navigator.push(
+      context,
+      FadeSlideRoute(page: const StoryCreatorScreen()),
     );
   }
 
@@ -120,39 +84,42 @@ class _AddStatusItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return GestureDetector(
-      onTap: () => _showCreateStatusDialog(context),
+      onTap: () => _navigateToCreator(context),
       child: Padding(
         padding: const EdgeInsets.only(left: 20, right: 12),
         child: Column(
           children: [
-            Stack(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.3), width: 1.5),
-                  ),
-                  child: CircleAvatar(
-                    radius: 30,
-                    backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                    child: Icon(Icons.person_outline_rounded, color: theme.colorScheme.primary, size: 30),
-                  ),
-                ),
-                Positioned(
-                  bottom: 2,
-                  right: 2,
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
+            Hero(
+              tag: 'story_creator',
+              child: Stack(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(3),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.primary,
                       shape: BoxShape.circle,
-                      border: Border.all(color: theme.colorScheme.surface, width: 2),
+                      border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.3), width: 1.5),
                     ),
-                    child: const Icon(Icons.add_rounded, color: Colors.black, size: 18),
+                    child: CircleAvatar(
+                      radius: 30,
+                      backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                      child: Icon(Icons.person_outline_rounded, color: theme.colorScheme.primary, size: 30),
+                    ),
                   ),
-                ),
-              ],
+                  Positioned(
+                    bottom: 2,
+                    right: 2,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: theme.colorScheme.surface, width: 2),
+                      ),
+                      child: const Icon(Icons.add_rounded, color: Colors.black, size: 18),
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 8),
             Text('Moi', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withValues(alpha: 0.7))),

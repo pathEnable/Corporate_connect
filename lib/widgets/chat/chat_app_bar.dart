@@ -20,7 +20,7 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
   });
 
   @override
-  Size get preferredSize => const Size.fromHeight(70);
+  Size get preferredSize => const Size.fromHeight(80);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -28,8 +28,11 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
     final theme = Theme.of(context);
 
     return Container(
-      height: 110, // Adjusted for safe area
-      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
+      height: 110 + MediaQuery.of(context).padding.top,
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top + 8,
+        bottom: 8,
+      ),
       decoration: BoxDecoration(
         color: theme.brightness == Brightness.dark ? const Color(0xFF040301) : Colors.white,
         border: Border(
@@ -39,54 +42,61 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
           ),
         ),
       ),
-          child: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-              onPressed: () => Navigator.pop(context),
-            ),
-            title: InkWell(
-              onTap: onShowInfo,
-              borderRadius: BorderRadius.circular(12),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                child: Row(
-                  children: [
-                    _buildAvatar(theme, state.otherUserOnline),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            roomName,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: -0.3,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              leadingWidth: 40,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+                onPressed: () => Navigator.pop(context),
+              ),
+              title: InkWell(
+                onTap: onShowInfo,
+                borderRadius: BorderRadius.circular(16),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  child: Row(
+                    children: [
+                      _buildAvatar(theme, state.otherUserOnline),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              roomName,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                height: 1.2,
+                                letterSpacing: -0.4,
+                              ),
                             ),
-                          ),
-                          _buildStatusIndicator(theme, state),
-                        ],
+                            const SizedBox(height: 2),
+                            _buildStatusIndicator(theme, state),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
+              actions: [
+                _buildActionButton(
+                  icon: Icons.videocam_rounded,
+                  onPressed: () => _startCall(context, ref, isVideo: true),
+                ),
+                const SizedBox(width: 4),
+                _buildActionButton(
+                  icon: Icons.call_rounded,
+                  onPressed: () => _startCall(context, ref, isVideo: false),
+                ),
+                const SizedBox(width: 12),
+              ],
             ),
-            actions: [
-              _buildActionButton(
-                icon: Icons.videocam_rounded,
-                onPressed: () => _startCall(context, ref, isVideo: true),
-              ),
-              _buildActionButton(
-                icon: Icons.call_rounded,
-                onPressed: () => _startCall(context, ref, isVideo: false),
-              ),
-              const SizedBox(width: 8),
-            ],
           ),
     );
   }

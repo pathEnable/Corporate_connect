@@ -3,7 +3,7 @@ import uuid
 import asyncio
 from datetime import datetime
 from typing import Dict, Set
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query, status
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Message, Room, RoomMember, Profile
@@ -118,8 +118,8 @@ async def websocket_global(
             print(f"❌ WS Global refusé: Discordance ID ({token_sub} != {user_id})")
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
-    except JWTError as e:
-        print(f"❌ WS Global refusé: Erreur JWT ({e})")
+    except Exception as e:
+        print(f"❌ WS Global refusé: Erreur décodage JWT ({e})")
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
@@ -171,7 +171,8 @@ async def websocket_chat(
         if token_user_id != user_id:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
-    except JWTError:
+    except Exception as e:
+        print(f"❌ WS Chat refusé: Erreur décodage JWT ({e})")
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 

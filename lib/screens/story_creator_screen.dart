@@ -2,10 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 
 import '../providers/home_provider.dart';
-import '../widgets/premium_background.dart';
 
 class StoryCreatorScreen extends ConsumerStatefulWidget {
   const StoryCreatorScreen({super.key});
@@ -55,8 +53,6 @@ class _StoryCreatorScreenState extends ConsumerState<StoryCreatorScreen> {
     try {
       String? mediaUrl;
       if (_imageFile != null) {
-        // In a real app, upload to S3/Firebase here. 
-        // For now, we simulate by using the local path (or a placeholder if backend requires URL)
         mediaUrl = _imageFile!.path; 
       }
 
@@ -79,130 +75,190 @@ class _StoryCreatorScreenState extends ConsumerState<StoryCreatorScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final topPadding = MediaQuery.of(context).padding.top;
     
-    return PremiumBackground(
+    return Hero(
+      tag: 'story_creator',
       child: Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          title: const Text('Créer une Story', style: TextStyle(fontWeight: FontWeight.bold)),
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.close_rounded),
-            onPressed: () => Navigator.pop(context),
-          ),
-          actions: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: ElevatedButton(
-                onPressed: _isUploading ? null : _submit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.colorScheme.primary,
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  elevation: 4,
+        backgroundColor: _imageFile != null ? Colors.black : _statusColors[_colorIndex],
+        body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 1. Background Content (Image or Gradient)
+          if (_imageFile != null)
+            Positioned.fill(
+              child: Image.file(_imageFile!, fit: BoxFit.cover),
+            )
+          else
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      _statusColors[_colorIndex],
+                      _statusColors[_colorIndex].withValues(alpha: 0.8),
+                    ],
+                  ),
                 ),
-                child: _isUploading 
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                  : const Text('Partager', style: TextStyle(fontWeight: FontWeight.w800)),
               ),
             ),
-          ],
-        ),
-        body: Column(
-          children: [
-            Expanded(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: AspectRatio(
-                    aspectRatio: 9 / 16,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(30),
-                      child: Stack(
-                        children: [
-                          // Background Image or Gradient
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 300),
-                            width: double.infinity,
-                            height: double.infinity,
-                            color: _imageFile != null ? Colors.transparent : _statusColors[_colorIndex],
-                            child: _imageFile != null
-                                ? Image.file(_imageFile!, fit: BoxFit.cover)
-                                : null,
-                          ),
-                          
-                          // Glassy Overlay for Text
-                          // Text Input
-                          Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(20.0),
-                              child: TextField(
-                                controller: _textController,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                                decoration: InputDecoration(
-                                  hintText: "Tapez un statut...",
-                                  hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 28),
-                                  border: InputBorder.none,
-                                ),
-                                maxLines: null,
-                              ),
-                            ),
-                          ),
 
-                          // Floating Controls
-                          Positioned(
-                            bottom: 20,
-                            right: 20,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (_imageFile == null) ...[
-                                  _buildGlassButton(
-                                    icon: Icons.palette_rounded,
-                                    onTap: _cycleColor,
-                                    theme: theme,
-                                  ),
-                                  const SizedBox(height: 12),
-                                ],
-                                _buildGlassButton(
-                                  icon: Icons.image_rounded,
-                                  onTap: _pickImage,
-                                  theme: theme,
-                                ),
-                              ],
+          // 2. Immersive Overlay (Gradient to read text)
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.3),
+                    Colors.transparent,
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.4),
+                  ],
+                  stops: const [0.0, 0.2, 0.8, 1.0],
+                ),
+              ),
+            ),
+          ),
+
+          // 3. Central Text Input
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: TextField(
+                controller: _textController,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 36,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.5,
+                  shadows: [
+                    Shadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 2)),
+                  ],
+                ),
+                decoration: InputDecoration(
+                  hintText: "Quoi de neuf ?",
+                  hintStyle: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.5),
+                    fontSize: 32,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  border: InputBorder.none,
+                ),
+                maxLines: null,
+                autofocus: true,
+              ),
+            ),
+          ),
+
+          // 4. Top Controls (Close & Mode)
+          Positioned(
+            top: topPadding + 10,
+            left: 20,
+            right: 20,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildCircularButton(
+                  icon: Icons.close_rounded,
+                  onTap: () => Navigator.pop(context),
+                  color: Colors.black38,
+                ),
+                Row(
+                  children: [
+                    if (_imageFile == null)
+                      _buildCircularButton(
+                        icon: Icons.palette_rounded,
+                        onTap: _cycleColor,
+                        color: Colors.black38,
+                      ),
+                    const SizedBox(width: 12),
+                    _buildCircularButton(
+                      icon: _imageFile != null ? Icons.image_not_supported_rounded : Icons.image_rounded,
+                      onTap: _imageFile != null ? () => setState(() => _imageFile = null) : _pickImage,
+                      color: Colors.black38,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // 5. Bottom Actions (Publish)
+          Positioned(
+            bottom: bottomPadding + 30,
+            left: 20,
+            right: 20,
+            child: Row(
+              children: [
+                const Spacer(),
+                GestureDetector(
+                  onTap: _isUploading ? null : _submit,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary,
+                      borderRadius: BorderRadius.circular(30),
+                      boxShadow: [
+                        BoxShadow(
+                          color: theme.colorScheme.primary.withValues(alpha: 0.4),
+                          blurRadius: 20,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_isUploading)
+                          const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.black),
+                          )
+                        else ...[
+                          const Text(
+                            'PARTAGER',
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.2,
+                              fontSize: 15,
                             ),
                           ),
+                          const SizedBox(width: 10),
+                          const Icon(Icons.send_rounded, color: Colors.black, size: 20),
                         ],
-                      ),
+                      ],
                     ),
                   ),
                 ),
-              ).animate().scale(duration: 400.ms, curve: Curves.easeOutBack),
+              ],
             ),
-            const SizedBox(height: 40),
-          ],
-        ),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 
-  Widget _buildGlassButton({required IconData icon, required VoidCallback onTap, required ThemeData theme}) {
+  Widget _buildCircularButton({required IconData icon, required VoidCallback onTap, required Color color}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white24, width: 1.5),
         ),
-        child: Icon(icon, color: Colors.white),
+        child: Icon(icon, color: Colors.white, size: 26),
       ),
     );
   }

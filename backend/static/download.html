@@ -153,29 +153,31 @@
         
         <div style="margin-bottom: 24px;">
             <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 12px; text-align: center;">Choisissez la version adaptée à votre processeur :</p>
-            <a href="/uploads/app-v2.0.0-arm64-v8a.apk" class="download-btn" style="background: var(--primary);">
+            <a href="/download/apk/arm64-v8a" class="download-btn" style="background: var(--primary);">
                 ⭐ Recommandé (Architecture 64-bit)
             </a>
             <div style="margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                <a href="/uploads/app-v2.0.0-armeabi-v7a.apk" class="download-btn" style="font-size: 0.8rem; padding: 12px; background: #555;">
+                <a href="/download/apk/armeabi-v7a" class="download-btn" style="font-size: 0.8rem; padding: 12px; background: #555;">
                     Vieux téléphones (32-bit)
                 </a>
-                <a href="/uploads/app-v2.0.0-x86_64.apk" class="download-btn" style="font-size: 0.8rem; padding: 12px; background: #555;">
+                <a href="/download/apk/x86_64" class="download-btn" style="font-size: 0.8rem; padding: 12px; background: #555;">
                     Émulateurs / PC
                 </a>
             </div>
         </div>
         
         <div style="margin-top: 24px; text-align: left;">
-            <h4 style="color: var(--text-muted); margin-bottom: 12px; font-weight: 600;">Anciennes versions :</h4>
-            <div style="display: flex; flex-direction: column; gap: 8px;">
-                <a href="/uploads/app-release-v1.0.2.apk" style="color: var(--primary); text-decoration: none; padding: 12px; background: rgba(37, 99, 235, 0.1); border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
-                    <span>Corporate Connect v1.0.2</span>
-                    <span style="font-size: 0.85em; opacity: 0.8;">↓</span>
-                </a>
-                <a href="/uploads/app-release-v1.0.1.apk" style="color: var(--primary); text-decoration: none; padding: 12px; background: rgba(37, 99, 235, 0.1); border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
-                    <span>Corporate Connect v1.0.1</span>
-                    <span style="font-size: 0.85em; opacity: 0.8;">↓</span>
+            <h4 style="color: var(--text-muted); margin-bottom: 12px; font-weight: 600;">Historique des versions :</h4>
+            <div id="releases-list" style="display: flex; flex-direction: column; gap: 8px;">
+                <!-- Les versions seront injectées ici par JavaScript -->
+                <div class="version-loader" style="color: var(--text-muted); font-size: 0.9rem; padding: 12px; text-align: center;">
+                    Chargement des versions...
+                </div>
+            </div>
+            <div style="margin-top: 12px;">
+                <a href="https://github.com/pathEnable/Corporate_connect/releases" target="_blank" style="color: var(--primary); text-decoration: none; padding: 8px 12px; background: rgba(37, 99, 235, 0.05); border-radius: 8px; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px;">
+                    <span>Voir toutes les versions sur GitHub</span>
+                    <span style="font-size: 0.8em; opacity: 0.8;">↗</span>
                 </a>
             </div>
         </div>
@@ -200,5 +202,46 @@
             © 2026 Corporate Connect. Tous droits réservés.
         </div>
     </div>
+    <script>
+        async function loadReleases() {
+            const listElement = document.getElementById('releases-list');
+            try {
+                const response = await fetch('/api/releases/history');
+                const releases = await response.json();
+
+                if (releases && Array.isArray(releases) && releases.length > 0) {
+                    listElement.innerHTML = ''; // Nettoyer le loader
+                    releases.forEach(rel => {
+                        const date = new Date(rel.published_at).toLocaleDateString('fr-FR', {
+                            year: 'numeric', month: 'long', day: 'numeric'
+                        });
+                        
+                        const item = document.createElement('a');
+                        item.href = rel.download_url;
+                        item.style.cssText = 'color: var(--primary); text-decoration: none; padding: 12px; background: rgba(37, 99, 235, 0.1); border-radius: 8px; display: flex; justify-content: space-between; align-items: center; transition: transform 0.2s;';
+                        item.onmouseover = () => item.style.transform = 'scale(1.02)';
+                        item.onmouseout = () => item.style.transform = 'scale(1)';
+                        
+                        item.innerHTML = `
+                            <div style="text-align: left;">
+                                <div style="font-weight: 600;">Corporate Connect ${rel.name}</div>
+                                <div style="font-size: 0.75rem; color: var(--text-muted);">${date}</div>
+                            </div>
+                            <span style="font-size: 0.85em; opacity: 0.8;">↓</span>
+                        `;
+                        listElement.appendChild(item);
+                    });
+                } else {
+                    listElement.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem; padding: 12px;">Aucun historique trouvé.</div>';
+                }
+            } catch (error) {
+                console.error('Erreur:', error);
+                listElement.innerHTML = '<div style="color: #ef4444; font-size: 0.85rem; padding: 12px;">Erreur de chargement de l\'historique.</div>';
+            }
+        }
+        
+        // Charger au démarrage
+        document.addEventListener('DOMContentLoaded', loadReleases);
+    </script>
 </body>
 </html>

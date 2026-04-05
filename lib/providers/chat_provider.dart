@@ -39,6 +39,7 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
     roomId = arg;
     ref.onDispose(() {
       _isDisposed = true;
+      _chatService.disconnect(); // Déconnecter explicitement le WS
       _presenceTimer?.cancel();
       _typingClearTimer?.cancel();
     });
@@ -55,7 +56,14 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
   Future<void> _init() async {
     final prefs = await SharedPreferences.getInstance();
     if (_isDisposed) return;
-    _userId = prefs.getString('user_id');
+    
+    // Récupérer l'ID utilisateur frais
+    final currentUserId = prefs.getString('user_id');
+    if (currentUserId == null) {
+      debugPrint("⚠️ Aucun utilisateur connecté pour le salon $roomId");
+      return;
+    }
+    _userId = currentUserId;
 
     // 1. Charger le cache local ET passer isLoading=false immédiatement s'il y a des données
     try {
@@ -300,9 +308,18 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
     String contentToSend = content;
     bool wasEncrypted = false;
 
+    // S'assurer d'utiliser l'ID utilisateur le plus récent
+    final prefs = await SharedPreferences.getInstance();
+    final currentUserId = prefs.getString('user_id') ?? _userId;
+    
+    if (currentUserId == null) {
+      debugPrint("❌ Impossible d'envoyer le message : ID utilisateur manquant");
+      return;
+    }
+
     if (type == 'text' && state.memberKeys.isNotEmpty) {
       final recipientId = state.memberKeys.keys.firstWhere(
-        (id) => id != _userId, 
+        (id) => id != currentUserId, 
         orElse: () => ""
       );
 
@@ -320,7 +337,7 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
     final tempMsg = {
       'id': tempId,
       'room_id': roomId, 
-      'sender_id': _userId,
+      'sender_id': currentUserId,
       'content': content, 
       'message_type': type,
       'status': 'pending',
@@ -393,7 +410,7 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
 
     if (localPath != null && !_isDisposed) {
       // Mettre à jour la DB
-      await LocalDatabase.instance.updateLocalPath(message['id'].toString(), localPath);
+      await LocalDatabase.instance.saveMessage({...message, 'local_path': localPath});
       
       // Mettre à jour l'état UI
       final newMessages = state.messages.map((m) {

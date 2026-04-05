@@ -21,7 +21,7 @@ class PremiumBackground extends StatelessWidget {
         // Base Background
         Positioned.fill(
           child: Container(
-            color: isDark ? const Color(0xFF040301) : const Color(0xFFF8F9FA),
+            color: isDark ? theme.scaffoldBackgroundColor : theme.scaffoldBackgroundColor,
           ),
         ),
 

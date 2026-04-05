@@ -194,8 +194,17 @@ class _MessageInputState extends ConsumerState<MessageInput> {
       constraints: const BoxConstraints(minHeight: 48),
       decoration: BoxDecoration(
         color: theme.colorScheme.onSurface.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(28),
         border: Border.all(color: theme.colorScheme.onSurface.withValues(alpha: 0.1)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
+      clipBehavior: Clip.antiAlias,
       child: TextField(
         controller: _controller,
         maxLines: 5,
@@ -205,7 +214,7 @@ class _MessageInputState extends ConsumerState<MessageInput> {
           hintText: 'Écrire un message...',
           hintStyle: TextStyle(fontSize: 15, color: Colors.grey),
           border: InputBorder.none,
-          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         ),
         onSubmitted: (_) => _handleSend(),
       ),

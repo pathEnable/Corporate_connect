@@ -36,8 +36,45 @@ void main() async {
   }
   
   final stopwatch = Stopwatch()..start();
-  runApp(const ProviderScope(child: CorporateConnectApp()));
+  runApp(
+    const ProviderScope(
+      child: AppResetter(
+        child: CorporateConnectApp(),
+      ),
+    ),
+  );
   unawaited(_initializeBgServices(stopwatch));
+}
+
+/// Widget permettant de réinitialiser toute l'arborescence de l'application (et donc les états Riverpod locaux)
+class AppResetter extends StatefulWidget {
+  final Widget child;
+  const AppResetter({super.key, required this.child});
+
+  static void reset(BuildContext context) {
+    context.findAncestorStateOfType<_AppResetterState>()?.reset();
+  }
+
+  @override
+  State<AppResetter> createState() => _AppResetterState();
+}
+
+class _AppResetterState extends State<AppResetter> {
+  Key _key = UniqueKey();
+
+  void reset() {
+    setState(() {
+      _key = UniqueKey();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return KeyedSubtree(
+      key: _key,
+      child: widget.child,
+    );
+  }
 }
 
 Future<void> _initializeBgServices(Stopwatch stopwatch) async {

@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -76,10 +75,11 @@ class ProfileNotifier extends Notifier<ProfileState> {
     }
   }
 
-  Future<void> updateProfile({String? bio, String? jobTitle, String? avatarUrl, String? presenceStatus}) async {
+  Future<void> updateProfile({String? fullName, String? bio, String? jobTitle, String? avatarUrl, String? presenceStatus}) async {
     state = state.copyWith(isLoading: true);
     try {
       await _authService.updateProfile(
+        fullName: fullName,
         bio: bio,
         jobTitle: jobTitle,
         avatarUrl: avatarUrl,

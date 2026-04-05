@@ -166,11 +166,12 @@ class AuthService {
   }
 
   /// Mettre à jour le profil avec gestion du rafraîchissement
-  Future<void> updateProfile({String? bio, String? jobTitle, String? avatarUrl, String? publicKey, String? presenceStatus}) async {
+  Future<void> updateProfile({String? fullName, String? bio, String? jobTitle, String? avatarUrl, String? publicKey, String? presenceStatus}) async {
     final response = await authenticatedRequest(
       url: '${ApiConfig.baseUrl}/profiles/me',
       method: 'PUT',
       body: {
+        'full_name': fullName,
         'bio': bio,
         'job_title': jobTitle,
         'avatar_url': avatarUrl,

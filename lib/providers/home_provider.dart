@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/home_state.dart';
-import '../models/status_model.dart';
 import '../services/room_service.dart';
 import '../services/status_service.dart';
 import '../services/local_database.dart';

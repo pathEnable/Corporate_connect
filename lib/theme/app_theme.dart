@@ -4,8 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 class AppTheme {
   // Emini Identity Colors
   static const Color primaryTurquoise = Color(0xFF26E9CF);
-  static const Color deepBlack = Color(0xFF040301);
-  static const Color surfaceDark = Color(0xFF1A1A1A);
+  static const Color deepBlack = Color(0xFF121212); // Anthracite au lieu de Noir pur
+  static const Color surfaceDark = Color(0xFF1E1E1E); // Gris plus doux
   static const Color surfaceLight = Color(0xFFF8F9FA);
 
   static ThemeData lightTheme(double fontScale, {int? accentColorValue}) {
@@ -74,12 +74,12 @@ class AppTheme {
         onPrimary: Colors.black,
         surface: deepBlack,
         surfaceContainerLowest: deepBlack,
-        surfaceContainerLow: const Color(0xFF0A0A0A),
-        surfaceContainer: const Color(0xFF141414),
+        surfaceContainerLow: const Color(0xFF1A1A1A),
+        surfaceContainer: const Color(0xFF222222),
         brightness: Brightness.dark,
         onSurface: Colors.white,
       ),
-      scaffoldBackgroundColor: const Color(0xFF050505),
+      scaffoldBackgroundColor: deepBlack, // Utilisation de l'Anthracite défini plus haut
       cardTheme: CardThemeData(
         color: const Color(0xFF141414),
         elevation: 0,
