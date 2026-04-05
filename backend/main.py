@@ -120,6 +120,7 @@ async def get_latest_version(request: Request):
     }
 
 @app.get("/download/apk/{variant}")
+@app.get("/download-apk/{variant}")
 async def redirect_to_github_apk(variant: str):
     """Redirige vers le bon asset de la dernière Release GitHub."""
     async with httpx.AsyncClient() as client:
