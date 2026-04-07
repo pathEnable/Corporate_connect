@@ -72,8 +72,8 @@ class MediaService {
     throw Exception('Erreur lors du téléchargement du fichier');
   }
 
-  Future<String> getDownloadUrl(String relativeUrl) {
-    return ApiConfig.getAuthenticatedMediaUrl(relativeUrl);
+  Future<String> getDownloadUrl(String relativeUrl) async {
+    return ApiConfig.getMediaUrl(relativeUrl);
   }
 
   String formatBytes(int bytes) {

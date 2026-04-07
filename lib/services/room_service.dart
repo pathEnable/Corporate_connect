@@ -1,6 +1,20 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'auth_service.dart';
 import 'api_config.dart';
+
+// Fonctions top-level pour pouvoir les passer à compute() (Isolates)
+List<Map<String, dynamic>> _parseRoomList(String responseBody) {
+  return List<Map<String, dynamic>>.from(jsonDecode(responseBody));
+}
+
+List<Map<String, dynamic>> _parseMessageList(String responseBody) {
+  return List<Map<String, dynamic>>.from(jsonDecode(responseBody));
+}
+
+Map<String, dynamic> _parseMap(String responseBody) {
+  return Map<String, dynamic>.from(jsonDecode(responseBody));
+}
 
 class RoomService {
   static String get baseUrl => '${ApiConfig.baseUrl}/rooms';
@@ -17,7 +31,8 @@ class RoomService {
     );
 
     if (response.statusCode == 200) {
-      return List<Map<String, dynamic>>.from(jsonDecode(response.body));
+      // Parsing dans un Isolate pour ne pas bloquer le thread UI
+      return await compute(_parseRoomList, response.body);
     }
     throw Exception('Erreur lors du chargement des conversations');
   }
@@ -34,10 +49,8 @@ class RoomService {
     );
 
     if (response.statusCode == 200 || response.statusCode == 201) {
-      return jsonDecode(response.body);
+      return await compute(_parseMap, response.body);
     }
-    // Si la room existe (ex: 409 Conflict ou 400), on tente de récupérer la room existante
-    // En théorie, Backend devrait retourner la room existante sur un POST
     throw Exception('Erreur lors de la création de la conversation (code: ${response.statusCode})');
   }
 
@@ -67,7 +80,8 @@ class RoomService {
     );
 
     if (response.statusCode == 200) {
-      return List<Map<String, dynamic>>.from(jsonDecode(response.body));
+      // Parsing dans un Isolate (les historiques peuvent être volumineux)
+      return await compute(_parseMessageList, response.body);
     }
     throw Exception('Erreur lors du chargement des messages');
   }
@@ -80,7 +94,7 @@ class RoomService {
     );
 
     if (response.statusCode == 200) {
-      return List<Map<String, dynamic>>.from(jsonDecode(response.body));
+      return await compute(_parseRoomList, response.body);
     }
     throw Exception('Erreur lors du chargement des membres du salon');
   }

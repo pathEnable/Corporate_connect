@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../widgets/authenticated_image.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:io';
 import 'audio_player_widget.dart';
 import '../../services/media_service.dart';
@@ -193,7 +193,7 @@ class _ImageContent extends StatelessWidget {
                         height: 200,
                         width: double.infinity,
                       )
-                    : CachedNetworkImage(
+                    : AuthenticatedNetworkImage(
                         imageUrl: imageUrl,
                         fit: BoxFit.cover,
                         placeholder: (context, url) => Container(

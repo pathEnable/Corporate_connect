@@ -2,12 +2,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../services/local_database.dart';
 import '../services/media_service.dart';
 import '../services/room_service.dart';
 import '../providers/profile_provider.dart';
 import '../widgets/premium_background.dart';
+import '../widgets/authenticated_image.dart';
 import 'image_viewer_screen.dart';
 import 'add_member_picker_screen.dart';
 
@@ -354,7 +354,7 @@ class _MediaTabState extends State<_MediaTab> {
               if (snap.hasData) {
                 return GestureDetector(
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ImageViewerScreen(imageUrl: snap.data!))),
-                  child: Hero(tag: snap.data!, child: CachedNetworkImage(imageUrl: snap.data!, fit: BoxFit.cover)),
+                  child: Hero(tag: snap.data!, child: AuthenticatedNetworkImage(imageUrl: snap.data!, fit: BoxFit.cover)),
                 );
               }
               return Container(color: Colors.grey.withValues(alpha: 0.1));

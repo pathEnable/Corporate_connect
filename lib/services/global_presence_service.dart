@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,11 +27,14 @@ class GlobalPresenceService {
 
     if (userId == null || token == null) return;
 
-    final wsUrl = '${ApiConfig.wsBaseUrl}/ws/global/$userId?token=$token';
+    final wsUrl = '${ApiConfig.wsBaseUrl}/ws/global/$userId';
     debugPrint("🌐 Connexion au WS Global: $wsUrl");
 
     try {
-      _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
+      _channel = WebSocketChannel.connect(
+        Uri.parse(wsUrl),
+        protocols: [token], // Envoie le JWT via le header standard Sec-WebSocket-Protocol
+      );
       _isConnected = true;
       debugPrint("🟢 Global Presence WS Connecté");
 
@@ -61,7 +65,11 @@ class GlobalPresenceService {
   }
 
   void _reconnect() {
-    Future.delayed(const Duration(seconds: 5), () {
+    // Jitter: délai aléatoire entre 3 et 12 secondes
+    final seconds = 3 + Random().nextInt(10);
+    debugPrint("⏳ Reconnexion prévue dans $seconds secondes...");
+    
+    Future.delayed(Duration(seconds: seconds), () {
       if (!_isConnected) connect();
     });
   }

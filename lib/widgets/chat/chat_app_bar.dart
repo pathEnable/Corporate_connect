@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../screens/call_screen.dart';
 import '../../providers/chat_provider.dart';
+import '../../theme/app_theme.dart';
 
 class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
   final String roomId;
@@ -20,84 +21,71 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
   });
 
   @override
-  Size get preferredSize => const Size.fromHeight(80);
+  Size get preferredSize => const Size.fromHeight(66);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(chatProvider(roomId));
     final theme = Theme.of(context);
 
-    return Container(
-      height: 110 + MediaQuery.of(context).padding.top,
-      padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top + 8,
-        bottom: 8,
+    return AppBar(
+      backgroundColor: AppTheme.primaryGreen,
+      foregroundColor: Colors.white,
+      shadowColor: Colors.black.withValues(alpha: 0.1),
+      elevation: 4,
+      leadingWidth: 40,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: Colors.white),
+        onPressed: () => Navigator.pop(context),
       ),
-      decoration: BoxDecoration(
-        color: theme.brightness == Brightness.dark ? const Color(0xFF040301) : Colors.white,
-        border: Border(
-          bottom: BorderSide(
-            color: theme.colorScheme.primary.withValues(alpha: 0.15),
-            width: 0.5,
+      titleSpacing: 0,
+      title: InkWell(
+        onTap: onShowInfo,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            children: [
+              _buildAvatar(theme, state.otherUserOnline),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      roomName,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        height: 1.2,
+                        color: Colors.white,
+                        letterSpacing: -0.4,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    _buildStatusIndicator(theme, state),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: AppBar(
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              leadingWidth: 40,
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-                onPressed: () => Navigator.pop(context),
-              ),
-              title: InkWell(
-                onTap: onShowInfo,
-                borderRadius: BorderRadius.circular(16),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                  child: Row(
-                    children: [
-                      _buildAvatar(theme, state.otherUserOnline),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              roomName,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                                height: 1.2,
-                                letterSpacing: -0.4,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            _buildStatusIndicator(theme, state),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                _buildActionButton(
-                  icon: Icons.videocam_rounded,
-                  onPressed: () => _startCall(context, ref, isVideo: true),
-                ),
-                const SizedBox(width: 4),
-                _buildActionButton(
-                  icon: Icons.call_rounded,
-                  onPressed: () => _startCall(context, ref, isVideo: false),
-                ),
-                const SizedBox(width: 12),
-              ],
-            ),
-          ),
+      actions: [
+        _buildActionButton(
+          icon: Icons.videocam_rounded,
+          color: Colors.white,
+          onPressed: () => _startCall(context, ref, isVideo: true),
+        ),
+        const SizedBox(width: 4),
+        _buildActionButton(
+          icon: Icons.call_rounded,
+          color: Colors.white,
+          onPressed: () => _startCall(context, ref, isVideo: false),
+        ),
+        const SizedBox(width: 8),
+      ],
     );
   }
 
@@ -107,11 +95,9 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
         Container(
           width: 40,
           height: 40,
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             shape: BoxShape.circle,
-            gradient: LinearGradient(
-              colors: [theme.colorScheme.primary, theme.colorScheme.primary.withValues(alpha: 0.7)],
-            ),
+            color: Colors.white24,
           ),
           child: Center(
             child: Text(
@@ -125,13 +111,13 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
           bottom: 0,
           right: 0,
           child: Container(
-            width: 14,
-            height: 14,
+            width: 12,
+            height: 12,
             decoration: BoxDecoration(
-              color: isOnline ? const Color(0xFF26E9CF) : Colors.grey,
+              color: isOnline ? const Color(0xFF4CAF50) : Colors.grey,
               shape: BoxShape.circle,
               border: Border.all(
-                color: theme.brightness == Brightness.dark ? const Color(0xFF040301) : Colors.white,
+                color: AppTheme.primaryGreen,
                 width: 2,
               ),
             ),
@@ -146,8 +132,8 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
 
     // 1. Si pas connecté au WebSocket, afficher "Connexion..."
     if (!chatState.isConnected) {
-      statusWidget = Row(
-        key: const ValueKey('connecting'),
+      statusWidget = const Row(
+        key: ValueKey('connecting'),
         mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(
@@ -155,16 +141,16 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
             height: 10,
             child: CircularProgressIndicator(
               strokeWidth: 1.5,
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+              color: Colors.white70,
             ),
           ),
-          const SizedBox(width: 6),
+          SizedBox(width: 6),
           Text(
             'Connexion...',
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w500,
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+              color: Colors.white70,
             ),
           ),
         ],
@@ -172,18 +158,18 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
     }
     // 2. En train d'écrire (priorité haute)
     else if (chatState.typingUsers.isNotEmpty && !isGroup) {
-      statusWidget = Row(
-        key: const ValueKey('typing'),
+      statusWidget = const Row(
+        key: ValueKey('typing'),
         mainAxisSize: MainAxisSize.min,
         children: [
-          _TypingDots(color: theme.colorScheme.primary),
-          const SizedBox(width: 6),
+          _TypingDots(color: Colors.white),
+          SizedBox(width: 6),
           Text(
             'Écrit...',
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: theme.colorScheme.primary,
+              color: Colors.white,
             ),
           ),
         ],
@@ -198,7 +184,7 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
         style: TextStyle(
           fontSize: 11,
           fontWeight: typingCount > 0 ? FontWeight.w600 : FontWeight.w500,
-          color: typingCount > 0 ? theme.colorScheme.primary : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+          color: typingCount > 0 ? Colors.white : Colors.white70,
         ),
       );
     }
@@ -233,7 +219,7 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
             break;
           default:
             statusText = 'En ligne';
-            statusColor = const Color(0xFF26E9CF);
+            statusColor = const Color(0xFF4CAF50);
         }
       }
 
@@ -252,10 +238,10 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
           const SizedBox(width: 6),
           Text(
             statusText,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w500,
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              color: Colors.white70,
             ),
           ),
         ],
@@ -280,9 +266,9 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
     );
   }
 
-  Widget _buildActionButton({required IconData icon, required VoidCallback onPressed}) {
+  Widget _buildActionButton({required IconData icon, required VoidCallback onPressed, Color? color}) {
     return IconButton(
-      icon: Icon(icon, size: 22),
+      icon: Icon(icon, size: 22, color: color),
       onPressed: () {
         HapticFeedback.lightImpact();
         onPressed();

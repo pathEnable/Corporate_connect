@@ -10,6 +10,7 @@ import '../services/room_service.dart';
 import '../services/encryption_service.dart';
 import '../services/local_database.dart';
 import '../services/media_service.dart';
+import '../services/media_cache_service.dart';
 import '../services/api_config.dart';
 import '../services/auth_service.dart';
 import 'home_provider.dart';
@@ -39,17 +40,17 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
     roomId = arg;
     ref.onDispose(() {
       _isDisposed = true;
-      _chatService.disconnect(); // Déconnecter explicitement le WS
+      _chatService.disconnect();
       _presenceTimer?.cancel();
       _typingClearTimer?.cancel();
     });
     _init();
 
     return ChatState(
-      messages: [],
-      typingUsers: {},
-      memberKeys: {},
-      isLoading: true,
+      messages: const [],
+      typingUsers: const {},
+      memberKeys: const {},
+      isLoading: false,
     );
   }
 
@@ -57,29 +58,21 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
     final prefs = await SharedPreferences.getInstance();
     if (_isDisposed) return;
     
-    // Récupérer l'ID utilisateur frais
     final currentUserId = prefs.getString('user_id');
-    if (currentUserId == null) {
-      debugPrint("⚠️ Aucun utilisateur connecté pour le salon $roomId");
-      return;
-    }
+    if (currentUserId == null) return;
     _userId = currentUserId;
 
-    // 1. Charger le cache local ET passer isLoading=false immédiatement s'il y a des données
+    // ═══ PHASE 1 : Cache Instantané (< 20ms) ═══
     try {
       final localMsgs = await LocalDatabase.instance.getMessages(roomId);
-      if (!_isDisposed) {
-        state = state.copyWith(
-          messages: localMsgs,
-          // Si on a des messages en cache, on arrête le spinner tout de suite (WhatsApp-style)
-          isLoading: localMsgs.isEmpty,
-        );
+      if (!_isDisposed && localMsgs.isNotEmpty) {
+        state = state.copyWith(messages: localMsgs, isLoading: false);
       }
     } catch (e) {
-      debugPrint("❌ Erreur chargement cache DB: $e");
+      debugPrint("❌ Erreur cache DB: $e");
     }
 
-    // 2. Charger les clés membres
+    // ═══ PHASE 2 : Clés de chiffrement (en parallèle) ═══
     try {
       final members = await _roomService.getRoomMembers(roomId);
       final keys = <String, String>{};
@@ -88,57 +81,47 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
           keys[m['id'].toString()] = m['public_key'];
         }
       }
-      if (!_isDisposed) {
-        state = state.copyWith(memberKeys: keys);
-      }
+      if (!_isDisposed) state = state.copyWith(memberKeys: keys);
       
-      // Déchiffrement en masse du cache local
+      // Déchiffrement du cache local dès qu'on a les clés
       if (state.messages.isNotEmpty) {
-        final decryptedLocal = await _decryptBulk(state.messages);
-        if (!_isDisposed) {
-          state = state.copyWith(messages: decryptedLocal);
-        }
+        final decrypted = await _decryptBulk(state.messages);
+        if (!_isDisposed) state = state.copyWith(messages: decrypted);
       }
     } catch (e) {
-      debugPrint("❌ Erreur chargement membres/clés: $e");
+      debugPrint("❌ Erreur clés membres: $e");
     }
 
-    // 3. Charger l'historique depuis le serveur (en arrière-plan, sans bloquer l'UI)
+    // ═══ PHASE 3 : Sync API en arrière-plan (Merge intelligent, sans clignotement) ═══
     try {
       final history = await _roomService.getMessages(roomId);
-      // L'API renvoie les plus vieux en premier, on inverse pour que le plus récent soit à l'index 0
-      final decryptedHistory = (await _decryptBulk(history)).reversed.toList();
+      final decryptedHistory = await _decryptBulk(history);
       
-      // Sauvegarder en cache (sans attendre, en tâche de fond)
-      _saveHistoryToCache(decryptedHistory);
+      // MERGE : On fusionne API + messages pending locaux pour ne perdre aucun message
+      final merged = _mergeMessages(decryptedHistory, state.messages);
+      
+      // Sauvegarder en cache (en arrière-plan, non bloquant)
+      _saveHistoryToCache(decryptedHistory); // fire-and-forget (void async)
       
       if (!_isDisposed) {
-        state = state.copyWith(messages: decryptedHistory, isLoading: false);
+        state = state.copyWith(messages: merged, isLoading: false);
       }
+      
+      // Pré-chargement des médias récents en arrière-plan
+      _prefetchRecentMedia(decryptedHistory);
     } catch (e) {
-      debugPrint("❌ Erreur historique serveur: $e");
-    } finally {
-      if (!_isDisposed && state.isLoading) {
-        state = state.copyWith(isLoading: false);
-      }
+      debugPrint("❌ Erreur sync API messages: $e");
+      if (!_isDisposed) state = state.copyWith(isLoading: false);
     }
 
-    // 4. WebSocket
-    if (_userId != null) {
+    // WS + Présence
+    if (_userId != null && !_isDisposed) {
       _connectWebSocket();
+      _fetchOtherUserPresence();
+      _presenceTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchOtherUserPresence());
     }
 
-    // 5. Charger la présence de l'autre utilisateur (pour les chats privés)
-    _fetchOtherUserPresence();
-    // Polling périodique de la présence (toutes les 30s)
-    _presenceTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      _fetchOtherUserPresence();
-    });
-
-    // 6. Réinitialiser le compteur de non-lus pour ce salon
-    try {
-      ref.read(homeProvider.notifier).markRoomAsRead(roomId);
-    } catch (_) {}
+    try { ref.read(homeProvider.notifier).markRoomAsRead(roomId); } catch (_) {}
   }
 
   /// Récupère le statut de présence de l'autre utilisateur dans un chat privé
@@ -199,9 +182,56 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
   void _saveHistoryToCache(List<Map<String, dynamic>> history) async {
     for (var msg in history) {
       if (_isDisposed) break;
-      try {
-        await LocalDatabase.instance.saveMessage(msg);
-      } catch (_) {}
+      try { await LocalDatabase.instance.saveMessage(msg); } catch (_) {}
+    }
+  }
+
+  /// Fusionne les messages de l'API avec ceux en mémoire (locaux).
+  /// Priorité à l'API pour les messages existants, mais conserve les
+  /// messages locaux "pending" ou "failed" qui ne sont pas encore confirmés.
+  List<Map<String, dynamic>> _mergeMessages(
+    List<Map<String, dynamic>> fromApi,
+    List<Map<String, dynamic>> fromCache,
+  ) {
+    // Index des messages API par ID pour une recherche O(1)
+    final apiIds = fromApi.map((m) => m['id'].toString()).toSet();
+    
+    // Conserver les messages locaux qui sont EN COURS (pending/failed) et pas encore dans l'API
+    final pendingOrFailed = fromCache.where((m) {
+      final status = m['status']?.toString() ?? 'sent';
+      final id = m['id'].toString();
+      return (status == 'pending' || status == 'failed') && !apiIds.contains(id);
+    }).toList();
+    
+    // Fusionner : messages API + messages locaux non confirmés
+    final merged = [...fromApi, ...pendingOrFailed];
+    merged.sort((a, b) {
+      final aTime = a['created_at']?.toString() ?? '';
+      final bTime = b['created_at']?.toString() ?? '';
+      return aTime.compareTo(bTime);
+    });
+    return merged;
+  }
+
+  /// Pré-charge en arri\u00e8re-plan les m\u00e9dias r\u00e9cents de la conversation.
+  /// Prend les 20 derniers messages contenant des m\u00e9dias pour les mettre en cache.
+  void _prefetchRecentMedia(List<Map<String, dynamic>> messages) {
+    // Prendre les 20 derniers messages avec un media
+    final mediaMessages = messages
+        .where((m) => m['message_type'] == 'image' || m['message_type'] == 'audio' || m['message_type'] == 'file')
+        .toList();
+    
+    final recentMedia = mediaMessages.length > 20
+        ? mediaMessages.sublist(mediaMessages.length - 20)
+        : mediaMessages;
+    
+    final urls = recentMedia
+        .map((m) => m['content']?.toString() ?? '')
+        .where((url) => url.isNotEmpty)
+        .toList();
+    
+    if (urls.isNotEmpty) {
+      MediaCacheService.instance.prefetchBatch(urls);
     }
   }
 
@@ -257,7 +287,7 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
         } catch (_) {}
         newMessages[index] = finalMsg;
       } else {
-        newMessages.insert(0, finalMsg);
+        newMessages.add(finalMsg);
       }
       if (!_isDisposed) {
         state = state.copyWith(messages: newMessages);
@@ -346,7 +376,7 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
     };
 
     if (!_isDisposed) {
-      state = state.copyWith(messages: [tempMsg, ...state.messages]);
+      state = state.copyWith(messages: [...state.messages, tempMsg]);
     }
     
     _chatService.sendMessage(contentToSend, type: type, data: extraData);
@@ -399,7 +429,7 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
   Future<void> _downloadMediaInBackground(Map<String, dynamic> message) async {
     if (kIsWeb) return;
     
-    final url = await ApiConfig.getAuthenticatedMediaUrl(message['content']);
+    final url = ApiConfig.getMediaUrl(message['content']);
     final fileName = message['content'].split('/').last;
     
     final localPath = await _mediaService.saveToGallery(

@@ -1,0 +1,37 @@
+﻿Analyzing Nouveau dossier...                                    
+
+  error - Target of URI doesn't exist: '../services/media_service.dart' - lib\providers\chat_provider.dart:12:8 - uri_does_not_exist
+  error - Target of URI doesn't exist: '../services/media_cache_service.dart' - lib\providers\chat_provider.dart:13:8 - uri_does_not_exist
+  error - Undefined class 'MediaService' - lib\providers\chat_provider.dart:28:9 - undefined_class
+  error - The method 'MediaService' isn't defined for the type 'ChatNotifier' - lib\providers\chat_provider.dart:28:38 - undefined_method
+  error - Undefined name 'MediaCacheService' - lib\providers\chat_provider.dart:234:7 - undefined_identifier
+   info - The imported package 'uuid' isn't a dependency of the importing package - lib\providers\incoming_call_provider.dart:7:8 - depend_on_referenced_packages
+  error - Target of URI doesn't exist: '../services/media_service.dart' - lib\providers\profile_provider.dart:7:8 - uri_does_not_exist
+  error - Undefined class 'MediaService' - lib\providers\profile_provider.dart:18:9 - undefined_class
+  error - The method 'MediaService' isn't defined for the type 'ProfileNotifier' - lib\providers\profile_provider.dart:18:38 - undefined_method
+  error - Target of URI doesn't exist: '../services/media_cache_service.dart' - lib\providers\storage_provider.dart:3:8 - uri_does_not_exist
+  error - Undefined name 'MediaCacheService' - lib\providers\storage_provider.dart:50:29 - undefined_identifier
+  error - Undefined name 'MediaCacheService' - lib\providers\storage_provider.dart:60:11 - undefined_identifier
+  error - Target of URI doesn't exist: '../services/media_service.dart' - lib\screens\contacts_screen.dart:10:8 - uri_does_not_exist
+  error - Undefined class 'MediaService' - lib\screens\contacts_screen.dart:23:9 - undefined_class
+  error - The method 'MediaService' isn't defined for the type '_ContactsScreenState' - lib\screens\contacts_screen.dart:23:38 - undefined_method
+  error - Undefined class 'MediaService' - lib\screens\contacts_screen.dart:233:9 - undefined_class
+  error - Target of URI doesn't exist: '../services/media_service.dart' - lib\screens\media_preview_screen.dart:8:8 - uri_does_not_exist
+  error - Undefined class 'MediaService' - lib\screens\media_preview_screen.dart:44:9 - undefined_class
+  error - The method 'MediaService' isn't defined for the type '_MediaPreviewScreenState' - lib\screens\media_preview_screen.dart:44:38 - undefined_method
+  error - Target of URI doesn't exist: '../services/media_service.dart' - lib\screens\profile_screen.dart:8:8 - uri_does_not_exist
+  error - The method 'MediaService' isn't defined for the type '_LargeAvatar' - lib\screens\profile_screen.dart:619:15 - undefined_method
+  error - Target of URI doesn't exist: '../services/media_service.dart' - lib\screens\room_details_screen.dart:6:8 - uri_does_not_exist
+  error - The method 'MediaService' isn't defined for the type '_MediaTabState' - lib\screens\room_details_screen.dart:352:21 - undefined_method
+   info - The imported package 'uuid' isn't a dependency of the importing package - lib\services\push_notification_service.dart:10:8 - depend_on_referenced_packages
+  error - Target of URI doesn't exist: '../../services/media_service.dart' - lib\widgets\chat\audio_player_widget.dart:6:8 - uri_does_not_exist
+  error - The method 'MediaService' isn't defined for the type '_AudioPlayerWidgetState' - lib\widgets\chat\audio_player_widget.dart:76:33 - undefined_method
+  error - Target of URI doesn't exist: '../../services/media_service.dart' - lib\widgets\chat\message_bubble.dart:8:8 - uri_does_not_exist
+  error - The method 'MediaService' isn't defined for the type '_ImageContent' - lib\widgets\chat\message_bubble.dart:172:15 - undefined_method
+  error - The method 'MediaService' isn't defined for the type '_FileContent' - lib\widgets\chat\message_bubble.dart:270:29 - undefined_method
+  error - Target of URI doesn't exist: '../../services/media_service.dart' - lib\widgets\chat\message_input.dart:13:8 - uri_does_not_exist
+  error - Undefined class 'MediaService' - lib\widgets\chat\message_input.dart:35:9 - undefined_class
+  error - The method 'MediaService' isn't defined for the type '_MessageInputState' - lib\widgets\chat\message_input.dart:35:38 - undefined_method
+  error - Target of URI doesn't exist: '../../services/media_service.dart' - lib\widgets\home\room_tile.dart:6:8 - uri_does_not_exist
+  error - The method 'MediaService' isn't defined for the type '_RoomAvatar' - lib\widgets\home\room_tile.dart:162:23 - undefined_method
+

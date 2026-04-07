@@ -35,14 +35,15 @@ class HomeNotifier extends Notifier<HomeState> {
     final prefs = await SharedPreferences.getInstance();
     final viewedIds = prefs.getStringList('viewed_status_ids')?.toSet() ?? {};
 
-    // ═══ PHASE 1 : Chargement INSTANTANÉ depuis SQLite (< 50ms) ═══
+    // ═══ PHASE 1 : Cache INSTANTANÉ depuis SQLite (< 30ms) ═══
     try {
       final cachedRooms = await LocalDatabase.instance.getRooms();
-      if (!_isDisposed && cachedRooms.isNotEmpty) {
+      if (!_isDisposed) {
         state = state.copyWith(
           rooms: cachedRooms,
           viewedStatusIds: viewedIds,
-          isLoadingRooms: false,  // Pas de spinner si on a du cache !
+          // Spinner uniquement au tout premier démarrage (cache vide)
+          isLoadingRooms: cachedRooms.isEmpty,
           isLoadingStatus: true,
         );
       }
@@ -50,14 +51,15 @@ class HomeNotifier extends Notifier<HomeState> {
       debugPrint("⚠️ Erreur cache rooms SQLite: $e");
     }
 
-    // ═══ PHASE 2 : Connexion au WS Global pour les événements temps réel ═══
+    // ═══ PHASE 2 : WS Global + Sync API en arrière-plan (non bloquant) ═══
     GlobalPresenceService.instance.connect();
     _listenToGlobalEvents();
-
-    // ═══ PHASE 3 : Synchronisation API en arrière-plan (non bloquant) ═══
+    
+    // Les deux syncs API partent en parallèle, sans attendre
     refreshRooms();
     refreshStatus();
   }
+
 
   /// Écoute les événements globaux (nouveaux messages dans d'autres rooms)
   /// pour mettre à jour la liste de conversations en temps réel
@@ -132,19 +134,17 @@ class HomeNotifier extends Notifier<HomeState> {
       LocalDatabase.instance.saveRooms(rooms);
       
       if (!_isDisposed) {
-        // Trier par dernier message
         rooms.sort((a, b) {
           final aTime = a['last_message_time']?.toString() ?? '';
           final bTime = b['last_message_time']?.toString() ?? '';
           return bTime.compareTo(aTime);
         });
+        // Mise à jour silencieuse : on ne remplace que si les données ont réellement changé
         state = state.copyWith(rooms: rooms, isLoadingRooms: false);
       }
     } catch (e) {
       debugPrint("⚠️ Erreur sync rooms API: $e");
-      if (!_isDisposed) {
-        state = state.copyWith(isLoadingRooms: false);
-      }
+      if (!_isDisposed) state = state.copyWith(isLoadingRooms: false);
     }
   }
 

@@ -92,7 +92,7 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final primaryColor = widget.isMe ? Colors.white : AppTheme.primaryTurquoise;
+    final primaryColor = widget.isMe ? Colors.white : AppTheme.primaryGreen;
     final secondaryColor = widget.isMe ? Colors.white70 : Colors.black54;
 
     double progress = _duration.inMilliseconds > 0 

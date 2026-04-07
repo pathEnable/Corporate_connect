@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/status_model.dart';
 import '../providers/home_provider.dart';
+import '../widgets/authenticated_image.dart';
 
 class StoryViewScreen extends ConsumerStatefulWidget {
   final List<StatusModel> stories;
@@ -208,7 +209,7 @@ class _StoryViewScreenState extends ConsumerState<StoryViewScreen> with SingleTi
                   children: [
                     CircleAvatar(
                       radius: 20,
-                      backgroundImage: story.userAvatar != null ? NetworkImage(story.userAvatar!) : null,
+                      backgroundImage: story.userAvatar != null ? AuthenticatedImageProvider(story.userAvatar!) : null,
                       child: story.userAvatar == null ? const Icon(Icons.person) : null,
                     ),
                     const SizedBox(width: 12),

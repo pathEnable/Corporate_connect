@@ -14,8 +14,11 @@ class ChatService {
   Future<void> connect(String roomId, String userId) async {
     disconnect(); // Fermer toute connexion existante avant de se reconnecter
     final token = await _authService.getToken();
-    final uri = Uri.parse('$wsBaseUrl/$roomId/$userId?token=$token');
-    _channel = WebSocketChannel.connect(uri);
+    final uri = Uri.parse('$wsBaseUrl/$roomId/$userId');
+    _channel = WebSocketChannel.connect(
+      uri,
+      protocols: [token!], // Passe le JWT dans le header standard Sec-WebSocket-Protocol
+    );
   }
 
   /// Écouter les messages entrants

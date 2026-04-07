@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/authenticated_image.dart';
 import '../services/admin_service.dart';
 import '../widgets/premium_background.dart';
 
@@ -150,7 +151,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: CircleAvatar(
           backgroundColor: isActive ? theme.colorScheme.primary : theme.dividerColor.withValues(alpha: 0.1),
-          backgroundImage: user['avatar_url'] != null ? NetworkImage(user['avatar_url']) : null,
+          backgroundImage: user['avatar_url'] != null ? AuthenticatedImageProvider(user['avatar_url']) : null,
           child: user['avatar_url'] == null
               ? Text(
                   (user['full_name'] ?? '?')[0].toUpperCase(),

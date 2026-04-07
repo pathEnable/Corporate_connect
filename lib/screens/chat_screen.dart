@@ -82,7 +82,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     // Auto-scroll on new messages
     ref.listen<ChatState>(chatProvider(widget.roomId), (previous, next) {
-      if (previous?.messages.length != next.messages.length) {
+      final messagesChanged = previous?.messages.length != next.messages.length;
+      final loadingFinished = (previous?.isLoading ?? true) && !next.isLoading;
+      
+      if (messagesChanged || loadingFinished) {
         _scrollToBottom();
       }
     });
@@ -102,13 +105,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           Expanded(
             child: isLoading
                 ? ListView.builder(
-                    reverse: true,
+                    reverse: false,
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     itemCount: 8,
                     itemBuilder: (context, index) => SkeletonMessage(isMe: index % 2 == 0),
                   )
                 : ListView.builder(
-                    reverse: true,
+                    reverse: false,
                     controller: _scrollController,
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     itemCount: messages.length,

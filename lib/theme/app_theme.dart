@@ -3,13 +3,13 @@ import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
   // Emini Identity Colors
-  static const Color primaryTurquoise = Color(0xFF26E9CF);
-  static const Color deepBlack = Color(0xFF121212); // Anthracite au lieu de Noir pur
-  static const Color surfaceDark = Color(0xFF1E1E1E); // Gris plus doux
+  static const Color primaryGreen = Color(0xFF4CAF50); // Couleur verte
+  static const Color deepBlack = Color(0xFF212325); // Gris anthracite encore plus doux
+  static const Color surfaceDark = Color(0xFF2A2C2E); // Gris de surface coordonné
   static const Color surfaceLight = Color(0xFFF8F9FA);
 
   static ThemeData lightTheme(double fontScale, {int? accentColorValue}) {
-    final primaryColor = accentColorValue != null ? Color(accentColorValue) : primaryTurquoise;
+    final primaryColor = accentColorValue != null ? Color(accentColorValue) : primaryGreen;
     return ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
@@ -65,7 +65,7 @@ class AppTheme {
   }
 
   static ThemeData darkTheme(double fontScale, {int? accentColorValue}) {
-    final primaryColor = accentColorValue != null ? Color(accentColorValue) : primaryTurquoise;
+    final primaryColor = accentColorValue != null ? Color(accentColorValue) : primaryGreen;
     return ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
@@ -74,14 +74,14 @@ class AppTheme {
         onPrimary: Colors.black,
         surface: deepBlack,
         surfaceContainerLowest: deepBlack,
-        surfaceContainerLow: const Color(0xFF1A1A1A),
-        surfaceContainer: const Color(0xFF222222),
+        surfaceContainerLow: const Color(0xFF2A2C2E),
+        surfaceContainer: const Color(0xFF343638),
         brightness: Brightness.dark,
         onSurface: Colors.white,
       ),
       scaffoldBackgroundColor: deepBlack, // Utilisation de l'Anthracite défini plus haut
       cardTheme: CardThemeData(
-        color: const Color(0xFF141414),
+        color: const Color(0xFF2A2C2E),
         elevation: 0,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: Colors.white.withAlpha(10))),
       ),
@@ -109,7 +109,7 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: const Color(0xFF141414),
+        fillColor: const Color(0xFF2A2C2E),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
         focusedBorder: OutlineInputBorder(

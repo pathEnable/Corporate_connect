@@ -1,21 +1,15 @@
 import secrets
-import redis
-from config import REDIS_URL
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
 from sqlalchemy.orm import Session
-from database import get_db
-from models import Profile
+from database import get_db, redis_client
+from models import Profile, RefreshToken
 from schemas import RegisterRequest, LoginRequest, OTPRequest, OTPVerify, TokenResponse, ProfileResponse, TokenRefreshRequest
 from auth import hash_password, verify_password, create_access_token, get_current_user, create_refresh_token
-from models import RefreshToken
 import uuid
 from datetime import datetime
 from routes_chat import broadcast_to_all_globals
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
-
-# Connexion Redis pour le stockage des OTP
-redis_client = redis.from_url(REDIS_URL, decode_responses=True)
 
 
 async def _broadcast_user_registered(user_data: dict):
@@ -101,35 +95,44 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/otp/send")
-def send_otp(request: OTPRequest):
+async def send_otp(payload: OTPRequest, request: Request):
     """Envoyer un code OTP par SMS (simulé) avec stockage Redis."""
+    # ── Strict Rate limit sur l'envoi de SMS ──
+    client_ip = request.client.host if request.client else 'unknown'
+    spam_key = f"otp_spam:{client_ip}"
+    spam_count = await redis_client.incr(spam_key)
+    if spam_count == 1:
+        await redis_client.expire(spam_key, 60)  # 1 SMS par minute max par IP
+    if spam_count > 1:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Veuillez patienter 1 minute entre chaque demande.")
+
     # Génération sécurisée d'un code à 6 chiffres
     otp_code = "".join([secrets.choice("0123456789") for _ in range(6)])
     
     # Stockage dans Redis avec expiration (5 minutes / 300 secondes)
-    redis_key = f"otp:{request.phone_number}"
-    redis_client.set(redis_key, otp_code, ex=300)
+    redis_key = f"otp:{payload.phone_number}"
+    await redis_client.set(redis_key, otp_code, ex=300)
     
     # En production : intégrer Twilio ou un service SMS
     return {"message": f"Code OTP envoyé (dev: {otp_code})"}
 
 
 @router.post("/otp/verify", response_model=TokenResponse)
-def verify_otp(request: OTPVerify, db: Session = Depends(get_db)):
+async def verify_otp(payload: OTPVerify, db: Session = Depends(get_db)):
     """Vérifier le code OTP stocké dans Redis et connecter l'utilisateur."""
-    redis_key = f"otp:{request.phone_number}"
-    stored_otp = redis_client.get(redis_key)
+    redis_key = f"otp:{payload.phone_number}"
+    stored_otp = await redis_client.get(redis_key)
     
-    if not stored_otp or stored_otp != request.otp_code:
+    if not stored_otp or stored_otp != payload.otp_code:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Code OTP invalide ou expiré."
         )
 
     # Supprimer l'OTP après vérification réussie
-    redis_client.delete(redis_key)
+    await redis_client.delete(redis_key)
 
-    user = db.query(Profile).filter(Profile.phone_number == request.phone_number).first()
+    user = db.query(Profile).filter(Profile.phone_number == payload.phone_number).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -146,7 +149,15 @@ def verify_otp(request: OTPVerify, db: Session = Depends(get_db)):
         full_name=user.full_name
     )
 
-
+@router.post("/logout")
+def logout(payload: TokenRefreshRequest, db: Session = Depends(get_db)):
+    """Révoquer le Refresh Token d'un utilisateur pour le déconnecter."""
+    db_token = db.query(RefreshToken).filter(RefreshToken.token == payload.refresh_token).first()
+    if db_token:
+        db.delete(db_token)
+        db.commit()
+    # Même si le token n'existe pas, on retourne 200 pour éviter d'exposer l'état
+    return {"message": "Déconnexion réussie et backend nettoyé."}
 @router.post("/refresh", response_model=TokenResponse)
 def refresh_token(request: TokenRefreshRequest, db: Session = Depends(get_db)):
     """Échanger un Refresh Token contre un nouveau duo de tokens."""

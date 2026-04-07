@@ -1,7 +1,10 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_sqlcipher/sqflite.dart';
 import 'package:path/path.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'dart:math';
+import 'dart:convert';
 
 class LocalDatabase {
   static final LocalDatabase instance = LocalDatabase._init();
@@ -20,9 +23,23 @@ class LocalDatabase {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
 
+    // Chiffrement : Récupérer ou générer une clé de 32 caractères
+    const secureStorage = FlutterSecureStorage();
+    String? dbPassword = await secureStorage.read(key: 'db_password');
+    
+    if (dbPassword == null) {
+      // Générer une clé aléatoire forte au premier lancement
+      final random = Random.secure();
+      final values = List<int>.generate(32, (i) => random.nextInt(256));
+      dbPassword = base64Url.encode(values);
+      await secureStorage.write(key: 'db_password', value: dbPassword);
+      debugPrint("🔑 Nouvelle clé de base de données générée et sécurisée.");
+    }
+
     return await openDatabase(
       path,
       version: 11,
+      password: dbPassword, // Paramètre SQLCipher pour chiffrer les fichiers .db
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -380,7 +397,20 @@ class LocalDatabase {
       }
       return 0;
     } catch (e) {
+      debugPrint('❌ Erreur calcul taille DB: $e');
       return 0;
+    }
+  }
+
+  /// Réduit la taille physique du fichier de base de données sans supprimer de données.
+  Future<void> optimizeDatabase() async {
+    if (kIsWeb) return;
+    try {
+      final db = await instance.database;
+      await db.execute('VACUUM');
+      debugPrint('⚡ Base de données optimisée (VACUUM).');
+    } catch (e) {
+      debugPrint('❌ Erreur optimisation DB: $e');
     }
   }
 
@@ -389,8 +419,8 @@ class LocalDatabase {
     final db = await instance.database;
     await db.execute('DELETE FROM messages');
     await db.execute('DELETE FROM rooms');
-    // Facultatif: Vider aussi l'espace pour réduire la taille du fichier physique
-    await db.execute('VACUUM');
+    await db.execute('DELETE FROM messages_fts'); // Ne pas oublier la table de recherche
+    await optimizeDatabase();
   }
 
   Future<List<Map<String, dynamic>>> getMediaMessages(String roomId, {String? type}) async {

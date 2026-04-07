@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/authenticated_image.dart';
 import '../services/search_service.dart';
 import '../services/room_service.dart';
 import '../widgets/premium_background.dart';
@@ -148,7 +149,7 @@ class _SearchScreenState extends State<SearchScreen> {
                               leading: CircleAvatar(
                                 radius: 24,
                                 backgroundColor: theme.colorScheme.primary,
-                                backgroundImage: p['avatar'] != null ? NetworkImage(p['avatar']) : null,
+                                backgroundImage: p['avatar'] != null ? AuthenticatedImageProvider(p['avatar']) : null,
                                 child: p['avatar'] == null
                                     ? Text(
                                         p['name'][0].toUpperCase(), 

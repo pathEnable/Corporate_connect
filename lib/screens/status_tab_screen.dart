@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/authenticated_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
@@ -157,7 +158,7 @@ class StatusTabScreen extends ConsumerWidget {
               ),
               child: CircleAvatar(
                 radius: 26,
-                backgroundImage: first.userAvatar != null ? NetworkImage(first.userAvatar!) : null,
+                backgroundImage: first.userAvatar != null ? AuthenticatedImageProvider(first.userAvatar!) : null,
                 child: first.userAvatar == null ? const Icon(Icons.person) : null,
               ),
             ),

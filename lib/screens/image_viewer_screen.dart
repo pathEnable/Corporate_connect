@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import '../widgets/authenticated_image.dart';
 import 'package:photo_view/photo_view.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
 class ImageViewerScreen extends StatelessWidget {
   final String imageUrl;
@@ -59,7 +59,7 @@ class ImageViewerScreen extends StatelessWidget {
       ),
       extendBodyBehindAppBar: true,
       body: PhotoView(
-        imageProvider: CachedNetworkImageProvider(imageUrl),
+        imageProvider: AuthenticatedImageProvider(imageUrl),
         loadingBuilder: (context, event) => const Center(
           child: CircularProgressIndicator(color: Colors.white),
         ),

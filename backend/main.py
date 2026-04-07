@@ -18,9 +18,9 @@ from routes_admin import router as admin_router
 from routes_notifications import router as notifications_router
 from routes_agora import router as agora_router
 from routes_calls import router as calls_router
+from config import ALLOWED_ORIGINS
 import time
 import os
-from collections import defaultdict
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 GITHUB_REPO = "pathEnable/Corporate_connect"
@@ -58,18 +58,19 @@ class SecurityHeadersMiddleware:
 
 app.add_middleware(SecurityHeadersMiddleware)
 
-# ── Rate Limiter basique (Middleware ASGI pur — compatible WebSocket) ──
-request_counts: dict = defaultdict(list)
+from database import redis_client
+
+# ── Rate Limiter Distribué (Redis) ──
 RATE_LIMIT = 60  # requêtes max
 RATE_WINDOW = 60  # par fenêtre de 60 secondes
 
 class RateLimiterMiddleware:
-    """Middleware ASGI pur qui n'interfère pas avec les WebSockets."""
+    """Middleware ASGI de Rate Limiting utilisant Redis pour le clustering."""
     def __init__(self, app: ASGIApp):
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
-        # Les WebSockets passent directement sans limitation
+        # Les WebSockets passent directement sans limitation globale
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
@@ -77,12 +78,29 @@ class RateLimiterMiddleware:
         client = scope.get("client")
         client_ip = client[0] if client else "unknown"
         now = time.time()
-        request_counts[client_ip] = [t for t in request_counts[client_ip] if now - t < RATE_WINDOW]
-        if len(request_counts[client_ip]) >= RATE_LIMIT:
-            response = JSONResponse(status_code=429, content={"detail": "Trop de requêtes. Réessayez plus tard."})
-            await response(scope, receive, send)
-            return
-        request_counts[client_ip].append(now)
+        
+        # Clé Redis spécifique pour le rate limiting
+        key = f"rate_limit:{client_ip}"
+        
+        try:
+            # Utilisation d'un pipeline pour l'atomicité et l'optimisation réseau
+            async with redis_client.pipeline(transaction=True) as pipe:
+                pipe.zremrangebyscore(key, 0, now - RATE_WINDOW)
+                pipe.zcard(key)
+                pipe.zadd(key, {str(now): now})
+                pipe.expire(key, RATE_WINDOW)
+                results = await pipe.execute()
+                
+            request_count = results[1]
+            
+            if request_count > RATE_LIMIT:
+                response = JSONResponse(status_code=429, content={"detail": "Trop de requêtes. Réessayez plus tard."})
+                await response(scope, receive, send)
+                return
+        except Exception as e:
+            # En cas de panne Redis, on laisse passer pour ne pas bloquer l'usage (ou on peut logguer)
+            print(f"[RateLimit] Erreur Redis: {e}")
+
         await self.app(scope, receive, send)
 
 app.add_middleware(RateLimiterMiddleware)
@@ -90,7 +108,7 @@ app.add_middleware(RateLimiterMiddleware)
 # ── CORS (Doit être le dernier ajouté pour être le premier/dernier exécuté) ──
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Plus robuste pour le développement avec ngrok/flutter web
+    allow_origins=ALLOWED_ORIGINS,  # Défini dans config.py (depuis env ALLOWED_ORIGINS)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -201,6 +219,14 @@ app.include_router(admin_router)
 app.include_router(notifications_router)
 app.include_router(agora_router)
 app.include_router(calls_router)
+
+# ── Listener Redis Pub/Sub ──
+from routes_chat import start_redis_listener
+import asyncio
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(start_redis_listener())
 
 # ── Diagnostic & Fichiers statiques ──
 

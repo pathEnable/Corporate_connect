@@ -1,11 +1,27 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'push_notification_service.dart';
-import 'package:http/http.dart' as http;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'push_notification_service.dart';
+import 'global_presence_service.dart';
+import 'package:http/http.dart' as http;
 import 'api_config.dart';
 
 class AuthService {
+  /// Stockage sécurisé (Keystore Android / Keychain iOS)
+  static const _secureStorage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
+
+  /// Cache en mémoire pour un accès synchrone (utilisé par AuthenticatedImage)
+  static String? _cachedToken;
+
+  /// Récupérer le token en cache de manière synchrone
+  static String? get cachedToken => _cachedToken;
+
+  // ═══════════════════════════════════════════════════════════
+  //  AUTHENTIFICATION
+  // ═══════════════════════════════════════════════════════════
 
   /// Connexion par Email et mot de passe
   Future<Map<String, dynamic>> loginWithEmail(String email, String password) async {
@@ -85,11 +101,21 @@ class AuthService {
     }
   }
 
-  /// Sauvegarder le token JWT en local
+  // ═══════════════════════════════════════════════════════════
+  //  STOCKAGE SÉCURISÉ DES TOKENS
+  // ═══════════════════════════════════════════════════════════
+
+  /// Sauvegarder les tokens dans le Keystore sécurisé (pas SharedPreferences)
   Future<void> _saveToken(String token, String refreshToken, String userId, String fullName, {bool registerFcm = true}) async {
+    // Tokens sensibles → Keystore chiffré
+    await _secureStorage.write(key: 'access_token', value: token);
+    await _secureStorage.write(key: 'refresh_token', value: refreshToken);
+    
+    // Mettre à jour le cache en mémoire
+    _cachedToken = token;
+
+    // Données non sensibles → SharedPreferences (pour accès rapide par Riverpod/UI)
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('access_token', token);
-    await prefs.setString('refresh_token', refreshToken);
     await prefs.setString('user_id', userId);
     await prefs.setString('full_name', fullName);
 
@@ -106,22 +132,53 @@ class AuthService {
     }
   }
 
-  /// Vérifier si l'utilisateur est connecté
+  /// Vérifier si l'utilisateur est connecté ET si le token est encore valide
   Future<bool> isLoggedIn() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.containsKey('access_token');
+    final token = await getToken();
+    if (token == null) return false;
+
+    // Vérifier l'expiration locale du JWT (sans appel réseau)
+    if (_isTokenExpired(token)) {
+      // Tenter un refresh silencieux
+      final refreshed = await refreshToken();
+      return refreshed;
+    }
+    return true;
   }
 
-  /// Récupérer le token (Restauré)
+  /// Décoder le JWT localement pour vérifier l'expiration
+  bool _isTokenExpired(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return true;
+
+      // Décoder le payload (base64url)
+      final payload = parts[1];
+      final normalized = base64Url.normalize(payload);
+      final decoded = utf8.decode(base64Url.decode(normalized));
+      final data = jsonDecode(decoded) as Map<String, dynamic>;
+
+      final exp = data['exp'] as int?;
+      if (exp == null) return true;
+
+      final expiryDate = DateTime.fromMillisecondsSinceEpoch(exp * 1000);
+      // Ajouter une marge de 30 secondes pour éviter les races conditions
+      return expiryDate.isBefore(DateTime.now().add(const Duration(seconds: 30)));
+    } catch (_) {
+      return true; // En cas de doute, considérer comme expiré
+    }
+  }
+
+  /// Récupérer le token depuis le stockage sécurisé
   Future<String?> getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('access_token');
+    if (_cachedToken != null) return _cachedToken;
+    _cachedToken = await _secureStorage.read(key: 'access_token');
+    return _cachedToken;
   }
 
-  /// Récupérer le refresh token
+  /// Récupérer le refresh token depuis le stockage sécurisé
   Future<String?> getRefreshToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('refresh_token');
+    return await _secureStorage.read(key: 'refresh_token');
   }
 
   /// Tenter un rafraîchissement du token
@@ -138,19 +195,53 @@ class AuthService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        // On ne ré-enregistre pas FCM ici car refreshToken est souvent appelé PAR PushNotificationService
         await _saveToken(data['access_token'], data['refresh_token'], data['user_id'], data['full_name'], registerFcm: false);
         return true;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint("⚠️ Erreur refresh token: $e");
+    }
     return false;
   }
 
-  /// Déconnexion
+  // ═══════════════════════════════════════════════════════════
+  //  DÉCONNEXION SÉCURISÉE
+  // ═══════════════════════════════════════════════════════════
+
+  /// Déconnexion complète et propre
   Future<void> logout() async {
+    // 1. Fermer le WebSocket global AVANT de supprimer les tokens
+    GlobalPresenceService.instance.disconnect();
+
+    // 2. Révoquer le Refresh Token côté backend (empêche la réutilisation)
+    try {
+      final rt = await getRefreshToken();
+      if (rt != null) {
+        await http.post(
+          Uri.parse('${ApiConfig.baseUrl}/auth/logout'),
+          headers: ApiConfig.defaultHeaders,
+          body: jsonEncode({'refresh_token': rt}),
+        );
+      }
+    } catch (e) {
+      debugPrint("⚠️ Révocation backend échouée (non bloquant): $e");
+    }
+
+    // 3. Supprimer les tokens sécurisés et vider le cache
+    await _secureStorage.delete(key: 'access_token');
+    await _secureStorage.delete(key: 'refresh_token');
+    _cachedToken = null;
+
+    // 4. Supprimer UNIQUEMENT les données de session (pas les préférences utilisateur !)
     final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
+    await prefs.remove('user_id');
+    await prefs.remove('full_name');
+    // Les clés isDarkMode, fontScale, accentColor, ringtoneName restent intactes
   }
+
+  // ═══════════════════════════════════════════════════════════
+  //  PROFIL & REQUÊTES AUTHENTIFIÉES
+  // ═══════════════════════════════════════════════════════════
 
   /// Récupérer le profil complet de l'API avec gestion du rafraîchissement
   Future<Map<String, dynamic>> getCurrentProfile() async {
@@ -213,8 +304,8 @@ class AuthService {
     if (response.statusCode == 401) {
       final refreshed = await refreshToken();
       if (refreshed) {
-        token = await getToken(); // Récupérer le nouveau token
-        response = await makeRequest(); // Réessayer
+        token = await getToken();
+        response = await makeRequest();
       }
     }
 

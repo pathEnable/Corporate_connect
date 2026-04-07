@@ -1,7 +1,8 @@
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from config import DATABASE_URL
+from config import DATABASE_URL, REDIS_URL
+import redis.asyncio as aioredis
 
 # Fix pour Render : Convertir postgres:// en postgresql:// pour SQLAlchemy
 DB_URL = DATABASE_URL
@@ -23,3 +24,6 @@ def get_db():
         yield db
     finally:
         db.close()
+
+# ── Client Redis Global ──
+redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)

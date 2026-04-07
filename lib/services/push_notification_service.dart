@@ -3,6 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter_callkit_incoming/entities/call_kit_params.dart';
+import 'package:flutter_callkit_incoming/entities/android_params.dart';
+import 'package:flutter_callkit_incoming/entities/ios_params.dart';
+import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import 'package:uuid/uuid.dart';
 import 'dart:convert';
 import 'auth_service.dart';
 import 'api_config.dart';
@@ -13,6 +18,38 @@ import '../screens/chat_screen.dart';
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   debugPrint("Handling a background message: ${message.messageId}");
+  
+  // Si c'est un appel, on déclenche CallKit immédiatement en arrière-plan
+  if (message.data['type'] == 'call_offer') {
+    await _showCallKitIncoming(message.data);
+  }
+}
+
+Future<void> _showCallKitIncoming(Map<String, dynamic> data) async {
+  final uuid = const Uuid().v4();
+  final params = CallKitParams(
+    id: uuid,
+    nameCaller: data['caller_name'] ?? 'Inconnu',
+    appName: 'Corporate Connect',
+    avatar: data['caller_avatar'] ?? '',
+    handle: 'Appel entrant...',
+    type: data['is_video'] == 'true' ? 1 : 0,
+    duration: 30000,
+    extra: <String, dynamic>{'room_id': data['room_id']},
+    android: AndroidParams(
+      isCustomNotification: true,
+      isShowLogo: false,
+      ringtonePath: data['is_video'] == 'true' ? 'ringtone_video' : 'ringtone_audio',
+      backgroundColor: '#040301',
+      actionColor: '#4CAF50',
+    ),
+    ios: const IOSParams(
+      iconName: 'AppIcon',
+      handleType: 'generic',
+      supportsVideo: true,
+    ),
+  );
+  await FlutterCallkitIncoming.showCallkitIncoming(params);
 }
 
 class PushNotificationService {
@@ -59,7 +96,13 @@ class PushNotificationService {
 
     // 4. Écouter les messages en avant-plan
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      _showLocalNotification(message);
+      if (message.data['type'] == 'call_offer') {
+        // En avant-plan, on laisse l'Overlay interne gérer la sonnerie si possible,
+        // mais on affiche quand même CallKit pour la cohérence OS.
+        _showCallKitIncoming(message.data);
+      } else {
+        _showLocalNotification(message);
+      }
     });
 
     // 5. Gérer le clic sur une notification en arrière-plan

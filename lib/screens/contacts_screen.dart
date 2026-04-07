@@ -1,7 +1,7 @@
 import 'dart:convert';
+import '../widgets/authenticated_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:http/http.dart' as http;
 import '../services/auth_service.dart';
 import '../services/room_service.dart';
@@ -259,7 +259,7 @@ class _ContactAvatar extends StatelessWidget {
         if (snapshot.hasData) {
           return CircleAvatar(
             radius: 26,
-            backgroundImage: CachedNetworkImageProvider(snapshot.data!),
+            backgroundImage: AuthenticatedImageProvider(snapshot.data!),
             backgroundColor: theme.colorScheme.primary.withAlpha(40),
           );
         }

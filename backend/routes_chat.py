@@ -10,6 +10,7 @@ from models import Message, Room, RoomMember, Profile
 from security_utils import encrypt_data, decrypt_data
 from starlette.concurrency import run_in_threadpool
 from firebase_admin_config import send_push_notification
+from database import redis_client
 
 router = APIRouter(tags=["Chat"])
 
@@ -43,14 +44,16 @@ class ConnectionManager:
         self.global_connections.pop(user_id, None)
 
     async def broadcast_to_room(self, room_id: str, message: dict, exclude_user: str = None):
-        """Envoyer un message à tous les membres connectés d'un salon."""
-        if room_id in self.active_connections:
-            for user_id, ws in self.active_connections[room_id].items():
-                if user_id != exclude_user:
-                    try:
-                        await ws.send_json(message)
-                    except Exception:
-                        pass
+        """Publier un message sur Redis pour tous les membres connectés d'un salon."""
+        data = {
+            "room_id": room_id,
+            "exclude_user": exclude_user,
+            "payload": message
+        }
+        try:
+            await redis_client.publish("chat_broadcast", json.dumps(data))
+        except Exception as e:
+            print(f"Erreur pubsub room: {e}")
 
     def get_online_users(self, room_id: str) -> Set[str]:
         """Retourner la liste des utilisateurs connectés dans un salon."""
@@ -58,36 +61,73 @@ class ConnectionManager:
             return set(self.active_connections[room_id].keys())
         return set()
 
-
 manager = ConnectionManager()
-
 
 # --- Fonctions utilitaires pour les broadcasts cross-module ---
 async def broadcast_to_all_globals(message: dict, exclude_user: str = None):
-    """Diffuser un événement à TOUS les utilisateurs connectés au WS global.
-    
-    Utilisé pour : inscription d'un nouvel utilisateur.
-    """
-    for user_id, ws in manager.global_connections.items():
-        if user_id != exclude_user:
-            try:
-                await ws.send_json(message)
-            except Exception:
-                pass
+    """Diffuser un événement à TOUS les utilisateurs via Redis Pub/Sub."""
+    data = {
+        "global_action": True,
+        "exclude_user": exclude_user,
+        "payload": message
+    }
+    try:
+        await redis_client.publish("chat_broadcast", json.dumps(data))
+    except Exception:
+        pass
 
 
 async def broadcast_to_users(user_ids: list, message: dict):
-    """Diffuser un événement à une liste spécifique d'utilisateurs connectés.
-    
-    Utilisé pour : création d'un nouveau salon.
-    """
-    for uid in user_ids:
-        uid_str = str(uid)
-        if uid_str in manager.global_connections:
-            try:
-                await manager.global_connections[uid_str].send_json(message)
-            except Exception:
-                pass
+    """Diffuser un événement à une liste d'utilisateurs via Redis Pub/Sub."""
+    data = {
+        "target_users": [str(uid) for uid in user_ids],
+        "payload": message
+    }
+    try:
+        await redis_client.publish("chat_broadcast", json.dumps(data))
+    except Exception:
+        pass
+
+
+# --- Listener Pub/Sub Redis ---
+async def start_redis_listener():
+    """Tâche en arrière-plan écoutant les messages Redis et les distribuant localement."""
+    pubsub = redis_client.pubsub()
+    await pubsub.subscribe("chat_broadcast")
+    print("🚀 Redis PubSub listener started")
+    try:
+        async for message in pubsub.listen():
+            if message["type"] == "message":
+                data = json.loads(message["data"])
+                room_id = data.get("room_id")
+                exclude_user = data.get("exclude_user")
+                payload = data.get("payload")
+                
+                if room_id:
+                    if room_id in manager.active_connections:
+                        for user_id, ws in manager.active_connections[room_id].items():
+                            if user_id != exclude_user:
+                                try:
+                                    await ws.send_json(payload)
+                                except Exception:
+                                    pass
+                elif data.get("global_action"):
+                    for user_id, ws in manager.global_connections.items():
+                        if user_id != exclude_user:
+                            try:
+                                await ws.send_json(payload)
+                            except Exception:
+                                pass
+                elif data.get("target_users"):
+                    for uid in data.get("target_users"):
+                        uid_str = str(uid)
+                        if uid_str in manager.global_connections:
+                            try:
+                                await manager.global_connections[uid_str].send_json(payload)
+                            except Exception:
+                                pass
+    except Exception as e:
+        print(f"Erreur fatale Redis listener: {e}")
 
 
 from auth import create_access_token, ALGORITHM, SECRET_KEY
@@ -99,12 +139,18 @@ async def websocket_global(
     user_id: str,
     token: str = Query(None)
 ):
-    """Point d'entrée global pour la présence (is_online) et les notifications."""
-    print(f"🔌 Tentative WS Global pour {user_id} (Token présent: {token is not None})")
+    """
+    Point d'entrée global pour la présence.
+    Supporte l'authentification par `?token=` (Legacy) ou via Header `Sec-WebSocket-Protocol`.
+    """
+    # 1. Extraction du token depuis le protocole (Recommandé) ou Query (Legacy)
+    if not token:
+        # Le client Flutter passe le token dans 'protocols'
+        token = websocket.headers.get("sec-websocket-protocol")
     
-    # Il faut TOUJOURS accepter la connexion WebSocket avant de pouvoir la fermer proprement.
-    # Sans accept(), le client ne reçoit jamais le code de fermeture (1006 au lieu de 1008).
-    await websocket.accept()
+    # Accepter d'abord pour pouvoir fermer proprement
+    # Si on utilise le protocole pour le token, on doit le renvoyer dans l'acceptation
+    await websocket.accept(subprotocol=token if token else None)
     
     if not token:
         print(f"❌ WS Global refusé: Token manquant pour {user_id}")
@@ -156,11 +202,17 @@ async def websocket_chat(
     user_id: str,
     token: str = Query(None)
 ):
-    """Point d'entrée WebSocket pour le chat temps réel sécurisé."""
-    # Accepter d'abord pour pouvoir fermer proprement (sinon 1006)
-    await websocket.accept()
+    """
+    Point d'entrée WebSocket pour le chat temps réel sécurisé.
+    Supporte Header `Sec-WebSocket-Protocol` (Recommandé) ou `?token=` (Legacy).
+    """
+    if not token:
+        token = websocket.headers.get("sec-websocket-protocol")
+        
+    # Accepter d'abord pour pouvoir fermer proprement
+    await websocket.accept(subprotocol=token if token else None)
     
-    # Validation du token (passé en query param car les WS supportent mal les headers)
+    # Validation du token
     if not token:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return

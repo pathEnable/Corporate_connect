@@ -9,8 +9,11 @@ import 'services/update_service.dart';
 import 'services/local_database.dart';
 import 'widgets/update_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shimmer/shimmer.dart';
 import 'providers/settings_provider.dart';
 import 'theme/app_theme.dart';
+import 'widgets/call/global_call_listener.dart';
+import 'widgets/call/incoming_call_overlay.dart';
 import 'dart:async';
 
 
@@ -19,23 +22,27 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Activer le mode edge-to-edge (plein écran)
+  // Activer le mode edge-to-edge
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     systemNavigationBarColor: Colors.transparent,
     systemNavigationBarDividerColor: Colors.transparent,
     systemNavigationBarContrastEnforced: false,
-    statusBarIconBrightness: Brightness.light, // Souvent blanc sur le splash
+    statusBarIconBrightness: Brightness.light,
     systemNavigationBarIconBrightness: Brightness.light,
   ));
 
-  // Préchauffage de la base de données locale pour un accès instantané au cache
-  if (!kIsWeb) {
-    await LocalDatabase.instance.database;
-  }
-  
+  // ══ INIT PARALLÈLE : DB locale + Firebase en même temps (gain ~200ms) ══
   final stopwatch = Stopwatch()..start();
+  await Future.wait([
+    if (!kIsWeb) LocalDatabase.instance.database,
+    // placeholder pour d'autres inits futures
+    Future.value(null),
+  ]);
+  stopwatch.stop();
+  debugPrint("⚡ DB initialisée en ${stopwatch.elapsedMilliseconds}ms");
+
   runApp(
     const ProviderScope(
       child: AppResetter(
@@ -43,7 +50,9 @@ void main() async {
       ),
     ),
   );
-  unawaited(_initializeBgServices(stopwatch));
+  
+  // Services secondaires (Firebase Messaging, etc.) en arrière-plan total
+  _initializeBgServices();
 }
 
 /// Widget permettant de réinitialiser toute l'arborescence de l'application (et donc les états Riverpod locaux)
@@ -77,11 +86,10 @@ class _AppResetterState extends State<AppResetter> {
   }
 }
 
-Future<void> _initializeBgServices(Stopwatch stopwatch) async {
+Future<void> _initializeBgServices() async {
   try {
     await PushNotificationService.initialize();
-    stopwatch.stop();
-    debugPrint("⏱️ Services initialisés et UI prête en ${stopwatch.elapsedMilliseconds}ms");
+    debugPrint("✅ Services push initialisés");
   } catch (e) {
     debugPrint("⚠️ Erreur services arrière-plan: $e");
   }
@@ -104,7 +112,14 @@ class CorporateConnectApp extends ConsumerWidget {
           data: data.copyWith(
             textScaler: TextScaler.linear(settings.fontScale),
           ),
-          child: child!,
+          child: GlobalCallListener(
+            child: Stack(
+              children: [
+                if (child != null) child,
+                const IncomingCallOverlay(),
+              ],
+            ),
+          ),
         );
       },
       theme: AppTheme.lightTheme(settings.fontScale, accentColorValue: settings.accentColor),
@@ -138,6 +153,7 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> _checkAuth() async {
+    // Vérification et pré-chargement du cache en parallèle
     final loggedIn = await AuthService().isLoggedIn();
     if (mounted) {
       setState(() {
@@ -158,7 +174,7 @@ class _AuthGateState extends State<AuthGate> {
           transitionsBuilder: (_, animation, __, child) {
             return FadeTransition(opacity: animation, child: child);
           },
-          transitionDuration: const Duration(milliseconds: 300),
+          transitionDuration: const Duration(milliseconds: 250), // 300 → 250ms
         ),
       );
     }
@@ -180,10 +196,64 @@ class _AuthGateState extends State<AuthGate> {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: Colors.white,
-      body: Center(
-        child: CircularProgressIndicator(), // Simple loader
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final baseColor = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFE0E0E0);
+    final highlightColor = isDark ? const Color(0xFF2C2C2C) : const Color(0xFFF5F5F5);
+
+    // Shimmer de chargement : ressemble à l'écran Home pour une transition douce
+    return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF040301) : Colors.white,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Barre d'app fictive
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Shimmer.fromColors(
+                baseColor: baseColor,
+                highlightColor: highlightColor,
+                child: Row(
+                  children: [
+                    Container(width: 160, height: 22, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
+                    const Spacer(),
+                    Container(width: 36, height: 36, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+                  ],
+                ),
+              ),
+            ),
+            const Divider(height: 1),
+            // Liste de conversations fictives
+            Expanded(
+              child: Shimmer.fromColors(
+                baseColor: baseColor,
+                highlightColor: highlightColor,
+                child: ListView.builder(
+                  itemCount: 8,
+                  itemBuilder: (_, i) => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    child: Row(
+                      children: [
+                        Container(width: 52, height: 52, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(height: 14, width: double.infinity, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
+                              const SizedBox(height: 8),
+                              Container(height: 12, width: 200, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/authenticated_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
@@ -168,7 +169,7 @@ class _StatusCircle extends StatelessWidget {
                 child: CircleAvatar(
                   radius: 28,
                   backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                  backgroundImage: firstStatus.userAvatar != null ? NetworkImage(firstStatus.userAvatar!) : null,
+                  backgroundImage: firstStatus.userAvatar != null ? AuthenticatedImageProvider(firstStatus.userAvatar!) : null,
                   child: firstStatus.userAvatar == null 
                     ? Icon(Icons.person_rounded, color: theme.colorScheme.onSurface.withValues(alpha: 0.3)) 
                     : null,

@@ -55,14 +55,9 @@ from jose import jwt, JWTError
 @router.get("/download/{filename}")
 async def download_file(
     filename: str,
-    token: str = Query(None),
     current_user: Profile = Depends(get_current_user),
 ):
-    """Téléchargement sécurisé via JWT (Header OU Query param ?token=).
-    
-    Le query param est nécessaire pour Flutter Image.network qui ne
-    supporte pas facilement les headers d'authentification.
-    """
+    """Téléchargement sécurisé via JWT (Header)."""
     
     # Chercher d'abord dans images, puis docs
     img_path = os.path.join(IMAGES_DIR, filename)

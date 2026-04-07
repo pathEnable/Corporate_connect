@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../widgets/authenticated_image.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../../screens/chat_screen.dart';
 import '../../services/media_service.dart';
 import '../ui_helpers.dart';
@@ -165,7 +165,7 @@ class _RoomAvatar extends StatelessWidget {
                   return CircleAvatar(
                     radius: 28,
                     backgroundColor: theme.colorScheme.primary.withAlpha(40),
-                    backgroundImage: CachedNetworkImageProvider(snapshot.data!),
+                    backgroundImage: AuthenticatedImageProvider(snapshot.data!),
                   );
                 }
                 return CircleAvatar(
