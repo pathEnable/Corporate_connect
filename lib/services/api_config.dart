@@ -58,6 +58,9 @@ class ApiConfig {
   /// Ne passe AUCUN jeton dans l'URL pour des raisons de sécurité.
   /// Les requêtes doivent utiliser AuthenticatedNetworkImage pour fournir les Headers.
   static String getMediaUrl(String relativeUrl) {
+    if (relativeUrl.startsWith('http')) {
+      return relativeUrl;
+    }
     String path = relativeUrl.replaceFirst("/media", "");
     if (!path.startsWith('/')) path = '/$path';
     return '$baseUrl/media$path';

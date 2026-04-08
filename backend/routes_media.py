@@ -1,12 +1,19 @@
 import os
 import shutil
 import uuid
+import cloudinary
+import cloudinary.uploader
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Profile
 from routes_auth import get_current_user
+from config import CLOUDINARY_URL
+
+# Configurer Cloudinary si l'URL est fournie
+if CLOUDINARY_URL:
+    cloudinary.config(cloudinary_url=CLOUDINARY_URL)
 
 router = APIRouter(prefix="/media", tags=["Media"])
 
@@ -23,10 +30,29 @@ async def upload_file(
     file: UploadFile = File(...),
     current_user: Profile = Depends(get_current_user),
 ):
-    """Télécharger un fichier sur le serveur."""
+    """Télécharger un fichier sur Cloudinary (ou localement en fallback)."""
     file_ext = os.path.splitext(file.filename)[1].lower()
-    unique_filename = f"{uuid.uuid4()}{file_ext}"
     
+    # 1. Tentative d'upload sur Cloudinary
+    if CLOUDINARY_URL:
+        try:
+            upload_result = cloudinary.uploader.upload(
+                file.file,
+                folder="emini_connect",
+                resource_type="auto"
+            )
+            return {
+                "filename": file.filename,
+                "url": upload_result["secure_url"],
+                "content_type": file.content_type,
+                "size": upload_result.get("bytes", 0)
+            }
+        except Exception as e:
+            print(f"[Cloudinary] Erreur d'upload: {e}")
+            # Fallback local si Cloudinary échoue
+    
+    # 2. Fallback Local (Render éphémère)
+    unique_filename = f"{uuid.uuid4()}{file_ext}"
     is_image = file_ext in [".png", ".jpg", ".jpeg", ".gif", ".webp"]
     target_dir = IMAGES_DIR if is_image else DOCS_DIR
     file_path = os.path.join(target_dir, unique_filename)
@@ -37,12 +63,9 @@ async def upload_file(
         file.file.seek(0)
         shutil.copyfileobj(file.file, buffer)
 
-    # URL sécurisée via le backend
-    file_url = f"/media/download/{unique_filename}"
-
     return {
         "filename": file.filename,
-        "url": file_url,
+        "url": f"/media/download/{unique_filename}",
         "content_type": file.content_type,
         "size": file_size
     }

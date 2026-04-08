@@ -74,4 +74,29 @@ class OfflineSyncService {
       _isSyncing = false;
     }
   }
+
+  /// Pré-charge les messages pour les salons spécifiés afin qu'ils soient
+  /// déjà présents en base locale lors de l'ouverture du chat.
+  Future<void> preFetchMessages(List<String> roomIds) async {
+    if (kIsWeb) return;
+    
+    debugPrint("🚀 Pré-chargement des messages pour ${roomIds.length} salon(s)...");
+    
+    for (final roomId in roomIds) {
+      try {
+        // Récupérer les 20 derniers messages
+        final messages = await _roomService.getMessages(roomId, limit: 20);
+        
+        // Sauvegarder massivement en DB locale
+        // Note: La DB gère déjà les doublons via l'ID
+        for (final msg in messages) {
+          await LocalDatabase.instance.saveMessage(msg);
+        }
+        
+        debugPrint("✅ ${messages.length} messages pré-chargés pour le salon $roomId");
+      } catch (e) {
+        debugPrint("⚠️ Échec du pré-chargement pour le salon $roomId: $e");
+      }
+    }
+  }
 }

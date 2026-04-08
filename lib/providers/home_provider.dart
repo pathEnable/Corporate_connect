@@ -7,6 +7,7 @@ import '../services/room_service.dart';
 import '../services/status_service.dart';
 import '../services/local_database.dart';
 import '../services/global_presence_service.dart';
+import '../services/offline_sync_service.dart';
 import 'migration_provider.dart';
 
 
@@ -149,6 +150,21 @@ class HomeNotifier extends Notifier<HomeState> {
         });
         // Mise à jour silencieuse : on ne remplace que si les données ont réellement changé
         state = state.copyWith(rooms: rooms, isLoadingRooms: false);
+      }
+
+      // ═══ OPTIMISATION : Pré-chargement agressif des messages ═══
+      // On prend les 10 salons les plus récents et on pré-charge leurs messages
+      if (rooms.isNotEmpty) {
+        final topRoomIds = rooms
+          .take(10)
+          .map((r) => r['id']?.toString())
+          .whereType<String>()
+          .toList();
+        
+        if (topRoomIds.isNotEmpty) {
+          // Lancer en arrière-plan sans attendre
+          ref.read(offlineSyncProvider).preFetchMessages(topRoomIds);
+        }
       }
     } catch (e) {
       debugPrint("⚠️ Erreur sync rooms API: $e");

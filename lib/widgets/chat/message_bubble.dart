@@ -43,7 +43,12 @@ class MessageBubble extends StatelessWidget {
 
     final notMeBgColor = isDark ? theme.colorScheme.surfaceContainerHighest : Colors.white;
     final notMeTextColor = isDark ? Colors.white : Colors.black87;
-    final replyBorderColor = isMe ? Colors.white : theme.colorScheme.primary;
+    
+    // Optimisation des couleurs corporate
+    final bubbleColor = isMe ? theme.colorScheme.primary : notMeBgColor;
+    final textColor = isMe ? theme.colorScheme.onPrimary : notMeTextColor;
+    final secondaryTextColor = isMe ? textColor.withValues(alpha: 0.7) : Colors.grey;
+    final replyBorderColor = isMe ? textColor : theme.colorScheme.primary;
 
     return GestureDetector(
       onLongPress: () {
@@ -59,16 +64,23 @@ class MessageBubble extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
           decoration: BoxDecoration(
-            color: isMe ? const Color(0xFF26E9CF) : notMeBgColor,
+            color: bubbleColor,
             borderRadius: BorderRadius.only(
               topLeft: const Radius.circular(16),
               topRight: const Radius.circular(16),
               bottomLeft: isMe ? const Radius.circular(16) : const Radius.circular(4),
               bottomRight: isMe ? const Radius.circular(4) : const Radius.circular(16),
             ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
             border: Border.all(
               color: isMe 
-                ? const Color(0xFF1AA18E).withValues(alpha: 0.2)
+                ? theme.colorScheme.primary.withValues(alpha: 0.2)
                 : theme.colorScheme.onSurface.withValues(alpha: 0.1),
               width: 1,
             ),
@@ -91,7 +103,7 @@ class MessageBubble extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 13,
                       fontStyle: FontStyle.italic,
-                      color: isMe ? Colors.white.withAlpha(220) : notMeTextColor.withAlpha(180),
+                      color: isMe ? textColor.withValues(alpha: 0.8) : notMeTextColor.withValues(alpha: 0.7),
                     ),
                   ),
                 ),
@@ -105,7 +117,7 @@ class MessageBubble extends StatelessWidget {
                 Text(
                   content,
                   style: TextStyle(
-                    color: isMe ? Colors.white : notMeTextColor,
+                    color: textColor,
                     fontSize: 15.5,
                     height: 1.3,
                   ),
@@ -129,7 +141,7 @@ class MessageBubble extends StatelessWidget {
                   Text(
                     _formatTime(timestamp),
                     style: TextStyle(
-                      color: isMe ? Colors.white60 : Colors.grey,
+                      color: secondaryTextColor,
                       fontSize: 11,
                     ),
                   ),
@@ -139,7 +151,9 @@ class MessageBubble extends StatelessWidget {
                       status == 'pending' ? Icons.access_time_rounded : 
                       (isRead ? Icons.done_all_rounded : Icons.done_rounded),
                       size: 14,
-                      color: isRead ? Colors.blueAccent : Colors.white60,
+                      color: isRead 
+                        ? (isMe ? Colors.blue[200] : Colors.blueAccent) 
+                        : secondaryTextColor,
                     ),
                   ],
                 ],

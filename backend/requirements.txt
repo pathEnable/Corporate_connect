@@ -11,3 +11,4 @@ agora-token-builder
 python-dotenv
 firebase-admin
 httpx
+cloudinary
