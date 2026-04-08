@@ -19,7 +19,7 @@ class LocalDatabase {
     return _database!;
   }
 
-  Future<Database> _initDB(String filePath) async {
+  Future<Database> _initDB(String filePath, {bool isRetry = false}) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
 
@@ -36,13 +36,28 @@ class LocalDatabase {
       debugPrint("🔑 Nouvelle clé de base de données générée et sécurisée.");
     }
 
-    return await openDatabase(
-      path,
-      version: 11,
-      password: dbPassword, // Paramètre SQLCipher pour chiffrer les fichiers .db
-      onCreate: _createDB,
-      onUpgrade: _upgradeDB,
-    );
+    try {
+      return await openDatabase(
+        path,
+        version: 12,
+        password: dbPassword, // Paramètre SQLCipher pour chiffrer les fichiers .db
+        onCreate: _createDB,
+        onUpgrade: _upgradeDB,
+      );
+    } catch (e) {
+      debugPrint("❌ Erreur d'ouverture de la base de données SQLCipher : $e");
+      if (!isRetry) {
+        debugPrint("🔄 Suppression du fichier corrompu et de la clé, tentative de recréation...");
+        try {
+          await deleteDatabase(path);
+          await secureStorage.delete(key: 'db_password');
+        } catch (_) {}
+        // Récursion unique
+        return await _initDB(filePath, isRetry: true);
+      } else {
+        rethrow;
+      }
+    }
   }
 
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
@@ -124,6 +139,18 @@ class LocalDatabase {
       await db.execute("ALTER TABLE rooms ADD COLUMN last_sender_name TEXT");
       await db.execute('CREATE INDEX IF NOT EXISTS idx_rooms_last_msg ON rooms(last_message_at)');
     }
+    if (oldVersion < 12) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS pending_rooms (
+          temp_id TEXT PRIMARY KEY,
+          name TEXT,
+          is_group INTEGER DEFAULT 1,
+          member_ids TEXT,
+          created_at TEXT,
+          synced INTEGER DEFAULT 0
+        )
+      ''');
+    }
   }
 
   Future<void> _createDB(Database db, int version) async {
@@ -174,6 +201,17 @@ class LocalDatabase {
     await db.execute('CREATE INDEX IF NOT EXISTS idx_messages_room ON messages(room_id, created_at)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_rooms_id ON rooms(id)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_rooms_last_msg ON rooms(last_message_at)');
+
+    await db.execute('''
+      CREATE TABLE pending_rooms (
+        temp_id TEXT PRIMARY KEY,
+        name TEXT,
+        is_group INTEGER DEFAULT 1,
+        member_ids TEXT,
+        created_at TEXT,
+        synced INTEGER DEFAULT 0
+      )
+    ''');
 
     await db.execute('''
       CREATE TABLE profiles (
@@ -441,6 +479,56 @@ class LocalDatabase {
       orderBy: 'created_at DESC',
     );
     return result;
+  }
+
+  // ═══ GESTION DU MODE HORS-LIGNE (Ouvrir des conversations sans réseau) ═══
+
+  /// Sauvegarde un salon dans la table principale (pour affichage immédiat)
+  Future<void> saveRoom(Map<String, dynamic> room) async {
+    if (kIsWeb) return;
+    final db = await instance.database;
+    await db.insert('rooms', room, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  /// Ajoute une demande de création de salon à la file d'attente
+  Future<String> savePendingRoom({
+    required String tempId,
+    required String name,
+    required bool isGroup,
+    required String memberIds,
+  }) async {
+    if (kIsWeb) return tempId;
+    final db = await instance.database;
+    await db.insert('pending_rooms', {
+      'temp_id': tempId,
+      'name': name,
+      'is_group': isGroup ? 1 : 0,
+      'member_ids': memberIds,
+      'created_at': DateTime.now().toIso8601String(),
+      'synced': 0,
+    });
+    return tempId;
+  }
+
+  /// Récupère tous les salons en attente de synchronisation
+  Future<List<Map<String, dynamic>>> getPendingRooms() async {
+    if (kIsWeb) return [];
+    final db = await instance.database;
+    return await db.query('pending_rooms', where: 'synced = 0');
+  }
+
+  /// Une fois synchronisé, on remplace l'ID temporaire par l'ID serveur partout
+  Future<void> confirmPendingRoom(String tempId, String realId) async {
+    if (kIsWeb) return;
+    final db = await instance.database;
+    await db.transaction((txn) async {
+      // 1. Mettre à jour le salon
+      await txn.update('rooms', {'id': realId}, where: 'id = ?', whereArgs: [tempId]);
+      // 2. Mettre à jour les messages déjà envoyés localement vers ce salon
+      await txn.update('messages', {'room_id': realId}, where: 'room_id = ?', whereArgs: [tempId]);
+      // 3. Marquer comme synchronisé
+      await txn.delete('pending_rooms', where: 'temp_id = ?', whereArgs: [tempId]);
+    });
   }
 }
 

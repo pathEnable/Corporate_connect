@@ -10,7 +10,7 @@ class SettingsState {
     this.isDarkMode = false,
     this.notificationsEnabled = true,
     this.cacheSize = '0 B',
-    this.accentColor = 0xFF26E9CF,
+    this.accentColor = 0xFF00695C,
     this.fontScale = 1.0,
     this.ringtoneName = 'Défaut',
   });

@@ -14,6 +14,7 @@ import '../services/media_cache_service.dart';
 import '../services/api_config.dart';
 import '../services/auth_service.dart';
 import 'home_provider.dart';
+import 'migration_provider.dart';
 
 /// Provider pour un salon de chat spécifique (Riverpod 2.0 Notifier Family)
 final chatProvider = NotifierProvider.family<ChatNotifier, ChatState, String>(() {
@@ -38,6 +39,21 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
   @override
   ChatState build(String arg) {
     roomId = arg;
+    
+    // Écouter les migrations d'identifiant (draft -> real)
+    ref.listen(roomMigrationProvider, (previous, next) {
+      if (next.containsKey(roomId)) {
+        final newId = next[roomId];
+        if (newId != null && newId != roomId) {
+          debugPrint("🔀 Migration ChatNotifier: $roomId -> $newId");
+          roomId = newId;
+          // Re-connecter et re-fetch avec le nouvel ID
+          _chatService.disconnect();
+          _init();
+        }
+      }
+    });
+
     ref.onDispose(() {
       _isDisposed = true;
       _chatService.disconnect();

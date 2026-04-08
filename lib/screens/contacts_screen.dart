@@ -9,15 +9,17 @@ import '../services/api_config.dart';
 import '../services/local_database.dart';
 import '../services/media_service.dart';
 import 'chat_screen.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class ContactsScreen extends StatefulWidget {
+class ContactsScreen extends ConsumerStatefulWidget {
   const ContactsScreen({super.key});
 
   @override
-  State<ContactsScreen> createState() => _ContactsScreenState();
+  ConsumerState<ContactsScreen> createState() => _ContactsScreenState();
 }
 
-class _ContactsScreenState extends State<ContactsScreen> {
+class _ContactsScreenState extends ConsumerState<ContactsScreen> {
   final AuthService _authService = AuthService();
   final RoomService _roomService = RoomService();
   final MediaService _mediaService = MediaService();
@@ -98,13 +100,56 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   Future<void> _startChat(Map<String, dynamic> contact) async {
     try {
+      // Vérifier la connectivité
+      final connectivityResults = await Connectivity().checkConnectivity();
+      final isOffline = connectivityResults.every((r) => r == ConnectivityResult.none);
+
+      if (isOffline) {
+        // ═══ MODE HORS-LIGNE ═══
+        final tempId = "draft_${DateTime.now().millisecondsSinceEpoch}";
+        final contactId = contact['id'].toString();
+        final contactName = contact['full_name'] ?? 'Discussion';
+
+        // 1. Sauvegarder dans la file d'attente de synchro
+        await LocalDatabase.instance.savePendingRoom(
+          tempId: tempId,
+          name: contactName,
+          isGroup: false,
+          memberIds: contactId,
+        );
+
+        // 2. Pré-créer le salon localement pour qu'il apparaisse dans la liste Home
+        await LocalDatabase.instance.saveRoom({
+          'id': tempId,
+          'name': contactName,
+          'is_group': 0,
+          'last_message': 'Discussion hors-ligne créée...',
+          'last_message_time': DateTime.now().toIso8601String(),
+          'unread_count': 0,
+        });
+
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ChatScreen(
+                roomId: tempId,
+                roomName: contactName,
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      // ═══ MODE EN LIGNE ═══
       final room = await _roomService.createPrivateRoom(contact['id']);
       if (mounted) {
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (_) => ChatScreen(
-              roomId: room['id'],
+              roomId: room['id'].toString(),
               roomName: contact['full_name'] ?? 'Discussion',
             ),
           ),

@@ -6,11 +6,13 @@ import 'screens/home_screen.dart';
 import 'services/auth_service.dart';
 import 'services/push_notification_service.dart';
 import 'services/update_service.dart';
+import 'services/offline_sync_service.dart';
 import 'services/local_database.dart';
 import 'widgets/update_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shimmer/shimmer.dart';
 import 'providers/settings_provider.dart';
+import 'providers/home_provider.dart';
 import 'theme/app_theme.dart';
 import 'widgets/call/global_call_listener.dart';
 import 'widgets/call/incoming_call_overlay.dart';
@@ -35,24 +37,32 @@ void main() async {
 
   // ══ INIT PARALLÈLE : DB locale + Firebase en même temps (gain ~200ms) ══
   final stopwatch = Stopwatch()..start();
-  await Future.wait([
-    if (!kIsWeb) LocalDatabase.instance.database,
-    // placeholder pour d'autres inits futures
-    Future.value(null),
-  ]);
+  try {
+    await Future.wait([
+      if (!kIsWeb) LocalDatabase.instance.database,
+      // placeholder pour d'autres inits futures
+      Future.value(null),
+    ]);
+  } catch (e) {
+    debugPrint("⚠️ Échec non bloquant lors de l'initialisation parallèle : $e");
+  }
   stopwatch.stop();
   debugPrint("⚡ DB initialisée en ${stopwatch.elapsedMilliseconds}ms");
 
+  // Container pour accéder aux providers hors arborescence (utilisé pour OfflineSyncService)
+  final container = ProviderContainer();
+
   runApp(
-    const ProviderScope(
-      child: AppResetter(
+    UncontrolledProviderScope(
+      container: container,
+      child: const AppResetter(
         child: CorporateConnectApp(),
       ),
     ),
   );
   
   // Services secondaires (Firebase Messaging, etc.) en arrière-plan total
-  _initializeBgServices();
+  _initializeBgServices(container);
 }
 
 /// Widget permettant de réinitialiser toute l'arborescence de l'application (et donc les états Riverpod locaux)
@@ -86,13 +96,18 @@ class _AppResetterState extends State<AppResetter> {
   }
 }
 
-Future<void> _initializeBgServices() async {
+Future<void> _initializeBgServices(ProviderContainer container) async {
   try {
     await PushNotificationService.initialize();
     debugPrint("✅ Services push initialisés");
   } catch (e) {
     debugPrint("⚠️ Erreur services arrière-plan: $e");
   }
+  
+  // Démarrer la synchro hors-ligne via son provider
+  final syncService = container.read(offlineSyncProvider);
+  syncService.startListening();
+  syncService.syncPendingRooms();
 }
 
 class CorporateConnectApp extends ConsumerWidget {
@@ -131,14 +146,14 @@ class CorporateConnectApp extends ConsumerWidget {
 }
 
 /// Splash screen avec animation Lottie puis redirection
-class AuthGate extends StatefulWidget {
+class AuthGate extends ConsumerStatefulWidget {
   const AuthGate({super.key});
 
   @override
-  State<AuthGate> createState() => _AuthGateState();
+  ConsumerState<AuthGate> createState() => _AuthGateState();
 }
 
-class _AuthGateState extends State<AuthGate> {
+class _AuthGateState extends ConsumerState<AuthGate> {
   bool _isLoggedIn = false;
   bool _authChecked = false;
 
@@ -146,15 +161,23 @@ class _AuthGateState extends State<AuthGate> {
   void initState() {
     super.initState();
     _checkAuth();
-    
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkUpdate();
     });
   }
 
   Future<void> _checkAuth() async {
-    // Vérification et pré-chargement du cache en parallèle
     final loggedIn = await AuthService().isLoggedIn();
+
+    // ══ PRÉ-CHAUFFAGE DU CACHE ══
+    // Si l'utilisateur est connecté, on déclenche immédiatement le chargement
+    // SQLite (< 30ms) EN ARRIÈRE-PLAN pendant la micro-animation de transition.
+    // Quand HomeScreen apparaît, les données sont déjà en mémoire → zéro délai.
+    if (loggedIn && !kIsWeb) {
+      ref.read(homeProvider); // Réveille le notifier → _init() → SQLite
+    }
+
     if (mounted) {
       setState(() {
         _isLoggedIn = loggedIn;
@@ -174,7 +197,7 @@ class _AuthGateState extends State<AuthGate> {
           transitionsBuilder: (_, animation, __, child) {
             return FadeTransition(opacity: animation, child: child);
           },
-          transitionDuration: const Duration(milliseconds: 250), // 300 → 250ms
+          transitionDuration: const Duration(milliseconds: 250),
         ),
       );
     }
@@ -223,7 +246,7 @@ class _AuthGateState extends State<AuthGate> {
               ),
             ),
             const Divider(height: 1),
-            // Liste de conversations fictives
+            // Liste de conversations fictives (skeleton)
             Expanded(
               child: Shimmer.fromColors(
                 baseColor: baseColor,

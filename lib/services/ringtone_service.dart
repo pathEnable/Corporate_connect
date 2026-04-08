@@ -7,17 +7,27 @@ class RingtoneService {
 
   final AudioPlayer _player = AudioPlayer();
 
-  Future<void> playRingtone({bool isVideo = false}) async {
-    final String assetPath = isVideo ? 'audio/ringtone_video.wav' : 'audio/ringtone_audio.wav';
+  Future<void> playRingtone() async {
+    const String assetPath = 'audio/ringtone_incoming.wav';
     try {
       await _player.setReleaseMode(ReleaseMode.loop);
       await _player.play(AssetSource(assetPath));
     } catch (e) {
       debugPrint('Erreur RingtoneService ($assetPath): $e');
-      // Fallback de sécurité
+      // Fallback
       try {
         await _player.play(AssetSource('audio/ringtone.wav'));
       } catch (_) {}
+    }
+  }
+
+  Future<void> playWaitingTone() async {
+    const String assetPath = 'audio/ringtone_waiting.wav';
+    try {
+      await _player.setReleaseMode(ReleaseMode.loop);
+      await _player.play(AssetSource(assetPath));
+    } catch (e) {
+      debugPrint('Erreur RingtoneService Waiting ($assetPath): $e');
     }
   }
 

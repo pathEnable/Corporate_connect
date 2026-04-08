@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
   // Emini Identity Colors
-  static const Color primaryGreen = Color(0xFF4CAF50); // Couleur verte
+  static const Color primaryGreen = Color(0xFF00695C); // Nouveau vert corporate (Midnight Green)
   static const Color deepBlack = Color(0xFF212325); // Gris anthracite encore plus doux
   static const Color surfaceDark = Color(0xFF2A2C2E); // Gris de surface coordonné
   static const Color surfaceLight = Color(0xFFF8F9FA);

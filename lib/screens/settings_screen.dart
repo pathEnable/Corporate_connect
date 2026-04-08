@@ -89,7 +89,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     spacing: 12,
                     runSpacing: 12,
                     children: [
-                      _buildColorDot(0xFF26E9CF, settingsState.accentColor), // Turquoise (Emini)
                       _buildColorDot(0xFF00695C, settingsState.accentColor), // Midnight
                       _buildColorDot(0xFF2E7D32, settingsState.accentColor), // Emerald
                       _buildColorDot(0xFF1565C0, settingsState.accentColor), // Ocean

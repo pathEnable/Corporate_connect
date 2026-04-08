@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/call_state.dart';
 import '../services/agora_service.dart';
+import '../services/ringtone_service.dart';
 
 final callProvider = NotifierProvider.autoDispose<CallNotifier, CallState>(() {
   return CallNotifier();
@@ -40,7 +41,10 @@ class CallNotifier extends AutoDisposeNotifier<CallState> {
       // 1. Permissions Guard
       await _requestPermissions(isVideo);
 
-      // 2. Token & Engine
+      // 2. Play waiting tone
+      RingtoneService.instance.playWaitingTone();
+
+      // 3. Token & Engine
       final tokenData = await _agoraService.fetchToken(channelId);
       final String token = tokenData['token'];
       final String appId = tokenData['app_id'];
@@ -54,6 +58,7 @@ class CallNotifier extends AutoDisposeNotifier<CallState> {
             state = state.copyWith(localUserJoined: true, isLoading: false);
           },
           onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
+            RingtoneService.instance.stop();
             state = state.copyWith(remoteUid: remoteUid);
           },
           onUserOffline: (RtcConnection connection, int remoteUid, UserOfflineReasonType reason) {
@@ -91,6 +96,7 @@ class CallNotifier extends AutoDisposeNotifier<CallState> {
   }
 
   Future<void> leaveChannel() async {
+    RingtoneService.instance.stop();
     await _agoraService.leaveChannel();
     state = const CallState(isLoading: false);
   }

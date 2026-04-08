@@ -84,7 +84,7 @@ class IncomingCallNotifier extends StateNotifier<IncomingCallState> {
       isVideo: isVideo,
     );
 
-    RingtoneService.instance.playRingtone(isVideo: isVideo);
+    RingtoneService.instance.playRingtone();
 
     final params = CallKitParams(
       id: uuid,
@@ -95,10 +95,10 @@ class IncomingCallNotifier extends StateNotifier<IncomingCallState> {
       type: isVideo ? 1 : 0,
       duration: 30000,
       extra: <String, dynamic>{'room_id': roomId},
-      android: AndroidParams(
+      android: const AndroidParams(
         isCustomNotification: true,
         isShowLogo: false,
-        ringtonePath: isVideo ? 'ringtone_video' : 'ringtone_audio',
+        ringtonePath: 'ringtone_incoming',
         backgroundColor: '#040301',
         actionColor: '#4CAF50',
       ),

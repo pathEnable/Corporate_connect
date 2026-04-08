@@ -7,6 +7,8 @@ import '../services/room_service.dart';
 import '../services/status_service.dart';
 import '../services/local_database.dart';
 import '../services/global_presence_service.dart';
+import 'migration_provider.dart';
+
 
 final homeProvider = NotifierProvider<HomeNotifier, HomeState>(() {
   return HomeNotifier();
@@ -20,6 +22,12 @@ class HomeNotifier extends Notifier<HomeState> {
 
   @override
   HomeState build() {
+    ref.listen(roomMigrationProvider, (previous, next) {
+      if (next.isNotEmpty) {
+        _handleRoomMigrations(next);
+      }
+    });
+
     ref.onDispose(() {
       _isDisposed = true;
       _globalEventsSub?.cancel();
@@ -172,6 +180,27 @@ class HomeNotifier extends Notifier<HomeState> {
       if (!_isDisposed) {
         state = state.copyWith(isLoadingStatus: false);
       }
+    }
+  }
+
+  void _handleRoomMigrations(Map<String, String> migrations) {
+    if (_isDisposed) return;
+    
+    bool changed = false;
+    final updatedRooms = state.rooms.map((room) {
+      final currentId = room['id']?.toString();
+      if (currentId != null && migrations.containsKey(currentId)) {
+        changed = true;
+        return {
+          ...room,
+          'id': migrations[currentId],
+        };
+      }
+      return room;
+    }).toList();
+
+    if (changed) {
+      state = state.copyWith(rooms: updatedRooms);
     }
   }
 

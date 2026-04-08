@@ -21,7 +21,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
     
     final isDarkMode = _prefs.getBool('isDarkMode') ?? false;
     final notificationsEnabled = _prefs.getBool('notificationsEnabled') ?? true;
-    final accentColor = _prefs.getInt('accentColor') ?? 0xFF26E9CF;
+    final accentColor = _prefs.getInt('accentColor') ?? 0xFF00695C;
     final fontScale = _prefs.getDouble('fontScale') ?? 1.0;
     final ringtoneName = _prefs.getString('ringtoneName') ?? 'Défaut';
     
