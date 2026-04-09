@@ -1,13 +1,9 @@
-import 'dart:convert';
 import '../widgets/authenticated_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
-import '../services/auth_service.dart';
 import '../services/room_service.dart';
-import '../services/api_config.dart';
 import '../services/local_database.dart';
 import '../services/media_service.dart';
+import '../providers/contacts_provider.dart';
 import 'chat_screen.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,82 +16,19 @@ class ContactsScreen extends ConsumerStatefulWidget {
 }
 
 class _ContactsScreenState extends ConsumerState<ContactsScreen> {
-  final AuthService _authService = AuthService();
   final RoomService _roomService = RoomService();
   final MediaService _mediaService = MediaService();
   final TextEditingController _searchController = TextEditingController();
-  List<Map<String, dynamic>> _contacts = [];
-  List<Map<String, dynamic>> _filtered = [];
-  bool _isLoading = true;
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
-    _loadContacts();
-  }
-
-  Future<void> _loadContacts() async {
-    try {
-      // 1. Charger depuis le cache SQLite instantanément
-      if (!kIsWeb) {
-        final cached = await LocalDatabase.instance.getProfiles();
-        if (cached.isNotEmpty && mounted) {
-          setState(() {
-            _contacts = cached;
-            _filtered = cached;
-            _isLoading = false;
-          });
-        }
-      }
-
-      // 2. Fetch en arrière plan pour les nouveautés
-      final token = await _authService.getToken();
-      final String directoryUrl = '${ApiConfig.baseUrl}/profiles/directory';
-      
-      final response = await http.get(
-        Uri.parse(directoryUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final decodedBody = utf8.decode(response.bodyBytes);
-        final list = List<Map<String, dynamic>>.from(jsonDecode(decodedBody));
-        
-        // Sauvegarder dans le cache SQLite
-        if (!kIsWeb) {
-          await LocalDatabase.instance.saveProfiles(list);
-        }
-
-        if (mounted) {
-          setState(() {
-            _contacts = list;
-            _filtered = list;
-            _isLoading = false;
-          });
-        }
-      } else {
-        if (mounted && _contacts.isEmpty) setState(() => _isLoading = false);
-      }
-    } catch (_) {
-      if (mounted && _contacts.isEmpty) setState(() => _isLoading = false);
-    }
+    // Pas d'appel API ici : les données sont déjà dans contactsProvider (chargé par AppDataProvider)
   }
 
   void _filterContacts(String query) {
-    setState(() {
-      if (query.isEmpty) {
-        _filtered = _contacts;
-      } else {
-        _filtered = _contacts.where((c) {
-          final name = (c['full_name'] ?? '').toString().toLowerCase();
-          final username = (c['username'] ?? '').toString().toLowerCase();
-          return name.contains(query.toLowerCase()) || username.contains(query.toLowerCase());
-        }).toList();
-      }
-    });
+    setState(() => _searchQuery = query);
   }
 
   Future<void> _startChat(Map<String, dynamic> contact) async {
@@ -167,7 +100,18 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+    final contactsState = ref.watch(contactsProvider);
+
+    // Filtrage local depuis les données du provider global
+    final allContacts = contactsState.contacts;
+    final filtered = _searchQuery.isEmpty
+        ? allContacts
+        : allContacts.where((c) {
+            final name = (c['full_name'] ?? '').toString().toLowerCase();
+            final username = (c['username'] ?? '').toString().toLowerCase();
+            return name.contains(_searchQuery.toLowerCase()) || username.contains(_searchQuery.toLowerCase());
+          }).toList();
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
@@ -183,90 +127,91 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
           ),
         ),
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-            child: TextField(
-              controller: _searchController,
-              onChanged: _filterContacts,
-              style: TextStyle(color: theme.colorScheme.onSurface),
-              decoration: InputDecoration(
-                hintText: 'Rechercher un collègue...',
-                hintStyle: TextStyle(color: theme.colorScheme.onSurface.withAlpha(120)),
-                prefixIcon: Icon(Icons.search_rounded, color: theme.colorScheme.primary),
-                filled: true,
-                fillColor: theme.colorScheme.surfaceContainerHighest.withAlpha(80),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
+      body: RefreshIndicator(
+        onRefresh: () => ref.read(contactsProvider.notifier).refresh(),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+              child: TextField(
+                controller: _searchController,
+                onChanged: _filterContacts,
+                style: TextStyle(color: theme.colorScheme.onSurface),
+                decoration: InputDecoration(
+                  hintText: 'Rechercher un collègue...',
+                  hintStyle: TextStyle(color: theme.colorScheme.onSurface.withAlpha(120)),
+                  prefixIcon: Icon(Icons.search_rounded, color: theme.colorScheme.primary),
+                  filled: true,
+                  fillColor: theme.colorScheme.surfaceContainerHighest.withAlpha(80),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
                 ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
-          ),
-
-          Expanded(
-            child: _isLoading
-                ? Center(child: CircularProgressIndicator(color: theme.colorScheme.primary))
-                : _filtered.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.people_outline_rounded, size: 64, color: theme.dividerColor.withAlpha(50)),
-                            const SizedBox(height: 16),
-                            Text('Aucun contact trouvé', style: TextStyle(color: theme.colorScheme.onSurface.withAlpha(150))),
-                          ],
-                        ),
-                      )
-                    : ListView.separated(
-                        itemCount: _filtered.length,
-                        padding: const EdgeInsets.only(bottom: 24),
-                        separatorBuilder: (context, index) => Divider(height: 1, indent: 80, color: theme.dividerColor.withAlpha(30)),
-                        itemBuilder: (context, index) {
-                          final contact = _filtered[index];
-                          final String? avatarUrl = contact['avatar_url'];
-                          final String initial = (contact['full_name'] ?? 'U')[0].toUpperCase();
-
-                          return ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-                            leading: _ContactAvatar(
-                              avatarUrl: avatarUrl,
-                              initial: initial,
-                              mediaService: _mediaService,
-                            ),
-                            title: Text(
-                              contact['full_name'] ?? '',
-                              style: const TextStyle(fontWeight: FontWeight.w600),
-                            ),
-                            subtitle: Text(
-                              contact['job_title'] ?? '@${contact['username'] ?? ''}',
-                              style: TextStyle(color: theme.colorScheme.onSurface.withAlpha(150), fontSize: 12),
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 10,
-                                  height: 10,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: (contact['is_online'] == true)
-                                        ? theme.colorScheme.secondary
-                                        : theme.dividerColor.withAlpha(100),
+            Expanded(
+              child: contactsState.isLoading && allContacts.isEmpty
+                  ? Center(child: CircularProgressIndicator(color: theme.colorScheme.primary))
+                  : filtered.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.people_outline_rounded, size: 64, color: theme.dividerColor.withAlpha(50)),
+                              const SizedBox(height: 16),
+                              Text('Aucun contact trouvé', style: TextStyle(color: theme.colorScheme.onSurface.withAlpha(150))),
+                            ],
+                          ),
+                        )
+                      : ListView.separated(
+                          itemCount: filtered.length,
+                          padding: const EdgeInsets.only(bottom: 24),
+                          separatorBuilder: (context, index) => Divider(height: 1, indent: 80, color: theme.dividerColor.withAlpha(30)),
+                          itemBuilder: (context, index) {
+                            final contact = filtered[index];
+                            final String? avatarUrl = contact['avatar_url'];
+                            final String initial = (contact['full_name'] ?? 'U')[0].toUpperCase();
+                            return ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+                              leading: _ContactAvatar(
+                                avatarUrl: avatarUrl,
+                                initial: initial,
+                                mediaService: _mediaService,
+                              ),
+                              title: Text(
+                                contact['full_name'] ?? '',
+                                style: const TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                              subtitle: Text(
+                                contact['job_title'] ?? '@${contact['username'] ?? ''}',
+                                style: TextStyle(color: theme.colorScheme.onSurface.withAlpha(150), fontSize: 12),
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 10,
+                                    height: 10,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: (contact['is_online'] == true)
+                                          ? theme.colorScheme.secondary
+                                          : theme.dividerColor.withAlpha(100),
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 12),
-                                Icon(Icons.chat_bubble_outline_rounded, color: theme.colorScheme.primary, size: 20),
-                              ],
-                            ),
-                            onTap: () => _startChat(contact),
-                          );
-                        },
-                      ),
-          ),
-        ],
+                                  const SizedBox(width: 12),
+                                  Icon(Icons.chat_bubble_outline_rounded, color: theme.colorScheme.primary, size: 20),
+                                ],
+                              ),
+                              onTap: () => _startChat(contact),
+                            );
+                          },
+                        ),
+            ),
+          ],
+        ),
       ),
     );
   }

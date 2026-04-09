@@ -69,12 +69,15 @@ class MediaCacheService {
     try {
       final dir = await _getCacheDir();
       final savePath = '${dir.path}/$fileName';
+      final bool isInternal = ApiConfig.isInternalUrl(remoteUrl);
       final token = await _authService.getToken();
       
       await _dio.download(
         remoteUrl,
         savePath,
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
+        options: Options(
+          headers: isInternal ? {'Authorization': 'Bearer $token'} : null,
+        ),
       );
       
       _memoryPathCache[fileName] = savePath;

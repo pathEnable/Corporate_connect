@@ -1,49 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import '../models/call_log.dart';
-import '../services/call_service.dart';
-import '../services/auth_service.dart';
+import '../providers/call_history_provider.dart';
+import '../providers/profile_provider.dart';
 
-class CallsScreen extends ConsumerStatefulWidget {
+class CallsScreen extends ConsumerWidget {
   const CallsScreen({super.key});
-
-  @override
-  ConsumerState<CallsScreen> createState() => _CallsScreenState();
-}
-
-class _CallsScreenState extends ConsumerState<CallsScreen> {
-  List<CallLogModel> _calls = [];
-  bool _isLoading = true;
-  String? _currentUserId;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadHistory();
-  }
-
-  Future<void> _loadHistory() async {
-    setState(() => _isLoading = true);
-    
-    // Pour savoir si l'appel est entrant ou sortant
-    try {
-      final currentUser = await AuthService().getCurrentProfile();
-      if (mounted) {
-        setState(() {
-          _currentUserId = currentUser['id']?.toString();
-        });
-      }
-    } catch (_) {}
-    
-    final calls = await callService.getCallHistory();
-    if (mounted) {
-      setState(() {
-        _calls = calls;
-        _isLoading = false;
-      });
-    }
-  }
 
   String _formatDuration(int seconds) {
     if (seconds == 0) return 'Manqué';
@@ -62,7 +24,7 @@ class _CallsScreenState extends ConsumerState<CallsScreen> {
       final date = DateTime.parse(isoString).toLocal();
       final now = DateTime.now();
       final diff = now.difference(date);
-      
+
       if (diff.inDays == 0 && now.day == date.day) {
         return "Auj à ${DateFormat('HH:mm').format(date)}";
       } else if (diff.inDays == 1 || (diff.inDays == 0 && now.day != date.day)) {
@@ -76,14 +38,17 @@ class _CallsScreenState extends ConsumerState<CallsScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(callHistoryProvider);
+    final profileState = ref.watch(profileProvider);
+    final currentUserId = profileState.profileData?['id']?.toString();
     final theme = Theme.of(context);
 
-    if (_isLoading) {
+    if (state.isLoading && state.calls.isEmpty) {
       return Center(child: CircularProgressIndicator(color: theme.colorScheme.primary));
     }
 
-    if (_calls.isEmpty) {
+    if (state.calls.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -119,12 +84,12 @@ class _CallsScreenState extends ConsumerState<CallsScreen> {
       ),
       body: RefreshIndicator(
         color: theme.colorScheme.primary,
-        onRefresh: _loadHistory,
+        onRefresh: () => ref.read(callHistoryProvider.notifier).refresh(),
         child: ListView.builder(
-          itemCount: _calls.length,
+          itemCount: state.calls.length,
           itemBuilder: (context, index) {
-            final call = _calls[index];
-            final isOutgoing = call.callerId == _currentUserId;
+            final call = state.calls[index];
+            final isOutgoing = call.callerId == currentUserId;
             final isMissed = call.status == 'missed' || call.status == 'rejected' || call.duration == 0;
             
             final otherName = isOutgoing ? call.receiverName : call.callerName;

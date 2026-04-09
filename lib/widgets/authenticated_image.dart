@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/auth_service.dart';
+import '../services/api_config.dart';
 
 /// Un widget réutilisable pour afficher des images depuis une URL sécurisée (nécessite le token JWT).
 /// Il utilise le token mis en cache dans AuthService pour plus de performances, 
@@ -51,8 +52,8 @@ class AuthenticatedNetworkImage extends StatelessWidget {
   }
 
   Widget _buildImage(String token) {
-    // Si l'URL est externe (Cloudinary), on n'envoie PAS le header JWT
-    final bool isExternal = imageUrl.startsWith('http') && !imageUrl.contains('onrender.com');
+    // Si l'URL est externe (ex: Cloudinary), on n'envoie PAS le header JWT
+    final bool isInternal = ApiConfig.isInternalUrl(imageUrl);
     
     return CachedNetworkImage(
       imageUrl: imageUrl,
@@ -61,7 +62,7 @@ class AuthenticatedNetworkImage extends StatelessWidget {
       height: height,
       color: color,
       imageBuilder: imageBuilder,
-      httpHeaders: isExternal ? null : {'Authorization': 'Bearer $token'},
+      httpHeaders: isInternal ? {'Authorization': 'Bearer $token'} : null,
       errorWidget: errorWidget ?? (context, url, error) => const Icon(Icons.broken_image, color: Colors.grey),
       placeholder: placeholder,
     );
@@ -73,8 +74,8 @@ class AuthenticatedNetworkImage extends StatelessWidget {
 /// Assurez-vous que l'AuthService est initialisé avant utilisation.
 class AuthenticatedImageProvider extends CachedNetworkImageProvider {
   AuthenticatedImageProvider(super.url) : super(
-    headers: (url.startsWith('http') && !url.contains('onrender.com')) 
-      ? null 
-      : {'Authorization': 'Bearer ${AuthService.cachedToken ?? ''}'},
+    headers: ApiConfig.isInternalUrl(url) 
+      ? {'Authorization': 'Bearer ${AuthService.cachedToken ?? ''}'}
+      : null,
   );
 }

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -129,7 +129,8 @@ class _NewGroupScreenState extends ConsumerState<NewGroupScreen> {
     }
     if (_selectedContacts.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Veuillez sélectionner au moins un membre')),
+        const SnackBar(
+            content: Text('Veuillez sélectionner au moins un membre')),
       );
       return;
     }
@@ -140,7 +141,8 @@ class _NewGroupScreenState extends ConsumerState<NewGroupScreen> {
 
     // ═══ TENTATIVE EN LIGNE D'ABORD ═══
     final connectivityResult = await Connectivity().checkConnectivity();
-    final isConnected = connectivityResult.any((r) => r != ConnectivityResult.none);
+    final isConnected =
+        connectivityResult.any((r) => r != ConnectivityResult.none);
 
     if (isConnected) {
       try {
@@ -168,7 +170,7 @@ class _NewGroupScreenState extends ConsumerState<NewGroupScreen> {
     // ═══ MODE HORS-LIGNE : Créer localement et mettre en file d'attente ═══
     try {
       final tempId = 'draft_${DateTime.now().millisecondsSinceEpoch}';
-      
+
       // Sauvegarder dans la table principale pour affichage immédiat
       await LocalDatabase.instance.saveRoom({
         'id': tempId,
@@ -271,7 +273,8 @@ class _NewGroupScreenState extends ConsumerState<NewGroupScreen> {
             if (_isOffline)
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
                 color: Colors.orange.shade800,
                 child: const Row(
                   children: [
@@ -341,12 +344,14 @@ class _NewGroupScreenState extends ConsumerState<NewGroupScreen> {
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.2)),
+                        color:
+                            theme.colorScheme.primary.withValues(alpha: 0.2)),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.15)),
+                        color:
+                            theme.colorScheme.primary.withValues(alpha: 0.15)),
                   ),
                   contentPadding: const EdgeInsets.symmetric(vertical: 10),
                   filled: true,
@@ -404,7 +409,8 @@ class _NewGroupScreenState extends ConsumerState<NewGroupScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.people_outline_rounded, size: 64, color: Colors.grey.shade400),
+          Icon(Icons.people_outline_rounded,
+              size: 64, color: Colors.grey.shade400),
           const SizedBox(height: 16),
           Text(
             'Aucun contact trouvé',
@@ -500,8 +506,8 @@ class _NewGroupScreenState extends ConsumerState<NewGroupScreen> {
                 padding: const EdgeInsets.all(2),
                 decoration: const BoxDecoration(
                     color: Colors.greenAccent, shape: BoxShape.circle),
-                child:
-                    const Icon(Icons.check_rounded, size: 14, color: Colors.black),
+                child: const Icon(Icons.check_rounded,
+                    size: 14, color: Colors.black),
               ),
             ),
         ],

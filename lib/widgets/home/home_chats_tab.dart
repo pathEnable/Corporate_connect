@@ -14,7 +14,9 @@ class HomeChatsTab extends ConsumerWidget {
     final theme = Theme.of(context);
     final state = ref.watch(homeProvider);
 
-    if (state.isLoadingRooms) {
+    // On ne montre le skeleton QUE si la liste est vide ET qu'on charge.
+    // Si on a déjà des rooms (cache), on les montre immédiatement.
+    if (state.isLoadingRooms && state.rooms.isEmpty) {
       return const ShimmerLoading();
     }
 

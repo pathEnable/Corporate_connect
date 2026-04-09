@@ -10,9 +10,9 @@ import 'services/offline_sync_service.dart';
 import 'services/local_database.dart';
 import 'widgets/update_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shimmer/shimmer.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'providers/settings_provider.dart';
-import 'providers/home_provider.dart';
+import 'providers/app_data_provider.dart';
 import 'theme/app_theme.dart';
 import 'widgets/call/global_call_listener.dart';
 import 'widgets/call/incoming_call_overlay.dart';
@@ -35,22 +35,18 @@ void main() async {
     systemNavigationBarIconBrightness: Brightness.light,
   ));
 
-  // ══ INIT PARALLÈLE : DB locale + Firebase en même temps (gain ~200ms) ══
-  final stopwatch = Stopwatch()..start();
-  try {
-    await Future.wait([
-      if (!kIsWeb) LocalDatabase.instance.database,
-      // placeholder pour d'autres inits futures
-      Future.value(null),
-    ]);
-  } catch (e) {
-    debugPrint("⚠️ Échec non bloquant lors de l'initialisation parallèle : $e");
-  }
-  stopwatch.stop();
-  debugPrint("⚡ DB initialisée en ${stopwatch.elapsedMilliseconds}ms");
-
-  // Container pour accéder aux providers hors arborescence (utilisé pour OfflineSyncService)
   final container = ProviderContainer();
+
+  // ══ INIT PARALLÈLE ULTRA-RAPIDE ══
+  // On ne bloque pas le démarrage de l'UI. La DB et l'Auth se chargent en parallèle.
+  unawaited(Future.wait([
+    if (!kIsWeb) LocalDatabase.instance.database,
+    AuthService().isLoggedIn().then((isLoggedIn) {
+      if (isLoggedIn) {
+        container.read(appDataProvider.notifier).initializeAfterLogin();
+      }
+    }),
+  ]));
 
   runApp(
     UncontrolledProviderScope(
@@ -61,7 +57,7 @@ void main() async {
     ),
   );
   
-  // Services secondaires (Firebase Messaging, etc.) en arrière-plan total
+  // Services secondaires (Firebase, Sync) en arrière-plan total
   _initializeBgServices(container);
 }
 
@@ -154,127 +150,120 @@ class AuthGate extends ConsumerStatefulWidget {
 }
 
 class _AuthGateState extends ConsumerState<AuthGate> {
-  bool _isLoggedIn = false;
-  bool _authChecked = false;
 
   @override
   void initState() {
     super.initState();
-    _checkAuth();
+    _handleStartup();
+  }
 
+  Future<void> _handleStartup() async {
+    // 1. Vérifier l'auth (très rapide)
+    final isLoggedIn = await AuthService().isLoggedIn();
+    
+    if (!mounted) return;
+
+    if (isLoggedIn) {
+      // 2. Si connecté, on attend que AppDataProvider ait fini la Phase 1 (chargement SQLite)
+      // On met un timeout de sécurité au cas où le chargement SQLite échouerait silencieusement
+      final startTime = DateTime.now();
+      while (true) {
+        final state = ref.read(appDataProvider);
+        if (state.isInitialized) break;
+        
+        // Timeout après 1.5 seconde
+        if (DateTime.now().difference(startTime).inMilliseconds > 1500) {
+          debugPrint('⚠️ AuthGate: Timeout d\'initialisation du cache');
+          break;
+        }
+        await Future.delayed(const Duration(milliseconds: 50));
+        if (!mounted) return;
+      }
+    }
+
+    // 3. Navigation
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        PageRouteBuilder(
+          pageBuilder: (_, __, ___) => isLoggedIn ? const HomeScreen() : const LoginScreen(),
+          transitionDuration: const Duration(milliseconds: 400),
+          transitionsBuilder: (_, animation, __, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+        ),
+      );
+    }
+
+    // Vérifier les mises à jour APRES être arrivé sur l'écran final
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkUpdate();
     });
   }
 
-  Future<void> _checkAuth() async {
-    final loggedIn = await AuthService().isLoggedIn();
-
-    // ══ PRÉ-CHAUFFAGE DU CACHE ══
-    // Si l'utilisateur est connecté, on déclenche immédiatement le chargement
-    // SQLite (< 30ms) EN ARRIÈRE-PLAN pendant la micro-animation de transition.
-    // Quand HomeScreen apparaît, les données sont déjà en mémoire → zéro délai.
-    if (loggedIn && !kIsWeb) {
-      ref.read(homeProvider); // Réveille le notifier → _init() → SQLite
-    }
-
-    if (mounted) {
-      setState(() {
-        _isLoggedIn = loggedIn;
-        _authChecked = true;
-      });
-      _navigate();
-    }
-  }
-
-  void _navigate() {
-    if (_authChecked && mounted) {
-      Navigator.pushReplacement(
-        context,
-        PageRouteBuilder(
-          pageBuilder: (_, __, ___) =>
-              _isLoggedIn ? const HomeScreen() : const LoginScreen(),
-          transitionsBuilder: (_, animation, __, child) {
-            return FadeTransition(opacity: animation, child: child);
-          },
-          transitionDuration: const Duration(milliseconds: 250),
-        ),
-      );
-    }
-  }
-
   Future<void> _checkUpdate() async {
-    final updateData = await UpdateService().checkForUpdate();
-    if (updateData != null && mounted) {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => UpdateDialog(
-          apkUrl: updateData['apk_url'],
-          versionName: updateData['version_name'],
-        ),
-      );
-    }
+    try {
+      final updateData = await UpdateService().checkForUpdate();
+      if (updateData != null && mounted) {
+        showDialog(
+          context: navigatorKey.currentContext ?? context,
+          barrierDismissible: false,
+          builder: (context) => UpdateDialog(
+            apkUrl: updateData['apk_url'],
+            versionName: updateData['version_name'],
+          ),
+        );
+      }
+    } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final baseColor = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFE0E0E0);
-    final highlightColor = isDark ? const Color(0xFF2C2C2C) : const Color(0xFFF5F5F5);
-
-    // Shimmer de chargement : ressemble à l'écran Home pour une transition douce
+    
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF040301) : Colors.white,
-      body: SafeArea(
+      body: Center(
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Barre d'app fictive
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Shimmer.fromColors(
-                baseColor: baseColor,
-                highlightColor: highlightColor,
-                child: Row(
-                  children: [
-                    Container(width: 160, height: 22, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
-                    const Spacer(),
-                    Container(width: 36, height: 36, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
-                  ],
-                ),
+            // Logo premium avec animation
+            Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(24),
               ),
-            ),
-            const Divider(height: 1),
-            // Liste de conversations fictives (skeleton)
-            Expanded(
-              child: Shimmer.fromColors(
-                baseColor: baseColor,
-                highlightColor: highlightColor,
-                child: ListView.builder(
-                  itemCount: 8,
-                  itemBuilder: (_, i) => Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    child: Row(
-                      children: [
-                        Container(width: 52, height: 52, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(height: 14, width: double.infinity, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
-                              const SizedBox(height: 8),
-                              Container(height: 12, width: 200, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+              child: Icon(
+                Icons.connect_without_contact_rounded,
+                size: 60,
+                color: theme.colorScheme.primary,
               ),
-            ),
+            )
+            .animate(onPlay: (controller) => controller.repeat(reverse: true))
+            .scale(
+              begin: const Offset(0.9, 0.9),
+              end: const Offset(1.1, 1.1),
+              duration: 2.seconds,
+              curve: Curves.easeInOut,
+            )
+            .shimmer(delay: 1.seconds, duration: 2.seconds),
+            
+            const SizedBox(height: 32),
+            
+            // Texte de chargement subtil
+            Text(
+              'Corporate Connect',
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.2,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            )
+            .animate()
+            .fadeIn(delay: 200.ms, duration: 600.ms),
           ],
         ),
       ),

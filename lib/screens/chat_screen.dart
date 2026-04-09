@@ -103,7 +103,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: isLoading
+            child: isLoading && messages.isEmpty
                 ? ListView.builder(
                     reverse: false,
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

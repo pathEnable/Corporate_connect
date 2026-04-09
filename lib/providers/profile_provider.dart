@@ -21,8 +21,32 @@ class ProfileNotifier extends Notifier<ProfileState> {
 
   @override
   ProfileState build() {
-    _loadProfile();
-    return const ProfileState(isLoading: true);
+    // NE PAS appeler _loadProfile() ici.
+    // AppDataProvider orchestre l'initialisation via loadFromLocal() puis refresh().
+    return const ProfileState(isLoading: false);
+  }
+
+  /// Phase 1 : Charge le profil depuis SharedPreferences (< 5ms, sans réseau).
+  /// Appelé par AppDataProvider avant la navigation.
+  Future<void> loadFromLocal() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userId = prefs.getString('user_id');
+      final fullName = prefs.getString('full_name');
+      bool hasKeys = await _secureStorage.containsKey(key: 'e2ee_private_key');
+      if (!hasKeys) {
+        hasKeys = prefs.containsKey('e2ee_private_key');
+      }
+      if (userId != null) {
+        state = state.copyWith(
+          profileData: {'id': userId, 'full_name': fullName ?? ''},
+          isLoading: false,
+          hasE2eeKeys: hasKeys,
+        );
+      }
+    } catch (e) {
+      debugPrint('⚠️ loadFromLocal profile: $e');
+    }
   }
 
   Future<void> _loadProfile() async {

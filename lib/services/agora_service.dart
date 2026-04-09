@@ -47,7 +47,12 @@ class AgoraService {
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
-      throw Exception('Erreur lors de la récupération du token Agora');
+      String errorDetail = "";
+      try {
+        final body = jsonDecode(response.body);
+        errorDetail = body['detail'] ?? "";
+      } catch (_) {}
+      throw Exception('Erreur token Agora (${response.statusCode}): $errorDetail');
     }
   }
 

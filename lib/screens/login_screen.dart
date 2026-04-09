@@ -1,19 +1,21 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/premium_background.dart';
 import '../services/auth_service.dart';
+import '../providers/app_data_provider.dart';
 import 'home_screen.dart';
 import 'register_screen.dart';
 
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
+class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final AuthService _authService = AuthService();
   bool _isLoading = false;
@@ -50,6 +52,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     try {
       await _authService.loginWithEmail(_emailController.text, _passwordController.text);
       if (mounted) {
+        // Déclencher le pré-chargement global (non bloquant)
+        ref.read(appDataProvider.notifier).initializeAfterLogin();
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));
       }
     } catch (e) {
@@ -93,6 +97,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     try {
       await _authService.verifyOtp(_phoneController.text, _otpController.text);
       if (mounted) {
+        // Déclencher le pré-chargement global (non bloquant)
+        ref.read(appDataProvider.notifier).initializeAfterLogin();
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));
       }
     } catch (e) {

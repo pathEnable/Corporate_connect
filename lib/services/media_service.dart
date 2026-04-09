@@ -122,11 +122,14 @@ class MediaService {
       if (await file.exists()) return savePath;
 
       // 3. Téléchargement via Dio
+      final bool isInternal = ApiConfig.isInternalUrl(url);
       final token = await _authService.getToken();
       await _dio.download(
         url,
         savePath,
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
+        options: Options(
+          headers: isInternal ? {'Authorization': 'Bearer $token'} : null,
+        ),
       );
 
       return savePath;

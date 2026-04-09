@@ -39,7 +39,7 @@ class LocalDatabase {
     try {
       return await openDatabase(
         path,
-        version: 12,
+        version: 13,
         password: dbPassword, // Paramètre SQLCipher pour chiffrer les fichiers .db
         onCreate: _createDB,
         onUpgrade: _upgradeDB,
@@ -151,6 +151,33 @@ class LocalDatabase {
         )
       ''');
     }
+    if (oldVersion < 13) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS calls (
+          id TEXT PRIMARY KEY,
+          caller_id TEXT,
+          caller_name TEXT,
+          receiver_id TEXT,
+          receiver_name TEXT,
+          start_time TEXT,
+          end_time TEXT,
+          duration INTEGER,
+          status TEXT,
+          call_type TEXT
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS statuses (
+          id TEXT PRIMARY KEY,
+          user_id TEXT,
+          user_name TEXT,
+          user_avatar TEXT,
+          content TEXT,
+          media_url TEXT,
+          created_at TEXT
+        )
+      ''');
+    }
   }
 
   Future<void> _createDB(Database db, int version) async {
@@ -221,6 +248,33 @@ class LocalDatabase {
         job_title TEXT,
         avatar_url TEXT,
         is_online INTEGER DEFAULT 0
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE calls (
+        id TEXT PRIMARY KEY,
+        caller_id TEXT,
+        caller_name TEXT,
+        receiver_id TEXT,
+        receiver_name TEXT,
+        start_time TEXT,
+        end_time TEXT,
+        duration INTEGER,
+        status TEXT,
+        call_type TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE statuses (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        user_name TEXT,
+        user_avatar TEXT,
+        content TEXT,
+        media_url TEXT,
+        created_at TEXT
       )
     ''');
   }
@@ -529,6 +583,69 @@ class LocalDatabase {
       // 3. Marquer comme synchronisé
       await txn.delete('pending_rooms', where: 'temp_id = ?', whereArgs: [tempId]);
     });
+  }
+
+  // ═══ GESTION DES APPELS ═══
+
+  Future<void> saveCallHistory(List<Map<String, dynamic>> calls) async {
+    if (kIsWeb) return;
+    final db = await instance.database;
+    final batch = db.batch();
+    for (var call in calls) {
+      batch.insert(
+        'calls',
+        {
+          'id': call['id']?.toString(),
+          'caller_id': call['caller_id']?.toString(),
+          'caller_name': call['caller_name'],
+          'receiver_id': call['receiver_id']?.toString(),
+          'receiver_name': call['receiver_name'],
+          'start_time': call['start_time'],
+          'end_time': call['end_time'],
+          'duration': call['duration'],
+          'status': call['status'],
+          'call_type': call['call_type'],
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<Map<String, dynamic>>> getCallHistory() async {
+    if (kIsWeb) return [];
+    final db = await instance.database;
+    return await db.query('calls', orderBy: 'start_time DESC');
+  }
+
+  // ═══ GESTION DES STATUTS ═══
+
+  Future<void> saveStatuses(List<Map<String, dynamic>> statuses) async {
+    if (kIsWeb) return;
+    final db = await instance.database;
+    final batch = db.batch();
+    for (var status in statuses) {
+      batch.insert(
+        'statuses',
+        {
+          'id': status['id']?.toString(),
+          'user_id': status['user_id']?.toString(),
+          'user_name': status['user_name'],
+          'user_avatar': status['user_avatar'],
+          'content': status['content'],
+          'media_url': status['media_url'],
+          'created_at': status['created_at'],
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<Map<String, dynamic>>> getStatuses() async {
+    if (kIsWeb) return [];
+    final db = await instance.database;
+    return await db.query('statuses', orderBy: 'created_at DESC');
   }
 }
 

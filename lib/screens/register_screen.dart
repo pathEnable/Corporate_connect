@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/premium_background.dart';
 import '../services/auth_service.dart';
+import '../providers/app_data_provider.dart';
 import 'home_screen.dart';
 
-class RegisterScreen extends StatefulWidget {
+class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
 
   @override
-  State<RegisterScreen> createState() => _RegisterScreenState();
+  ConsumerState<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen> {
+class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final AuthService _authService = AuthService();
   final PageController _pageController = PageController();
   
@@ -92,6 +94,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _phoneController.text,
       );
       if (mounted) {
+        // Déclencher le pré-chargement global (non bloquant) 
+        ref.read(appDataProvider.notifier).initializeAfterLogin();
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const HomeScreen()),

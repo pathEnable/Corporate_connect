@@ -24,8 +24,20 @@ class StatusModel {
       userName: json['user_name'],
       userAvatar: json['user_avatar'],
       mediaUrl: json['media_url'],
-      text: json['text'],
+      text: json['text'] ?? json['content'], // Support both names
       createdAt: DateTime.parse(json['created_at']),
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'user_id': userId,
+      'user_name': userName,
+      'user_avatar': userAvatar,
+      'media_url': mediaUrl,
+      'content': text, // Map text to content for SQLite
+      'created_at': createdAt.toIso8601String(),
+    };
   }
 }

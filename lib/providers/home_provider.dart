@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/home_state.dart';
+import '../models/status_model.dart';
 import '../services/room_service.dart';
 import '../services/status_service.dart';
 import '../services/local_database.dart';
@@ -34,40 +35,42 @@ class HomeNotifier extends Notifier<HomeState> {
       _globalEventsSub?.cancel();
     });
     
-    // Chargement initial
-    _init();
-    
+    // NE PAS appeler _init() ici.
+    // AppDataProvider orchestre l'initialisation via loadFromSQLite() + initServices().
     return HomeState();
   }
 
-  Future<void> _init() async {
+  /// Phase 1 : Charge uniquement le cache SQLite (< 30ms).
+  /// Appelé par AppDataProvider AVANT la navigation vers HomeScreen.
+  Future<void> loadFromSQLite() async {
     final prefs = await SharedPreferences.getInstance();
     final viewedIds = prefs.getStringList('viewed_status_ids')?.toSet() ?? {};
-
-    // ═══ PHASE 1 : Cache INSTANTANÉ depuis SQLite (< 30ms) ═══
     try {
       final cachedRooms = await LocalDatabase.instance.getRooms();
+      final cachedStatuses = await LocalDatabase.instance.getStatuses();
       if (!_isDisposed) {
         state = state.copyWith(
           rooms: cachedRooms,
+          statuses: cachedStatuses.map((s) => StatusModel.fromJson(s)).toList(),
           viewedStatusIds: viewedIds,
-          // Spinner uniquement au tout premier démarrage (cache vide)
-          isLoadingRooms: cachedRooms.isEmpty,
-          isLoadingStatus: true,
+          isLoadingRooms: false, // On a chargé le cache, donc plus "chargant" au sens bloquant
+          isLoadingStatus: false,
         );
       }
     } catch (e) {
-      debugPrint("⚠️ Erreur cache rooms SQLite: $e");
+      debugPrint('⚠️ Erreur cache rooms/status SQLite: $e');
     }
+  }
 
-    // ═══ PHASE 2 : WS Global + Sync API en arrière-plan (non bloquant) ═══
+  /// Phase 2 (services) : Connecte le WebSocket global et écoute les événements.
+  /// Appelé par AppDataProvider après la Phase 1.
+  void initServices() {
     GlobalPresenceService.instance.connect();
     _listenToGlobalEvents();
-    
-    // Les deux syncs API partent en parallèle, sans attendre
-    refreshRooms();
-    refreshStatus();
   }
+
+  // _init() supprimée : remplacée par loadFromSQLite() + initServices() + refreshRooms() + refreshStatus()
+  // orchestrés par AppDataProvider.
 
 
   /// Écoute les événements globaux (nouveaux messages dans d'autres rooms)
@@ -77,7 +80,7 @@ class HomeNotifier extends Notifier<HomeState> {
       if (_isDisposed) return;
 
       final type = event['type'];
-      if (type == 'new_message_notification') {
+      if (type == 'global_new_message') {
         final roomId = event['room_id']?.toString();
         final content = event['content']?.toString() ?? '';
         final senderName = event['sender_name']?.toString();
@@ -189,10 +192,18 @@ class HomeNotifier extends Notifier<HomeState> {
   Future<void> refreshStatus() async {
     try {
       final statuses = await _statusService.getStatuses();
+      
+      // Sauvegarder en cache SQLite
+      if (!kIsWeb) {
+        final jsonList = statuses.map((s) => s.toJson()).toList();
+        await LocalDatabase.instance.saveStatuses(jsonList);
+      }
+
       if (!_isDisposed) {
         state = state.copyWith(statuses: statuses, isLoadingStatus: false);
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint("⚠️ Erreur sync status API: $e");
       if (!_isDisposed) {
         state = state.copyWith(isLoadingStatus: false);
       }

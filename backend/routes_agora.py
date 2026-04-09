@@ -18,8 +18,10 @@ def get_agora_token(
     Génère un token RTC Agora pour un canal spécifique.
     uid=0 permet à Agora d'attribuer un UID automatiquement ou d'utiliser celui fourni.
     """
-    if not AGORA_APP_ID or not AGORA_APP_CERTIFICATE:
-        raise HTTPException(status_code=500, detail="Agora configuration is missing on server")
+    if not AGORA_APP_ID:
+        raise HTTPException(status_code=500, detail="Agora Configuration Error: AGORA_APP_ID is missing")
+    if not AGORA_APP_CERTIFICATE:
+        raise HTTPException(status_code=500, detail="Agora Configuration Error: AGORA_APP_CERTIFICATE is missing")
 
     # Rôle 1 = Attendee (peut publier et souscrire)
     role = 1

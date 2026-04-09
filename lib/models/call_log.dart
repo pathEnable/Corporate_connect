@@ -40,4 +40,20 @@ class CallLogModel {
       receiverName: json['receiver_name'] as String?,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'caller_id': callerId,
+      'receiver_id': receiverId,
+      'room_id': roomId,
+      'start_time': startTime,
+      'end_time': endTime,
+      'duration': duration,
+      'status': status,
+      'call_type': callType,
+      'caller_name': callerName,
+      'receiver_name': receiverName,
+    };
+  }
 }

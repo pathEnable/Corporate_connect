@@ -66,7 +66,7 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
       messages: const [],
       typingUsers: const {},
       memberKeys: const {},
-      isLoading: false,
+      isLoading: true, // On commence par true, Phase 1 le passera à false si cache présent
     );
   }
 
@@ -78,17 +78,45 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
     if (currentUserId == null) return;
     _userId = currentUserId;
 
-    // ═══ PHASE 1 : Cache Instantané (< 20ms) ═══
+    // ═══ PHASE 1 : Cache SQLite instantané (< 20ms) ═══
+    // Chargement synchrone du cache & démarrage WebSocket immédiat
+    List<Map<String, dynamic>> localMsgs = [];
     try {
-      final localMsgs = await LocalDatabase.instance.getMessages(roomId);
+      localMsgs = await LocalDatabase.instance.getMessages(roomId);
       if (!_isDisposed && localMsgs.isNotEmpty) {
+        // On a du cache → plus besoin de spinner/skeleton
         state = state.copyWith(messages: localMsgs, isLoading: false);
+        debugPrint("✅ Chat: Cache SQLite chargé (${localMsgs.length} messages)");
+      } else {
+        debugPrint("ℹ️ Chat: Pas de cache SQLite, attente API...");
       }
     } catch (e) {
       debugPrint("❌ Erreur cache DB: $e");
     }
 
-    // ═══ PHASE 2 : Clés de chiffrement (en parallèle) ═══
+    // ═══ PHASE 2 : Parallélisation totale ═══
+    // WebSocket + clés membres + historique API → tout en même temps
+    // Résultat : "Connexion..." part en moins d'une seconde
+    if (!_isDisposed && _userId != null) {
+      // Le WebSocket se connecte IMMÉDIATEMENT, sans attendre l'API
+      _connectWebSocket();
+      _fetchOtherUserPresence();
+      _presenceTimer = Timer.periodic(
+        const Duration(seconds: 30), (_) => _fetchOtherUserPresence(),
+      );
+    }
+
+    // Récupérer les clés membres et l'historique en parallèle
+    await Future.wait([
+      _fetchMemberKeysAndDecryptCache(localMsgs),
+      _syncHistoryFromApi(),
+    ]);
+
+    try { ref.read(homeProvider.notifier).markRoomAsRead(roomId); } catch (_) {}
+  }
+
+  /// Récupère les clés de chiffrement des membres et déchiffre le cache déjà affiché.
+  Future<void> _fetchMemberKeysAndDecryptCache(List<Map<String, dynamic>> cachedMsgs) async {
     try {
       final members = await _roomService.getRoomMembers(roomId);
       final keys = <String, String>{};
@@ -97,47 +125,44 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
           keys[m['id'].toString()] = m['public_key'];
         }
       }
-      if (!_isDisposed) state = state.copyWith(memberKeys: keys);
-      
-      // Déchiffrement du cache local dès qu'on a les clés
-      if (state.messages.isNotEmpty) {
-        final decrypted = await _decryptBulk(state.messages);
+      if (_isDisposed) return;
+      state = state.copyWith(memberKeys: keys);
+
+      // Déchiffrer le cache affiché dès qu'on a les clés
+      if (cachedMsgs.isNotEmpty) {
+        final decrypted = await _decryptBulk(cachedMsgs);
         if (!_isDisposed) state = state.copyWith(messages: decrypted);
       }
     } catch (e) {
       debugPrint("❌ Erreur clés membres: $e");
     }
+  }
 
-    // ═══ PHASE 3 : Sync API en arrière-plan (Merge intelligent, sans clignotement) ═══
+  /// Synchronise l'historique complet depuis l'API et le fusionne silencieusement.
+  Future<void> _syncHistoryFromApi() async {
     try {
       final history = await _roomService.getMessages(roomId);
+      if (_isDisposed) return;
+
       final decryptedHistory = await _decryptBulk(history);
-      
-      // MERGE : On fusionne API + messages pending locaux pour ne perdre aucun message
+      if (_isDisposed) return;
+
+      // MERGE : API prime, mais on conserve les messages pending/failed locaux
       final merged = _mergeMessages(decryptedHistory, state.messages);
-      
-      // Sauvegarder en cache (en arrière-plan, non bloquant)
-      _saveHistoryToCache(decryptedHistory); // fire-and-forget (void async)
-      
+
+      // Persistance en arrière-plan (fire-and-forget)
+      _saveHistoryToCache(decryptedHistory);
+
       if (!_isDisposed) {
         state = state.copyWith(messages: merged, isLoading: false);
       }
-      
+
       // Pré-chargement des médias récents en arrière-plan
       _prefetchRecentMedia(decryptedHistory);
     } catch (e) {
       debugPrint("❌ Erreur sync API messages: $e");
       if (!_isDisposed) state = state.copyWith(isLoading: false);
     }
-
-    // WS + Présence
-    if (_userId != null && !_isDisposed) {
-      _connectWebSocket();
-      _fetchOtherUserPresence();
-      _presenceTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchOtherUserPresence());
-    }
-
-    try { ref.read(homeProvider.notifier).markRoomAsRead(roomId); } catch (_) {}
   }
 
   /// Récupère le statut de présence de l'autre utilisateur dans un chat privé

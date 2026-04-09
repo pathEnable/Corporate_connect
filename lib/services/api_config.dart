@@ -65,5 +65,12 @@ class ApiConfig {
     if (!path.startsWith('/')) path = '/$path';
     return '$baseUrl/media$path';
   }
+
+  /// Vérifie si une URL pointe vers notre propre backend
+  static bool isInternalUrl(String url) {
+    if (!url.startsWith('http')) return true; // URLs relatives sont internes
+    final String domain = baseUrl.replaceAll('https://', '').replaceAll('http://', '');
+    return url.contains(domain);
+  }
 }
 
