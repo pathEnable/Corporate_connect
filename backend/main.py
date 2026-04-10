@@ -139,81 +139,82 @@ async def get_latest_version(request: Request):
 
 @app.get("/download-apk/{variant}")
 async def proxy_github_apk(variant: str):
-    """Télécharge l'APK depuis GitHub et le streame à l'application avec authentification."""
+    """Télécharge l'APK depuis GitHub et le retourne à l'application avec authentification."""
     print(f"DEBUG: Proxy APK appelé pour variante: {variant}")
     if not GITHUB_TOKEN:
         print("DEBUG: GITHUB_TOKEN manquant")
         return JSONResponse(status_code=500, content={"detail": "GITHUB_TOKEN non configuré sur le serveur."})
 
-    async def stream_generator(target_url: str, filename: str):
-        async with httpx.AsyncClient() as client:
+    headers_auth = {
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "User-Agent": "Corporate-Connect-Server"
+    }
+
+    try:
+        # Client unique pour toute l'opération, pas de context manager = pas de fermeture prématurée
+        client = httpx.AsyncClient(follow_redirects=True, timeout=300.0)
+
+        # 1. Récupérer les infos de la dernière release
+        print(f"DEBUG: Récupération de la dernière release pour {GITHUB_REPO}")
+        response = await client.get(
+            f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
+            headers=headers_auth
+        )
+
+        if response.status_code != 200:
+            await client.aclose()
+            print(f"DEBUG: Erreur GitHub API: {response.status_code}")
+            return JSONResponse(status_code=502, content={"detail": f"Erreur GitHub: {response.status_code}"})
+
+        data = response.json()
+        assets = data.get("assets", [])
+
+        # 2. Chercher l'asset correspondant à la variante
+        target_url = None
+        filename = "app-release.apk"
+        for asset in assets:
+            name = asset.get("name", "").lower()
+            if variant.lower() in name and name.endswith(".apk"):
+                target_url = asset.get("browser_download_url")
+                filename = asset.get("name")
+                break
+
+        if not target_url:
+            await client.aclose()
+            print(f"DEBUG: Variante {variant} non trouvée dans les assets")
+            return JSONResponse(status_code=404, content={"detail": f"APK pour {variant} non trouvé."})
+
+        print(f"DEBUG: Debut stream APK: {filename}")
+
+        # 3. Générateur qui utilise le MÊME client ouvert, le ferme proprement après
+        async def stream_and_close():
             try:
-                print(f"DEBUG: Streaming de l'APK: {filename} depuis {target_url}")
                 async with client.stream(
-                    "GET", 
-                    target_url, 
-                    headers={
-                        "Authorization": f"Bearer {GITHUB_TOKEN}",
-                        "User-Agent": "Corporate-Connect-Server",
-                        "Accept": "application/octet-stream"
-                    },
-                    follow_redirects=True
+                    "GET",
+                    target_url,
+                    headers={**headers_auth, "Accept": "application/octet-stream"},
                 ) as r:
                     if r.status_code != 200:
-                        print(f"DEBUG: Erreur lors du stream depuis GitHub: {r.status_code}")
-                        yield b"Erreur lors du telechargement"
+                        print(f"DEBUG: Erreur stream GitHub: {r.status_code}")
+                        yield b""
                         return
-                    async for chunk in r.aiter_bytes():
+                    async for chunk in r.aiter_bytes(chunk_size=65536):
                         yield chunk
-            except Exception as e:
-                print(f"DEBUG: Exception dans le stream_generator: {str(e)}")
-                yield b"Erreur interne du serveur"
+            finally:
+                await client.aclose()
+                print("DEBUG: Client fermé proprement après stream")
 
-    async with httpx.AsyncClient() as client:
-        try:
-            # 1. Récupérer les infos de la dernière release
-            print(f"DEBUG: Récupération de la dernière release pour {GITHUB_REPO}")
-            response = await client.get(
-                f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
-                headers={
-                    "Authorization": f"Bearer {GITHUB_TOKEN}",
-                    "User-Agent": "Corporate-Connect-Server"
-                }
-            )
-            
-            if response.status_code != 200:
-                print(f"DEBUG: Erreur GitHub API: {response.status_code} - {response.text}")
-                return JSONResponse(status_code=502, content={"detail": f"Erreur GitHub (Releases): {response.status_code}"})
-            
-            data = response.json()
-            assets = data.get("assets", [])
-            
-            # 2. Chercher l'asset correspondant
-            target_url = None
-            filename = "app-release.apk"
-            for asset in assets:
-                name = asset.get("name", "").lower()
-                if variant.lower() in name and name.endswith(".apk"):
-                    target_url = asset.get("browser_download_url")
-                    filename = asset.get("name")
-                    break
-            
-            if not target_url:
-                print(f"DEBUG: Variante {variant} non trouvée")
-                return JSONResponse(status_code=404, content={"detail": f"APK pour {variant} non trouvé."})
-            
-            return StreamingResponse(
-                stream_generator(target_url, filename),
-                media_type="application/vnd.android.package-archive",
-                headers={
-                    "Content-Disposition": f"attachment; filename={filename}",
-                    "Content-Type": "application/vnd.android.package-archive"
-                }
-            )
-            
-        except Exception as e:
-            print(f"DEBUG: Exception dans le proxy: {str(e)}")
-            return JSONResponse(status_code=500, content={"detail": f"Erreur Proxy: {str(e)}"})
+        return StreamingResponse(
+            stream_and_close(),
+            media_type="application/vnd.android.package-archive",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}",
+            }
+        )
+
+    except Exception as e:
+        print(f"DEBUG: Exception dans le proxy: {str(e)}")
+        return JSONResponse(status_code=500, content={"detail": f"Erreur Proxy: {str(e)}"})
 
 @app.get("/api/releases/history")
 async def get_releases_history():
