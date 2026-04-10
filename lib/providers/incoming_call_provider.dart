@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_callkit_incoming/entities/call_kit_params.dart';
 import 'package:flutter_callkit_incoming/entities/android_params.dart';
@@ -6,6 +7,8 @@ import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_callkit_incoming/entities/call_event.dart' as ck;
 import 'package:uuid/uuid.dart';
 import '../services/ringtone_service.dart';
+import '../screens/call_screen.dart';
+import '../main.dart';
 import 'dart:async';
 
 class IncomingCallState {
@@ -57,7 +60,33 @@ class IncomingCallNotifier extends StateNotifier<IncomingCallState> {
       
       switch (event.event) {
         case ck.Event.actionCallAccept:
+          // Extraire le room_id depuis les données extras de CallKit
+          final body = event.body as Map?;
+          final extra = body?['extra'] as Map?;
+          final roomId = extra?['room_id']?.toString() ?? state.roomId;
+          final callerName = body?['nameCaller']?.toString() ?? state.callerName ?? 'Appel';
+          final isVideo = (body?['type'] == 1) || state.isVideo;
+
           _handleAccept();
+
+          // Naviguer vers l'écran d'appel (fonctionne même si l'app était fermée)
+          if (roomId != null && roomId.isNotEmpty) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              final context = navigatorKey.currentContext;
+              if (context != null) {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => CallScreen(
+                      channelId: roomId,
+                      remoteUserName: callerName,
+                      isVideo: isVideo,
+                      isOutgoing: false,
+                    ),
+                  ),
+                );
+              }
+            });
+          }
           break;
         case ck.Event.actionCallDecline:
           _handleDecline();
