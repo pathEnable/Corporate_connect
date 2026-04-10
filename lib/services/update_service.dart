@@ -11,8 +11,20 @@ class UpdateService {
 
   /// Vérifie si une mise à jour est disponible
   Future<Map<String, dynamic>?> checkForUpdate() async {
+    final String url = '${ApiConfig.baseUrl}/version';
     try {
-      final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/version'));
+      debugPrint('Vérification de mise à jour sur: $url');
+      
+      final response = await http.get(Uri.parse(url)).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          debugPrint('Délai d\'attente dépassé (10s) pour: $url');
+          throw http.ClientException('Timeout');
+        },
+      );
+
+      debugPrint('Réponse mise à jour: Status ${response.statusCode}');
+
       if (response.statusCode == 200) {
         final serverData = jsonDecode(response.body);
         final int serverVersion = serverData['version_code'];
@@ -20,12 +32,19 @@ class UpdateService {
         final packageInfo = await PackageInfo.fromPlatform();
         final int currentVersion = int.tryParse(packageInfo.buildNumber) ?? 1;
 
+        debugPrint('Comparaison versions: App=$currentVersion vs Server=$serverVersion');
+
         if (serverVersion > currentVersion) {
+          debugPrint('Nouveauté détectée !');
           return serverData;
+        } else {
+          debugPrint('L\'application est à jour ou plus récente.');
         }
+      } else {
+        debugPrint('Erreur serveur lors du check version: ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('Erreur lors de la vérification de mise à jour: $e');
+      debugPrint('Erreur lors de la vérification de mise à jour sur $url: $e');
     }
     return null;
   }

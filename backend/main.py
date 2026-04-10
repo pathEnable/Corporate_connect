@@ -127,8 +127,8 @@ async def get_latest_version(request: Request):
     """Retourne la dernière version disponible et les URLs de téléchargement stable."""
     base_url = str(request.base_url).rstrip("/")
     return {
-        "version_code": 2008, 
-        "version_name": "Version 2.1.0+2008",
+        "version_code": 2009, 
+        "version_name": "Version 2.1.0+2009",
         "apk_url": "https://github.com/pathEnable/Corporate_connect/releases/download/v2.1.0%2B2008/app-arm64-v8a-release.apk",
         "variants": {
             "arm64-v8a": "https://github.com/pathEnable/Corporate_connect/releases/download/v2.1.0%2B2008/app-arm64-v8a-release.apk",
