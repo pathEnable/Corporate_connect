@@ -127,13 +127,13 @@ async def get_latest_version(request: Request):
     """Retourne la dernière version disponible et les URLs de téléchargement stable."""
     base_url = str(request.base_url).rstrip("/")
     return {
-        "version_code": 4, 
-        "version_name": "2.1.0",
-        "apk_url": f"{base_url}/download/apk/arm64-v8a",
+        "version_code": 2008, 
+        "version_name": "Version 2.1.0+2008",
+        "apk_url": "https://github.com/pathEnable/Corporate_connect/releases/download/v2.1.0%2B2008/app-arm64-v8a-release.apk",
         "variants": {
-            "arm64-v8a": f"{base_url}/download/apk/arm64-v8a",
-            "armeabi-v7a": f"{base_url}/download/apk/armeabi-v7a",
-            "x86_64": f"{base_url}/download/apk/x86_64"
+            "arm64-v8a": "https://github.com/pathEnable/Corporate_connect/releases/download/v2.1.0%2B2008/app-arm64-v8a-release.apk",
+            "armeabi-v7a": "https://github.com/pathEnable/Corporate_connect/releases/download/v2.1.0%2B2008/app-armeabi-v7a-release.apk",
+            "x86_64": "https://github.com/pathEnable/Corporate_connect/releases/download/v2.1.0%2B2008/app-x86_64-release.apk"
         }
     }
 
