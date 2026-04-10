@@ -39,7 +39,7 @@ class LocalDatabase {
     try {
       return await openDatabase(
         path,
-        version: 13,
+        version: 14,
         password: dbPassword, // Paramètre SQLCipher pour chiffrer les fichiers .db
         onCreate: _createDB,
         onUpgrade: _upgradeDB,
@@ -178,6 +178,9 @@ class LocalDatabase {
         )
       ''');
     }
+    if (oldVersion < 14) {
+      await db.execute('ALTER TABLE rooms ADD COLUMN avatar_url TEXT');
+    }
   }
 
   Future<void> _createDB(Database db, int version) async {
@@ -221,7 +224,8 @@ class LocalDatabase {
         last_message TEXT,
         last_message_at TEXT,
         unread_count INTEGER DEFAULT 0,
-        last_sender_name TEXT
+        last_sender_name TEXT,
+        avatar_url TEXT
       )
     ''');
 
@@ -392,6 +396,7 @@ class LocalDatabase {
           'last_message_at': room['last_message_time'] ?? room['last_message_at'],
           'unread_count': room['unread_count'] ?? 0,
           'last_sender_name': room['last_sender_name'],
+          'avatar_url': room['avatar_url'] ?? room['avatar'],
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -437,13 +442,26 @@ class LocalDatabase {
   Future<void> resetUnreadCount(String roomId) async {
     if (kIsWeb) return;
     final db = await instance.database;
-    await db.update(
-      'rooms',
-      {'unread_count': 0},
-      where: 'id = ?',
-      whereArgs: [roomId],
-    );
-   }
+    await db.update('rooms', {'unread_count': 0}, where: 'id = ?', whereArgs: [roomId]);
+  }
+
+  /// Met à jour les métadonnées d'un salon (nom, photo)
+  Future<void> updateRoomMetadata(String roomId, {String? name, String? avatarUrl}) async {
+    if (kIsWeb) return;
+    final db = await instance.database;
+    final Map<String, dynamic> data = {};
+    if (name != null) data['name'] = name;
+    if (avatarUrl != null) data['avatar_url'] = avatarUrl;
+    
+    if (data.isNotEmpty) {
+      await db.update(
+        'rooms',
+        data,
+        where: 'id = ?',
+        whereArgs: [roomId],
+      );
+    }
+  }
 
   Future<void> saveProfiles(List<Map<String, dynamic>> profiles) async {
     if (kIsWeb) return;
@@ -518,7 +536,7 @@ class LocalDatabase {
   Future<List<Map<String, dynamic>>> getMediaMessages(String roomId, {String? type}) async {
     if (kIsWeb) return [];
     final db = await instance.database;
-    String whereClause = 'room_id = ? AND message_type != "text" AND message_type != "call_offer"';
+    String whereClause = 'room_id = ? AND message_type IN ("image", "video", "file", "audio")';
     List<dynamic> whereArgs = [roomId];
     
     if (type != null) {

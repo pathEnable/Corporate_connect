@@ -9,12 +9,12 @@ import '../services/chat_service.dart';
 import '../services/room_service.dart';
 import '../services/encryption_service.dart';
 import '../services/local_database.dart';
-import '../services/media_service.dart';
 import '../services/media_cache_service.dart';
 import '../services/api_config.dart';
 import '../services/auth_service.dart';
 import 'home_provider.dart';
 import 'migration_provider.dart';
+import 'incoming_call_provider.dart';
 
 /// Provider pour un salon de chat spécifique (Riverpod 2.0 Notifier Family)
 final chatProvider = NotifierProvider.family<ChatNotifier, ChatState, String>(() {
@@ -26,7 +26,6 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
   final ChatService _chatService = ChatService();
   final RoomService _roomService = RoomService();
   final EncryptionService _encryptionService = EncryptionService();
-  final MediaService _mediaService = MediaService();
   final AuthService _authService = AuthService();
   
   String? _userId;
@@ -223,7 +222,8 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
   void _saveHistoryToCache(List<Map<String, dynamic>> history) async {
     for (var msg in history) {
       if (_isDisposed) break;
-      try { await LocalDatabase.instance.saveMessage(msg); } catch (_) {}
+      // L'API ne retourne pas room_id dans chaque message, on l'injecte
+      try { await LocalDatabase.instance.saveMessage({...msg, 'room_id': roomId}); } catch (_) {}
     }
   }
 
@@ -259,7 +259,7 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
   void _prefetchRecentMedia(List<Map<String, dynamic>> messages) {
     // Prendre les 20 derniers messages avec un media
     final mediaMessages = messages
-        .where((m) => m['message_type'] == 'image' || m['message_type'] == 'audio' || m['message_type'] == 'file')
+        .where((m) => ['image', 'audio', 'file', 'video'].contains(m['message_type']))
         .toList();
     
     final recentMedia = mediaMessages.length > 20
@@ -305,7 +305,13 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
       final finalMsg = decrypted.first;
 
       try {
-        await LocalDatabase.instance.saveMessage(finalMsg);
+        // Extract caption if buried in data
+        final caption = finalMsg['caption'] ?? (finalMsg['data'] != null ? finalMsg['data']['caption'] : null);
+        await LocalDatabase.instance.saveMessage({
+          ...finalMsg, 
+          'room_id': roomId,
+          'caption': caption,
+        });
       } catch (_) {}
       
       final newMessages = List<Map<String, dynamic>>.from(state.messages);
@@ -334,9 +340,27 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
         state = state.copyWith(messages: newMessages);
       }
 
-      // 3. Téléchargement auto en arrière-plan pour les médias
-      if (finalMsg['message_type'] == 'image' || finalMsg['message_type'] == 'file') {
+      // 3. Téléchargement auto en arrière-plan pour les médias (Coffre-fort privé)
+      if (['image', 'file', 'audio', 'video'].contains(finalMsg['message_type'])) {
         _downloadMediaInBackground(finalMsg);
+      }
+    } else if (message['type'] == 'call_offer') {
+      // L'utilisateur est dans le chat et reçoit un appel entrant
+      // On extrait les infos du signal et on déclenche la UI d'appel entrant
+      final data = message['data'] as Map<String, dynamic>? ?? {};
+      final String incomingRoomId = data['room_id'] ?? data['channel_id'] ?? roomId;
+      final bool isVideo = data['is_video'] == true || data['is_video'] == 'true';
+      final String callerName = message['sender_name'] ?? message['sender_id']?.toString() ?? 'Inconnu';
+      final String callerAvatar = message['sender_avatar'] ?? '';
+
+      // Ne pas déclencher si c'est nous qui avons envoyé l'appel
+      if (message['sender_id']?.toString() != _userId) {
+        ref.read(incomingCallProvider.notifier).showIncomingCall(
+          name: callerName,
+          avatar: callerAvatar,
+          roomId: incomingRoomId,
+          isVideo: isVideo,
+        );
       }
     } else if (message['type'] == 'typing') {
       final typingUserId = message['user_id'] as String;
@@ -413,6 +437,7 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
       'message_type': type,
       'status': 'pending',
       'is_encrypted': wasEncrypted,
+      'caption': extraData?['caption'],
       'created_at': DateTime.now().toIso8601String(),
     };
 
@@ -468,20 +493,16 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
   }
 
   Future<void> _downloadMediaInBackground(Map<String, dynamic> message) async {
-    if (kIsWeb) return;
+    if (kIsWeb || message['content'] == null) return;
     
-    final url = ApiConfig.getMediaUrl(message['content']);
-    final fileName = message['content'].split('/').last;
+    final relativeUrl = message['content'].toString();
     
-    final localPath = await _mediaService.saveToGallery(
-      url, 
-      fileName, 
-      message['message_type']
-    );
+    // Utiliser MediaCacheService pour enregistrer dans le cache privé (pas la galerie publique)
+    final localPath = await MediaCacheService.instance.downloadAndCache(relativeUrl);
 
     if (localPath != null && !_isDisposed) {
       // Mettre à jour la DB
-      await LocalDatabase.instance.saveMessage({...message, 'local_path': localPath});
+      await LocalDatabase.instance.saveMessage({...message, 'room_id': roomId, 'local_path': localPath});
       
       // Mettre à jour l'état UI
       final newMessages = state.messages.map((m) {

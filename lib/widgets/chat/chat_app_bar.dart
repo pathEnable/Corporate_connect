@@ -5,11 +5,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../screens/call_screen.dart';
 import '../../providers/chat_provider.dart';
 import '../../theme/app_theme.dart';
+import '../../services/media_service.dart';
+import '../authenticated_image.dart';
 
 class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
   final String roomId;
   final String roomName;
   final bool isGroup;
+  final String? avatarUrl;
   final VoidCallback onShowInfo;
 
   const ChatAppBar({
@@ -17,6 +20,7 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
     required this.roomId,
     required this.roomName,
     this.isGroup = false,
+    this.avatarUrl,
     required this.onShowInfo,
   });
 
@@ -99,11 +103,33 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
             shape: BoxShape.circle,
             color: Colors.white24,
           ),
-          child: Center(
-            child: Text(
-              roomName[0].toUpperCase(),
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
-            ),
+          child: ClipOval(
+            child: avatarUrl != null && avatarUrl!.isNotEmpty
+                ? FutureBuilder<String>(
+                    future: MediaService().getDownloadUrl(avatarUrl!),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasData) {
+                        return AuthenticatedNetworkImage(
+                          imageUrl: snapshot.data!,
+                          fit: BoxFit.cover,
+                          width: 40,
+                          height: 40,
+                        );
+                      }
+                      return Center(
+                        child: Text(
+                          roomName[0].toUpperCase(),
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                        ),
+                      );
+                    },
+                  )
+                : Center(
+                    child: Text(
+                      roomName[0].toUpperCase(),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                    ),
+                  ),
           ),
         ),
         // Petit indicateur de présence en bas à droite de l'avatar
@@ -277,10 +303,12 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
   }
 
   void _startCall(BuildContext context, WidgetRef ref, {required bool isVideo}) {
+    // On envoie room_id (et non channel_id) pour que le GlobalCallListener
+    // puisse l'extraire correctement côté destinataire.
     ref.read(chatProvider(roomId).notifier).sendMessage(
       isVideo ? 'Appel vidéo' : 'Appel audio',
       'call_offer',
-      extraData: {'channel_id': roomId, 'is_video': isVideo},
+      extraData: {'room_id': roomId, 'is_video': isVideo},
     );
 
     Navigator.push(
@@ -290,6 +318,7 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
           remoteUserName: roomName,
           channelId: roomId,
           isVideo: isVideo,
+          isOutgoing: true,
         ),
       ),
     );

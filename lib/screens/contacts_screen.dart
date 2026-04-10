@@ -84,6 +84,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
             builder: (_) => ChatScreen(
               roomId: room['id'].toString(),
               roomName: contact['full_name'] ?? 'Discussion',
+              avatarUrl: contact['avatar_url'],
             ),
           ),
         );

@@ -14,12 +14,14 @@ class CallScreen extends ConsumerStatefulWidget {
   final String remoteUserName;
   final String channelId;
   final bool isVideo;
+  final bool isOutgoing;
 
   const CallScreen({
     super.key, 
     required this.remoteUserName, 
     required this.channelId,
-    this.isVideo = true
+    this.isVideo = true,
+    this.isOutgoing = true,
   });
 
   @override
@@ -33,9 +35,13 @@ class _CallScreenState extends ConsumerState<CallScreen> {
   void initState() {
     super.initState();
     // On initialise l'appel au lancement via le provider
+    // Le provider gère lui-même la tonalité selon la direction de l'appel
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(callProvider.notifier).initCall(widget.channelId, widget.isVideo);
-      RingtoneService.instance.playRingtone();
+      ref.read(callProvider.notifier).initCall(
+        widget.channelId,
+        widget.isVideo,
+        isOutgoing: widget.isOutgoing,
+      );
     });
   }
 
@@ -263,9 +269,8 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                 ),
               ),
             ),
-        if (state.isLoading)
-          const Center(child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3)),
-        
+
+
         if (state.errorMessage != null)
           Center(
             child: Container(

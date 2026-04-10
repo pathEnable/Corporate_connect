@@ -87,17 +87,20 @@ class HomeNotifier extends Notifier<HomeState> {
         final timestamp = event['created_at']?.toString() ?? DateTime.now().toIso8601String();
 
         if (roomId != null) {
+          final messageType = event['message_type']?.toString() ?? 'text';
+          String displayContent = _getReadableMediaType(messageType, content);
+
           // Mise à jour atomique de la DB locale
           LocalDatabase.instance.updateRoomLastMessage(
             roomId: roomId,
-            lastMessage: content,
+            lastMessage: displayContent,
             lastMessageAt: timestamp,
             lastSenderName: senderName,
             incrementUnread: true,
           );
 
           // Mise à jour instantanée de l'UI
-          _updateRoomInState(roomId, content, timestamp, senderName, incrementUnread: true);
+          _updateRoomInState(roomId, displayContent, timestamp, senderName, incrementUnread: true);
         }
       }
     });
@@ -146,13 +149,23 @@ class HomeNotifier extends Notifier<HomeState> {
       LocalDatabase.instance.saveRooms(rooms);
       
       if (!_isDisposed) {
-        rooms.sort((a, b) {
+        // Formatter les derniers messages avec des labels lisibles
+        final formattedRooms = rooms.map((room) {
+          final mType = room['last_message_type']?.toString() ?? 'text';
+          final mContent = room['last_message']?.toString() ?? '';
+          return {
+            ...room,
+            'last_message': _getReadableMediaType(mType, mContent),
+          };
+        }).toList();
+
+        formattedRooms.sort((a, b) {
           final aTime = a['last_message_time']?.toString() ?? '';
           final bTime = b['last_message_time']?.toString() ?? '';
           return bTime.compareTo(aTime);
         });
         // Mise à jour silencieuse : on ne remplace que si les données ont réellement changé
-        state = state.copyWith(rooms: rooms, isLoadingRooms: false);
+        state = state.copyWith(rooms: formattedRooms, isLoadingRooms: false);
       }
 
       // ═══ OPTIMISATION : Pré-chargement agressif des messages ═══
@@ -238,6 +251,36 @@ class HomeNotifier extends Notifier<HomeState> {
     } catch (e) {
       state = state.copyWith(errorMessage: "Erreur lors de la création du statut");
     }
+  }
+
+  /// Met à jour les métadonnées d'un salon localement et en base de données
+  Future<void> updateRoomMetadata(String roomId, {String? name, String? avatarUrl}) async {
+    // 1. Mise à jour de la DB locale
+    await LocalDatabase.instance.updateRoomMetadata(roomId, name: name, avatarUrl: avatarUrl);
+
+    // 2. Mise à jour de l'état actuel (UI réactive)
+    if (_isDisposed) return;
+    
+    final updatedRooms = state.rooms.map((room) {
+      if (room['id'] == roomId) {
+        return {
+          ...room,
+          if (name != null) 'name': name,
+          if (avatarUrl != null) 'avatar_url': avatarUrl,
+        };
+      }
+      return room;
+    }).toList();
+
+    state = state.copyWith(rooms: updatedRooms);
+  }
+
+  String _getReadableMediaType(String type, String content) {
+    if (type == 'image') return "📸 Image";
+    if (type == 'file') return "📄 Fichier";
+    if (type == 'audio') return "🎵 Note vocale";
+    if (type == 'video') return "🎬 Vidéo";
+    return content;
   }
 }
 

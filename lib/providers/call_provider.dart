@@ -34,15 +34,17 @@ class CallNotifier extends AutoDisposeNotifier<CallState> {
     }
   }
 
-  Future<void> initCall(String channelId, bool isVideo) async {
-    state = state.copyWith(isLoading: true, errorMessage: null);
+  Future<void> initCall(String channelId, bool isVideo, {bool isOutgoing = true}) async {
+    state = state.copyWith(isLoading: true, errorMessage: null, isOutgoing: isOutgoing);
     
     try {
       // 1. Permissions Guard
       await _requestPermissions(isVideo);
 
-      // 2. Play waiting tone
-      RingtoneService.instance.playWaitingTone();
+      // 2. Audio: appelant → tonalité d'attente / appelé → pas de son (sonnerie déjà gérée)
+      if (isOutgoing) {
+        RingtoneService.instance.playWaitingTone();
+      }
 
       // 3. Token & Engine
       final tokenData = await _agoraService.fetchToken(channelId);
@@ -51,13 +53,14 @@ class CallNotifier extends AutoDisposeNotifier<CallState> {
 
       final engine = await _agoraService.getEngine(appId, isVideo: isVideo);
       
-      // 3. Handlers
+      // 4. Handlers
       engine.registerEventHandler(
         RtcEngineEventHandler(
           onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
             state = state.copyWith(localUserJoined: true, isLoading: false);
           },
           onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
+            // Dès que la connexion est établie, stopper tous les sons
             RingtoneService.instance.stop();
             state = state.copyWith(remoteUid: remoteUid);
           },
@@ -75,10 +78,11 @@ class CallNotifier extends AutoDisposeNotifier<CallState> {
 
       state = state.copyWith(engine: engine);
 
-      // 4. Join
+      // 5. Join
       await _agoraService.joinChannel(token, channelId, 0, isVideo: isVideo);
 
     } catch (e) {
+      RingtoneService.instance.stop();
       state = state.copyWith(isLoading: false, errorMessage: e.toString());
     }
   }

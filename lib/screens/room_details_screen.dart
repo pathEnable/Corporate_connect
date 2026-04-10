@@ -8,12 +8,15 @@ import '../services/room_service.dart';
 import '../providers/profile_provider.dart';
 import '../widgets/premium_background.dart';
 import '../widgets/authenticated_image.dart';
+import '../providers/home_provider.dart';
 import 'image_viewer_screen.dart';
 import 'add_member_picker_screen.dart';
+import 'package:image_picker/image_picker.dart';
 
 class RoomDetailsScreen extends ConsumerStatefulWidget {
   final String roomId;
   final String roomName;
+  final String? avatarUrl;
   final bool isGroup;
   final List<Map<String, dynamic>> members;
 
@@ -21,6 +24,7 @@ class RoomDetailsScreen extends ConsumerStatefulWidget {
     super.key,
     required this.roomId,
     required this.roomName,
+    this.avatarUrl,
     required this.isGroup,
     required this.members,
   });
@@ -31,11 +35,29 @@ class RoomDetailsScreen extends ConsumerStatefulWidget {
 
 class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  late String _localRoomName;
+  late String? _localAvatarUrl;
+  late List<Map<String, dynamic>> _localMembers;
 
   @override
   void initState() {
     super.initState();
+    _localRoomName = widget.roomName;
+    _localAvatarUrl = widget.avatarUrl;
+    _localMembers = List<Map<String, dynamic>>.from(widget.members);
     _tabController = TabController(length: 4, vsync: this);
+    
+    // Refresh members list on start to ensure we have the absolute latest data
+    _refreshMembers();
+  }
+
+  Future<void> _refreshMembers() async {
+    try {
+      final members = await RoomService().getRoomMembers(widget.roomId);
+      if (mounted) {
+        setState(() => _localMembers = members);
+      }
+    } catch (_) {}
   }
 
   @override
@@ -46,14 +68,34 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
 
   @override
   Widget build(BuildContext context) {
+    final currentUserId = ref.read(profileProvider).profileData?['id'];
+    final bool isUserAdmin = _localMembers.any((m) => m['id'] == currentUserId && m['is_admin_member'] == true);
     final theme = Theme.of(context);
+
     return PremiumBackground(
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
+      child: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, result) async {
+          if (didPop) return;
+          
+          // Final sync before exiting
+          ref.read(homeProvider.notifier).updateRoomMetadata(
+            widget.roomId,
+            name: _localRoomName,
+            avatarUrl: _localAvatarUrl,
+          );
+          
+          Navigator.pop(context, {
+            'name': _localRoomName,
+            'avatar_url': _localAvatarUrl,
+          });
+        },
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
         body: CustomScrollView(
           physics: const BouncingScrollPhysics(),
           slivers: [
-            _buildSliverAppBar(theme),
+            _buildSliverAppBar(theme, isUserAdmin),
             SliverToBoxAdapter(
               child: _buildTabHeader(theme).animate().fadeIn(delay: 200.ms),
             ),
@@ -61,7 +103,7 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildMembersTab(),
+                  _buildMembersTab(currentUserId, isUserAdmin),
                   _MediaTab(roomId: widget.roomId, type: 'image'),
                   _MediaTab(roomId: widget.roomId, type: 'file'),
                   _MediaTab(roomId: widget.roomId, type: 'audio'),
@@ -71,10 +113,11 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
           ],
         ),
       ),
-    );
+    ),
+   );
   }
 
-  Widget _buildSliverAppBar(ThemeData theme) {
+  Widget _buildSliverAppBar(ThemeData theme, bool isUserAdmin) {
     return SliverAppBar(
       expandedHeight: 300,
       pinned: true,
@@ -89,7 +132,7 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
       ),
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-        onPressed: () => Navigator.pop(context),
+        onPressed: () => Navigator.maybePop(context),
       ),
       actions: [
         if (widget.isGroup)
@@ -101,7 +144,7 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
       flexibleSpace: FlexibleSpaceBar(
         centerTitle: true,
         title: Text(
-          widget.roomName,
+          _localRoomName,
           style: const TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w800,
@@ -126,18 +169,56 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
               children: [
                 Hero(
                   tag: 'room_avatar_${widget.roomId}',
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                    ),
-                    child: CircleAvatar(
-                      radius: 50,
-                      backgroundColor: theme.colorScheme.primary,
-                      child: Icon(
-                        widget.isGroup ? Icons.groups_rounded : Icons.person_rounded,
-                        size: 50,
-                        color: Colors.black,
-                      ),
+                  child: GestureDetector(
+                    onTap: (widget.isGroup && isUserAdmin) ? _changeGroupPhoto : null,
+                    child: Stack(
+                      children: [
+                        _localAvatarUrl != null && _localAvatarUrl!.isNotEmpty
+                            ? FutureBuilder<String>(
+                                future: MediaService().getDownloadUrl(_localAvatarUrl!),
+                                builder: (context, snapshot) {
+                                  if (snapshot.hasData) {
+                                    return CircleAvatar(
+                                      radius: 50,
+                                      backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
+                                      backgroundImage: AuthenticatedImageProvider(snapshot.data!),
+                                    );
+                                  }
+                                  return CircleAvatar(
+                                    radius: 50,
+                                    backgroundColor: theme.colorScheme.primary,
+                                    child: Icon(
+                                      widget.isGroup ? Icons.groups_rounded : Icons.person_rounded,
+                                      size: 50,
+                                      color: Colors.black,
+                                    ),
+                                  );
+                                },
+                              )
+                            : CircleAvatar(
+                                radius: 50,
+                                backgroundColor: theme.colorScheme.primary,
+                                child: Icon(
+                                  widget.isGroup ? Icons.groups_rounded : Icons.person_rounded,
+                                  size: 50,
+                                  color: Colors.black,
+                                ),
+                              ),
+                        if (widget.isGroup && isUserAdmin)
+                          Positioned(
+                            right: 0,
+                            bottom: 0,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surface,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: theme.colorScheme.primary, width: 2),
+                              ),
+                              child: Icon(Icons.camera_alt_rounded, size: 16, color: theme.colorScheme.primary),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ).animate().scale(curve: Curves.easeOutBack, duration: 600.ms),
@@ -194,6 +275,14 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
                 Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(2))),
                 const SizedBox(height: 24),
                 ListTile(
+                  leading: const Icon(Icons.edit_rounded, color: Colors.blueAccent),
+                  title: const Text('Modifier les infos du groupe', style: TextStyle(fontWeight: FontWeight.bold)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _editGroupInfo();
+                  },
+                ),
+                ListTile(
                   leading: const Icon(Icons.exit_to_app_rounded, color: Colors.redAccent),
                   title: const Text('Quitter le groupe', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
                   onTap: () {
@@ -206,6 +295,74 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
             ),
           ),
     );
+  }
+
+  void _editGroupInfo() {
+    // To be implemented: a simple dialog to change name/description
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        final nameController = TextEditingController(text: _localRoomName);
+        return AlertDialog(
+          title: const Text('Modifier le groupe'),
+          content: TextField(
+            controller: nameController,
+            decoration: const InputDecoration(labelText: 'Nom du groupe'),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('ANNULER')),
+            TextButton(
+              onPressed: () async {
+                final newName = nameController.text.trim();
+                if (newName.isNotEmpty) {
+                  await RoomService().updateRoom(widget.roomId, name: newName);
+                  if (!dialogContext.mounted) return;
+                  Navigator.pop(dialogContext); // Pop dialog
+                  
+                  if (!mounted) return;
+                  setState(() => _localRoomName = newName);
+
+                  // Notify HomeNotifier for global sync
+                  ref.read(homeProvider.notifier).updateRoomMetadata(
+                    widget.roomId,
+                    name: newName,
+                    avatarUrl: _localAvatarUrl,
+                  );
+                }
+              },
+              child: const Text('ENREGISTRER'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _removeMember(String userId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Retirer le membre ?'),
+        content: const Text('Cette personne ne pourra plus voir les nouveaux messages.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('ANNULER')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('RETIRER', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await RoomService().removeMember(widget.roomId, userId);
+        if (!mounted) return;
+        setState(() {
+          _localMembers.removeWhere((m) => m['id'] == userId);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Membre retiré')));
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e')));
+      }
+    }
   }
 
   Future<void> _leaveRoom() async {
@@ -225,15 +382,14 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
       final profile = ref.read(profileProvider).profileData;
       if (profile != null) {
         await RoomService().leaveRoom(widget.roomId, profile['id']);
-        if (mounted) Navigator.popUntil(context, (route) => route.isFirst);
+        if (!mounted) return;
+        Navigator.popUntil(context, (route) => route.isFirst);
       }
     }
   }
 
-  Widget _buildMembersTab() {
+  Widget _buildMembersTab(String? currentUserId, bool isUserAdmin) {
     final theme = Theme.of(context);
-    final currentUserId = ref.read(profileProvider).profileData?['id'];
-    final bool isUserAdmin = widget.members.any((m) => m['id'] == currentUserId && m['is_admin_member'] == true);
 
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 20),
@@ -243,7 +399,7 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             child: ListTile(
               onTap: () async {
-                final existingIds = widget.members.map((m) => m['id'] as String).toList();
+                final existingIds = _localMembers.map((m) => m['id'] as String).toList();
                 final selectedIds = await Navigator.push<List<String>>(
                   context,
                   MaterialPageRoute(
@@ -262,13 +418,19 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
                     for (String id in selectedIds) {
                       await RoomService().addMember(widget.roomId, id);
                     }
+                    if (!mounted) return;
+                    
+                    // Fetch updated members list from backend to get fresh names and avatars
+                    final newMembers = await RoomService().getRoomMembers(widget.roomId);
+                    
                     if (mounted) {
                       Navigator.pop(context); // Close loading dialog
+                      setState(() {
+                        _localMembers = newMembers;
+                      });
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Membres ajoutés avec succès !', style: TextStyle(color: Colors.green))),
                       );
-                      // Pop the details screen to force a refresh on next open
-                      Navigator.pop(context, true); 
                     }
                   } catch (e) {
                     if (mounted) {
@@ -288,7 +450,7 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
               title: Text('Ajouter des membres', style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold)),
             ),
           ).animate().fadeIn().slideX(),
-        ...widget.members.asMap().entries.map((entry) {
+        ..._localMembers.asMap().entries.map((entry) {
           final index = entry.key;
           final member = entry.value;
           final bool isAdmin = member['is_admin_member'] == true;
@@ -305,11 +467,55 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
             ),
             title: Text(isMe ? "${member['full_name']} (Vous)" : member['full_name'], style: const TextStyle(fontWeight: FontWeight.w700)),
             subtitle: isAdmin ? Text('Admin', style: TextStyle(color: theme.colorScheme.primary, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1.2)) : null,
-            trailing: isMe ? null : const Icon(Icons.chevron_right_rounded, size: 18, color: Colors.grey),
+            trailing: (widget.isGroup && isUserAdmin && !isMe) 
+              ? IconButton(
+                  icon: const Icon(Icons.person_remove_rounded, color: Colors.redAccent, size: 20),
+                  onPressed: () => _removeMember(member['id']),
+                )
+              : (isMe ? null : const Icon(Icons.chevron_right_rounded, size: 18, color: Colors.grey)),
           ).animate(delay: (index * 40).ms).fadeIn().slideX();
         }),
       ],
     );
+  }
+
+  Future<void> _changeGroupPhoto() async {
+    final picker = ImagePicker();
+    final image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    
+    if (image != null && mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      try {
+        final bytes = await image.readAsBytes();
+        final response = await MediaService().uploadFile(bytes, filename: image.name);
+        final url = response['url'];
+        await RoomService().updateRoomAvatar(widget.roomId, url);
+        
+        if (mounted) {
+          Navigator.pop(context); // Close loading
+          setState(() => _localAvatarUrl = url);
+          
+          // Notify HomeNotifier for global sync
+          ref.read(homeProvider.notifier).updateRoomMetadata(
+            widget.roomId,
+            name: _localRoomName,
+            avatarUrl: url,
+          );
+          
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Photo mise à jour !')));
+        }
+      } catch (e) {
+        if (mounted) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur upload: $e')));
+        }
+      }
+    }
   }
 }
 

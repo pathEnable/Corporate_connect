@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'auth_service.dart';
 import 'api_config.dart';
@@ -19,6 +20,9 @@ class ChatService {
       uri,
       protocols: [token!], // Passe le JWT dans le header standard Sec-WebSocket-Protocol
     );
+    _channel!.ready.catchError((e) {
+      debugPrint("Chat WS ready catchError: $e");
+    });
   }
 
   /// Écouter les messages entrants

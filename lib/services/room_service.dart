@@ -135,4 +135,34 @@ class RoomService {
   Future<void> leaveRoom(String roomId, String currentUserId) async {
     await removeMember(roomId, currentUserId);
   }
+
+  /// Mettre à jour les informations du salon (Nom, etc.)
+  Future<void> updateRoom(String roomId, {String? name, String? description}) async {
+    final body = <String, dynamic>{};
+    if (name != null) body['name'] = name;
+    if (description != null) body['description'] = description;
+
+    final response = await _authService.authenticatedRequest(
+      url: '$baseUrl/$roomId',
+      method: 'PUT',
+      body: body,
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Erreur lors de la mise à jour du salon');
+    }
+  }
+
+  /// Mettre à jour l'avatar du salon
+  Future<void> updateRoomAvatar(String roomId, String avatarUrl) async {
+    final response = await _authService.authenticatedRequest(
+      url: '$baseUrl/$roomId',
+      method: 'PUT',
+      body: {'avatar_url': avatarUrl},
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception("Erreur lors de la mise à jour de l'avatar : ${response.statusCode} - ${response.body}");
+    }
+  }
 }

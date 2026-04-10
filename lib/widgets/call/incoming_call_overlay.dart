@@ -41,7 +41,9 @@ class IncomingCallOverlay extends ConsumerWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              state.isVideo ? 'Appel vidéo entrant...' : 'Appel audio entrant...',
+              state.isVideo
+                  ? 'Appel vidéo entrant...'
+                  : 'Appel audio entrant...',
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.7),
                 fontSize: 18,
@@ -147,13 +149,14 @@ class IncomingCallOverlay extends ConsumerWidget {
 
   void _handleAccept(BuildContext context, IncomingCallState state) {
     if (state.roomId == null) return;
-    
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => CallScreen(
           channelId: state.roomId!,
           remoteUserName: state.callerName ?? 'Appel',
           isVideo: state.isVideo,
+          isOutgoing: false, // C'est une réponse, pas un appel sortant
         ),
       ),
     );

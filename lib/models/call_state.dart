@@ -10,6 +10,7 @@ class CallState {
   final bool isLoading;
   final String? errorMessage;
   final RtcEngine? engine;
+  final bool isOutgoing;
 
   const CallState({
     this.localUserJoined = false,
@@ -19,6 +20,7 @@ class CallState {
     this.isLoading = true,
     this.errorMessage,
     this.engine,
+    this.isOutgoing = false,
   });
 
   CallState copyWith({
@@ -29,6 +31,7 @@ class CallState {
     bool? isLoading,
     String? errorMessage,
     RtcEngine? engine,
+    bool? isOutgoing,
   }) {
     return CallState(
       localUserJoined: localUserJoined ?? this.localUserJoined,
@@ -38,6 +41,7 @@ class CallState {
       isLoading: isLoading ?? this.isLoading,
       errorMessage: errorMessage ?? this.errorMessage,
       engine: engine ?? this.engine,
+      isOutgoing: isOutgoing ?? this.isOutgoing,
     );
   }
   
@@ -51,6 +55,7 @@ class CallState {
       isLoading: isLoading,
       errorMessage: errorMessage,
       engine: engine,
+      isOutgoing: isOutgoing,
     );
   }
 }

@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
 import 'audio_player_widget.dart';
 import '../../services/media_service.dart';
+import '../../services/media_cache_service.dart';
 import '../../screens/image_viewer_screen.dart';
 
 class MessageBubble extends StatelessWidget {
@@ -182,11 +183,19 @@ class _ImageContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<String>(
-      future: MediaService().getDownloadUrl(url),
+    return FutureBuilder<List<dynamic>>(
+      future: Future.wait([
+        MediaService().getDownloadUrl(url),
+        MediaCacheService.instance.getCachePath(url)
+      ]),
       builder: (context, snapshot) {
         if (snapshot.hasData) {
-          final imageUrl = snapshot.data!;
+          final imageUrl = snapshot.data![0] as String;
+          final cachedPath = snapshot.data![1] as String?;
+          final effectiveLocalPath = (localPath != null && File(localPath!).existsSync()) 
+              ? localPath 
+              : cachedPath;
+
           return GestureDetector(
             onTap: () {
               Navigator.push(
@@ -200,9 +209,9 @@ class _ImageContent extends StatelessWidget {
               tag: imageUrl,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: (localPath != null && File(localPath!).existsSync())
+                child: (effectiveLocalPath != null)
                     ? Image.file(
-                        File(localPath!),
+                        File(effectiveLocalPath),
                         fit: BoxFit.cover,
                         height: 200,
                         width: double.infinity,
@@ -273,8 +282,13 @@ class _FileContent extends StatelessWidget {
     return InkWell(
       onTap: () async {
         try {
-          if (localPath != null && await File(localPath!).exists()) {
-            final uri = Uri.file(localPath!);
+          final cachedPath = await MediaCacheService.instance.getCachePath(content);
+          final effectiveLocalPath = (localPath != null && await File(localPath!).exists()) 
+              ? localPath 
+              : cachedPath;
+
+          if (effectiveLocalPath != null && await File(effectiveLocalPath).exists()) {
+            final uri = Uri.file(effectiveLocalPath);
             if (await canLaunchUrl(uri)) {
               await launchUrl(uri, mode: LaunchMode.externalApplication);
               return;

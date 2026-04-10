@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../widgets/authenticated_image.dart';
 import 'package:photo_view/photo_view.dart';
+import 'package:gal/gal.dart';
+import 'package:dio/dio.dart';
+import 'package:path_provider/path_provider.dart';
 
 class ImageViewerScreen extends StatelessWidget {
   final String imageUrl;
@@ -28,22 +31,27 @@ class ImageViewerScreen extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.download_rounded, color: Colors.white),
             onPressed: () async {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Début du téléchargement...'),
-                  duration: Duration(seconds: 1),
-                ),
-              );
-              
               try {
-                // Pour une implémentation réelle, on utiliserait dio pour télécharger le fichier
-                // et gal ou image_gallery_saver pour l'enregistrer dans Photos.
-                // Étant sur une architecture hybride, on simule l'enregistrement.
-                await Future.delayed(const Duration(seconds: 1));
-                
+                final hasAccess = await Gal.hasAccess();
+                if (!hasAccess) {
+                  await Gal.requestAccess();
+                }
+
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Image enregistrée dans la galerie (simulé)')),
+                    const SnackBar(content: Text('Téléchargement en cours...'), duration: Duration(seconds: 1)),
+                  );
+                }
+
+                final tempDir = await getTemporaryDirectory();
+                final path = '${tempDir.path}/${DateTime.now().millisecondsSinceEpoch}.jpg';
+                
+                await Dio().download(imageUrl, path);
+                await Gal.putImage(path);
+
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Image enregistrée dans la galerie !')),
                   );
                 }
               } catch (e) {

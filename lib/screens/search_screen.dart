@@ -175,6 +175,7 @@ class _SearchScreenState extends State<SearchScreen> {
                                       builder: (_) => ChatScreen(
                                         roomId: room['id'],
                                         roomName: targetUserName,
+                                        avatarUrl: p['avatar'],
                                       ),
                                     ),
                                   );
@@ -215,16 +216,17 @@ class _SearchScreenState extends State<SearchScreen> {
                                 style: TextStyle(color: theme.colorScheme.onSurface.withAlpha(150), fontSize: 13)
                               ),
                               onTap: () {
-                                Navigator.pushReplacement(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => ChatScreen(
-                                      roomId: r['id'],
-                                      roomName: r['name'] ?? 'Discussion',
-                                      isGroup: r['is_group'] ?? false,
+                                  Navigator.pushReplacement(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => ChatScreen(
+                                        roomId: r['id'],
+                                        roomName: r['name'] ?? 'Discussion',
+                                        isGroup: r['is_group'] ?? false,
+                                        avatarUrl: r['avatar_url'],
+                                      ),
                                     ),
-                                  ),
-                                );
+                                  );
                               },
                             )),
                           ],

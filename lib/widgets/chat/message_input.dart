@@ -192,19 +192,15 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   Widget _buildInputUI(ThemeData theme) {
     return Container(
       constraints: const BoxConstraints(minHeight: 48),
+      margin: const EdgeInsets.symmetric(vertical: 2), // Ajout d'une marge pour ne pas couper la bordure
       decoration: BoxDecoration(
         color: theme.colorScheme.onSurface.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: theme.colorScheme.onSurface.withValues(alpha: 0.1)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.15), // Légèrement plus contrasté
+          width: 1, // Bordure explicite de 1px
+        ),
       ),
-      clipBehavior: Clip.antiAlias,
       child: TextField(
         controller: _controller,
         maxLines: 5,

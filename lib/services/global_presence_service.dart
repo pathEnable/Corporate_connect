@@ -35,6 +35,9 @@ class GlobalPresenceService {
         Uri.parse(wsUrl),
         protocols: [token], // Envoie le JWT via le header standard Sec-WebSocket-Protocol
       );
+      _channel!.ready.catchError((e) {
+        debugPrint("Global Presence WS ready catchError: $e");
+      });
       _isConnected = true;
       debugPrint("🟢 Global Presence WS Connecté");
 

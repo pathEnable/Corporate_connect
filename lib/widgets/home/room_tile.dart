@@ -28,6 +28,7 @@ class HomeRoomTile extends StatelessWidget {
               roomId: room['id'],
               roomName: room['name'] ?? 'Discussion',
               isGroup: isGroup,
+              avatarUrl: room['avatar_url'],
             ),
           ),
         );

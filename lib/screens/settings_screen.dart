@@ -5,6 +5,8 @@ import '../providers/settings_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../widgets/premium_background.dart';
+import '../services/update_service.dart';
+import '../widgets/update_dialog.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -15,6 +17,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _version = "";
+  bool _isCheckingUpdate = false;
 
   @override
   void initState() {
@@ -165,6 +168,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 title: const Text('Version de l\'application', style: TextStyle(fontWeight: FontWeight.w600)),
                 subtitle: Text(_version.isEmpty ? 'Chargement...' : _version, style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.6))),
               ),
+              ListTile(
+                leading: Icon(Icons.system_update_alt_rounded, color: theme.colorScheme.primary),
+                title: const Text('Rechercher des mises à jour', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text(
+                  _isCheckingUpdate ? 'Vérification en cours...' : 'Vérifiez si une nouvelle version est disponible',
+                  style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.6), fontSize: 13),
+                ),
+                trailing: _isCheckingUpdate 
+                    ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.primary)) 
+                    : const Icon(Icons.chevron_right_rounded),
+                onTap: _isCheckingUpdate ? null : _checkForUpdates,
+              ),
             ],
           ),
         ),
@@ -265,5 +280,45 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ],
       ),
     ).then((_) => previewPlayer.dispose());
+  }
+
+  Future<void> _checkForUpdates() async {
+    if (_isCheckingUpdate) return;
+    
+    setState(() {
+      _isCheckingUpdate = true;
+    });
+
+    try {
+      final updateData = await UpdateService().checkForUpdate();
+      
+      if (!mounted) return;
+      
+      if (updateData != null) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => UpdateDialog(
+            apkUrl: updateData['apk_url'],
+            versionName: updateData['version_name'],
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Votre application est à jour 🎉')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Impossible de vérifier les mises à jour pour le moment.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCheckingUpdate = false;
+        });
+      }
+    }
   }
 }

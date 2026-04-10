@@ -26,7 +26,8 @@ class _GlobalCallListenerState extends ConsumerState<GlobalCallListener> {
       if (event['type'] == 'call_offer') {
         final String name = event['caller_name'] ?? 'Inconnu';
         final String avatar = event['caller_avatar'] ?? '';
-        final String roomId = event['room_id'] ?? '';
+        // Support défensif : accepter room_id ET channel_id (rétrocompatibilité)
+        final String roomId = event['room_id'] ?? event['channel_id'] ?? '';
         final bool isVideo = event['is_video'] == true || event['is_video'] == 'true';
 
         if (roomId.isNotEmpty) {
@@ -38,7 +39,6 @@ class _GlobalCallListenerState extends ConsumerState<GlobalCallListener> {
           );
         }
       } else if (event['type'] == 'call_cancel' || event['type'] == 'call_reject') {
-        // Optionnel : arrêter la sonnerie si l'appelant annule
         ref.read(incomingCallProvider.notifier).stopRinging();
       }
     });

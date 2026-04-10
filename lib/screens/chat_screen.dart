@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/chat_provider.dart';
-import '../models/chat_state.dart';
 import '../widgets/chat/message_bubble.dart';
 import '../widgets/chat/message_input.dart';
 import '../widgets/chat/chat_app_bar.dart';
 import '../widgets/chat/reply_preview.dart';
 import '../widgets/chat/typing_indicator.dart';
-import '../widgets/chat/skeleton_message.dart';
 import '../services/room_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/premium_background.dart';
@@ -17,12 +15,14 @@ class ChatScreen extends ConsumerStatefulWidget {
   final String roomId;
   final String roomName;
   final bool isGroup;
+  final String? avatarUrl;
 
   const ChatScreen({
     super.key,
     required this.roomId,
     required this.roomName,
     this.isGroup = false,
+    this.avatarUrl,
   });
 
   @override
@@ -35,10 +35,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   String? _userId;
   List<Map<String, dynamic>> _members = [];
   Map<String, dynamic>? _replyingTo;
+  
+  late String _currentRoomName;
+  late String? _currentAvatarUrl;
 
   @override
   void initState() {
     super.initState();
+    _currentRoomName = widget.roomName;
+    _currentAvatarUrl = widget.avatarUrl;
     _initUser();
     _loadMembers();
   }
@@ -55,18 +60,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     } catch (_) {}
   }
 
-  void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    });
-  }
-
   @override
   void dispose() {
     _scrollController.dispose();
@@ -77,18 +70,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget build(BuildContext context) {
     // Optimisation : On n'écoute que les propriétés nécessaires pour éviter des rebuilds inutiles
     final messages = ref.watch(chatProvider(widget.roomId).select((s) => s.messages));
-    final isLoading = ref.watch(chatProvider(widget.roomId).select((s) => s.isLoading));
     final typingUsers = ref.watch(chatProvider(widget.roomId).select((s) => s.typingUsers));
-
-    // Auto-scroll on new messages
-    ref.listen<ChatState>(chatProvider(widget.roomId), (previous, next) {
-      final messagesChanged = previous?.messages.length != next.messages.length;
-      final loadingFinished = (previous?.isLoading ?? true) && !next.isLoading;
-      
-      if (messagesChanged || loadingFinished) {
-        _scrollToBottom();
-      }
-    });
+    // Liste inversée : le plus récent en bas (index 0 = dernier message)
+    final reversedMessages = messages.reversed.toList();
 
     return PremiumBackground(
       showPattern: true,
@@ -96,27 +80,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         backgroundColor: Colors.transparent,
       appBar: ChatAppBar(
         roomId: widget.roomId,
-        roomName: widget.roomName,
+        roomName: _currentRoomName,
         isGroup: widget.isGroup,
+        avatarUrl: _currentAvatarUrl,
         onShowInfo: _showGroupInfo,
       ),
       body: Column(
         children: [
           Expanded(
-            child: isLoading && messages.isEmpty
-                ? ListView.builder(
-                    reverse: false,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    itemCount: 8,
-                    itemBuilder: (context, index) => SkeletonMessage(isMe: index % 2 == 0),
-                  )
+            child: _userId == null
+                ? const SizedBox.shrink() // Empêche le changement de côté des bulles, attend juste 1 frame (20ms)
                 : ListView.builder(
-                    reverse: false,
+                    reverse: true,
                     controller: _scrollController,
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    itemCount: messages.length,
+                    itemCount: reversedMessages.length,
                     itemBuilder: (context, index) {
-                      final msg = messages[index];
+                      final msg = reversedMessages[index];
                       return MessageBubble(
                         content: msg['content'] ?? '',
                         isMe: msg['sender_id'].toString() == _userId,
@@ -153,17 +133,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  void _showGroupInfo() {
-    Navigator.push(
+  void _showGroupInfo() async {
+    final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => RoomDetailsScreen(
           roomId: widget.roomId,
-          roomName: widget.roomName,
+          roomName: _currentRoomName,
+          avatarUrl: _currentAvatarUrl,
           isGroup: widget.isGroup,
           members: _members,
         ),
       ),
     );
+
+    if (result != null && result is Map<String, dynamic>) {
+      setState(() {
+        if (result.containsKey('name')) _currentRoomName = result['name'];
+        if (result.containsKey('avatar_url')) _currentAvatarUrl = result['avatar_url'];
+      });
+      _loadMembers(); // Refresh members just in case
+    }
   }
 }

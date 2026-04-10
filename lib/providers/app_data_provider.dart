@@ -4,6 +4,7 @@ import 'home_provider.dart';
 import 'profile_provider.dart';
 import 'contacts_provider.dart';
 import 'call_history_provider.dart';
+import '../services/push_notification_service.dart';
 
 /// État global de l'initialisation de l'application.
 class AppDataState {
@@ -88,6 +89,18 @@ class AppDataNotifier extends Notifier<AppDataState> {
         ref.read(contactsProvider.notifier).loadContacts(),
         ref.read(callHistoryProvider.notifier).refresh(),
       ]);
+
+      // ══ FCM Registration ══
+      // On s'assure que le token est enregistré côté backend après login
+      try {
+        final fcmToken = await PushNotificationService.getFcmToken();
+        if (fcmToken != null) {
+          await PushNotificationService.registerToken(fcmToken);
+        }
+      } catch (e) {
+        debugPrint('⚠️ FCM registration error: $e');
+      }
+
       debugPrint('✅ AppDataProvider : sync API complète');
     } catch (e) {
       debugPrint('⚠️ AppDataProvider Phase 2 sync: $e');

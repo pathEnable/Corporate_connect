@@ -157,6 +157,7 @@ class _NewGroupScreenState extends ConsumerState<NewGroupScreen> {
                 roomId: room['id'].toString(),
                 roomName: room['name'] ?? groupName,
                 isGroup: true,
+                avatarUrl: room['avatar_url'],
               ),
             ),
           );
@@ -217,6 +218,7 @@ class _NewGroupScreenState extends ConsumerState<NewGroupScreen> {
               roomId: tempId,
               roomName: groupName,
               isGroup: true,
+              avatarUrl: null, // Pas d'avatar en mode draft pour l'instant
             ),
           ),
         );

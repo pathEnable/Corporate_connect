@@ -88,9 +88,10 @@ class OfflineSyncService {
         final messages = await _roomService.getMessages(roomId, limit: 20);
         
         // Sauvegarder massivement en DB locale
-        // Note: La DB gère déjà les doublons via l'ID
+        // L'API ne retourne pas room_id dans chaque message (implicite via l'URL),
+        // on l'injecte donc avant la sauvegarde.
         for (final msg in messages) {
-          await LocalDatabase.instance.saveMessage(msg);
+          await LocalDatabase.instance.saveMessage({...msg, 'room_id': roomId});
         }
         
         debugPrint("✅ ${messages.length} messages pré-chargés pour le salon $roomId");

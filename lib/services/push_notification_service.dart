@@ -22,6 +22,11 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // Si c'est un appel, on déclenche CallKit immédiatement en arrière-plan
   if (message.data['type'] == 'call_offer') {
     await _showCallKitIncoming(message.data);
+  } else if (message.data['type'] == 'new_message') {
+    // Note: Pour Android, si la payload 'notification' est absente, 
+    // on pourrait déclencher une notification locale ici, mais cela nécessite 
+    // d'initialiser flutter_local_notifications dans cet isolate d'arrière-plan.
+    debugPrint("Background message received: ${message.data['content']}");
   }
 }
 
@@ -204,6 +209,7 @@ class PushNotificationService {
               roomId: data['room_id'] as String,
               roomName: data['room_name'] as String? ?? 'Discussion',
               isGroup: data['is_group'] == 'true',
+              avatarUrl: data['avatar_url'] as String?,
             ),
           ),
         );
