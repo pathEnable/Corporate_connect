@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:ota_update/ota_update.dart';
 import 'package:flutter/foundation.dart';
-
+import 'api_config.dart';
 class UpdateService {
   static final UpdateService _instance = UpdateService._internal();
   factory UpdateService() => _instance;
@@ -12,48 +12,16 @@ class UpdateService {
   /// Vérifie si une mise à jour est disponible
   Future<Map<String, dynamic>?> checkForUpdate() async {
     try {
-      // Interroge directement l'API publique de GitHub pour la dernière "Release"
-      final response = await http.get(Uri.parse('https://api.github.com/repos/pathEnable/Corporate_connect/releases/latest'));
-      
+      final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/version'));
       if (response.statusCode == 200) {
-        final githubData = jsonDecode(response.body);
-        final String tagName = githubData['tag_name'] ?? ''; // ex: "v2" ou "1.0.0+2"
+        final serverData = jsonDecode(response.body);
+        final int serverVersion = serverData['version_code'];
         
         final packageInfo = await PackageInfo.fromPlatform();
-        final int currentBuildNumber = int.tryParse(packageInfo.buildNumber) ?? 1;
+        final int currentVersion = int.tryParse(packageInfo.buildNumber) ?? 1;
 
-        // Extraction du numéro de build (version_code) à partir du tag GitHub.
-        // Gère les formats comme "v2", "Release-3", ou "1.0.0+2" (qui est standard).
-        int? serverBuildNumber;
-        final standardBuildMatch = RegExp(r'\+(\d+)$').firstMatch(tagName);
-        if (standardBuildMatch != null) {
-          serverBuildNumber = int.tryParse(standardBuildMatch.group(1)!);
-        } else {
-          final fallbackMatch = RegExp(r'\d+').firstMatch(tagName.split('.').last);
-          if (fallbackMatch != null) {
-            serverBuildNumber = int.tryParse(fallbackMatch.group(0)!);
-          }
-        }
-
-        if (serverBuildNumber != null && serverBuildNumber > currentBuildNumber) {
-          // Cherche un fichier .apk attaché à la release
-          final List assets = githubData['assets'] ?? [];
-          String? apkUrl;
-          for (var asset in assets) {
-            final String name = asset['name'].toString().toLowerCase();
-            if (name.endsWith('.apk')) {
-              apkUrl = asset['browser_download_url'];
-              break;
-            }
-          }
-
-          if (apkUrl != null) {
-            return {
-              'version_code': serverBuildNumber,
-              'version_name': githubData['name'] ?? tagName, // Titre de la release
-              'apk_url': apkUrl,
-            };
-          }
+        if (serverVersion > currentVersion) {
+          return serverData;
         }
       }
     } catch (e) {
