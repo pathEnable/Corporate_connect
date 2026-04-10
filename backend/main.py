@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.responses import JSONResponse, FileResponse, RedirectResponse
+from starlette.responses import JSONResponse, FileResponse, RedirectResponse, StreamingResponse
 import httpx
 from starlette.types import ASGIApp, Receive, Scope, Send
 from sqlalchemy.orm import Session
@@ -18,7 +18,7 @@ from routes_admin import router as admin_router
 from routes_notifications import router as notifications_router
 from routes_agora import router as agora_router
 from routes_calls import router as calls_router
-from config import ALLOWED_ORIGINS
+from config import ALLOWED_ORIGINS, GITHUB_TOKEN
 import time
 import os
 
@@ -124,54 +124,81 @@ async def download_page():
 
 @app.get("/version")
 async def get_latest_version(request: Request):
-    """Retourne la dernière version disponible et les URLs de téléchargement stable."""
+    """Retourne la dernière version disponible et les URLs de téléchargement persistantes."""
     base_url = str(request.base_url).rstrip("/")
     return {
         "version_code": 2009, 
         "version_name": "Version 2.1.0+2009",
-        "apk_url": "https://github.com/pathEnable/Corporate_connect/releases/download/v2.1.0%2B2008/app-arm64-v8a-release.apk",
+        "apk_url": f"{base_url}/download-apk/arm64-v8a",
         "variants": {
-            "arm64-v8a": "https://github.com/pathEnable/Corporate_connect/releases/download/v2.1.0%2B2008/app-arm64-v8a-release.apk",
-            "armeabi-v7a": "https://github.com/pathEnable/Corporate_connect/releases/download/v2.1.0%2B2008/app-armeabi-v7a-release.apk",
-            "x86_64": "https://github.com/pathEnable/Corporate_connect/releases/download/v2.1.0%2B2008/app-x86_64-release.apk"
+            "arm64-v8a": f"{base_url}/download-apk/arm64-v8a",
+            "armeabi-v7a": f"{base_url}/download-apk/armeabi-v7a",
+            "x86_64": f"{base_url}/download-apk/x86_64"
         }
     }
 
 @app.get("/download/apk/{variant}")
 @app.get("/download-apk/{variant}")
-async def redirect_to_github_apk(variant: str):
-    """Redirige vers le bon asset de la dernière Release GitHub."""
+async def proxy_github_apk(variant: str):
+    """Télécharge l'APK depuis GitHub et le streame à l'application avec authentification."""
+    if not GITHUB_TOKEN:
+        return JSONResponse(status_code=500, content={"detail": "GITHUB_TOKEN non configuré sur le serveur."})
+
     async with httpx.AsyncClient() as client:
         try:
-            # Récupérer les infos de la dernière release
+            # 1. Récupérer les infos de la dernière release
             response = await client.get(
                 f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
-                follow_redirects=True,
-                headers={"User-Agent": "Corporate-Connect-Server"}
+                headers={
+                    "Authorization": f"Bearer {GITHUB_TOKEN}",
+                    "User-Agent": "Corporate-Connect-Server"
+                }
             )
             if response.status_code != 200:
-                return JSONResponse(status_code=502, content={"detail": "Impossible de contacter GitHub."})
+                return JSONResponse(status_code=502, content={"detail": f"Erreur GitHub (Releases): {response.status_code}"})
             
             data = response.json()
             assets = data.get("assets", [])
             
-            # Chercher l'asset qui correspond à la variante
-            # On cherche par exemple "arm64-v8a" dans le nom du fichier
+            # 2. Chercher l'asset correspondant
             target_url = None
+            filename = "app-release.apk"
             for asset in assets:
                 name = asset.get("name", "").lower()
                 if variant.lower() in name and name.endswith(".apk"):
                     target_url = asset.get("browser_download_url")
+                    filename = asset.get("name")
                     break
             
             if not target_url:
-                # Fallback si on ne trouve pas l'architecture précise
-                return JSONResponse(status_code=404, content={"detail": f"APK pour {variant} non trouvé dans la dernière release."})
-                
-            return RedirectResponse(url=target_url)
+                return JSONResponse(status_code=404, content={"detail": f"APK pour {variant} non trouvé."})
+            
+            # 3. Streamer le contenu depuis GitHub
+            async def stream_generator():
+                async with client.stream(
+                    "GET", 
+                    target_url, 
+                    headers={
+                        "Authorization": f"Bearer {GITHUB_TOKEN}",
+                        "User-Agent": "Corporate-Connect-Server",
+                        "Accept": "application/octet-stream"
+                    },
+                    follow_redirects=True
+                ) as r:
+                    if r.status_code != 200:
+                        yield b"Erreur lors du telechargement"
+                        return
+                    async for chunk in r.aiter_bytes():
+                        yield chunk
+
+            return StreamingResponse(
+                stream_generator(),
+                media_type="application/vnd.android.package-archive",
+                headers={"Content-Disposition": f"attachment; filename={filename}"}
+            )
             
         except Exception as e:
-            return JSONResponse(status_code=500, content={"detail": f"Erreur lors de la redirection : {str(e)}"})
+            return JSONResponse(status_code=500, content={"detail": f"Erreur Proxy: {str(e)}"})
 
 @app.get("/api/releases/history")
 async def get_releases_history():
