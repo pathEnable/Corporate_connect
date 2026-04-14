@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/biometric_service.dart';
 
 class PrivacySettingsScreen extends StatefulWidget {
   const PrivacySettingsScreen({super.key});
@@ -12,6 +13,9 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
   bool _lastSeen = true;
   bool _readReceipts = true;
   bool _groupPrivacy = true;
+  bool _sttEnabled = true;
+  bool _biometricEnabled = false;
+  bool _biometricAvailable = false;
   bool _isLoading = true;
 
   @override
@@ -27,9 +31,14 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
         _lastSeen = prefs.getBool('privacy_last_seen') ?? true;
         _readReceipts = prefs.getBool('privacy_read_receipts') ?? true;
         _groupPrivacy = prefs.getBool('privacy_groups') ?? true;
+        _sttEnabled = prefs.getBool('privacy_stt_enabled') ?? true;
         _isLoading = false;
       });
     }
+    // Check biometric availability
+    _biometricAvailable = await BiometricService.instance.isDeviceSupported();
+    _biometricEnabled = await BiometricService.instance.isEnabled();
+    if (mounted) setState(() {});
   }
 
   Future<void> _updateSetting(String key, bool value) async {
@@ -98,6 +107,49 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                 },
                 theme: theme,
               ),
+              const Divider(),
+
+              _buildSectionHeader(theme, 'Messagerie Avancée'),
+              _buildModernTile(
+                icon: Icons.transcribe_rounded,
+                title: 'Transcription IA des Mémos',
+                subtitle: 'Convertit automatiquement vos mémos vocaux en texte.',
+                value: _sttEnabled,
+                onChanged: (val) {
+                  setState(() => _sttEnabled = val);
+                  _updateSetting('privacy_stt_enabled', val);
+                },
+                theme: theme,
+              ),
+              const Divider(),
+
+              _buildSectionHeader(theme, 'Sécurité'),
+              if (_biometricAvailable)
+                _buildModernTile(
+                  icon: Icons.fingerprint_rounded,
+                  title: 'Verrouillage biométrique',
+                  subtitle: 'Exiger Face ID ou empreinte pour ouvrir l\'application',
+                  value: _biometricEnabled,
+                  onChanged: (val) async {
+                    if (val) {
+                      // Vérifier que l'utilisateur peut s'authentifier avant d'activer
+                      final success = await BiometricService.instance.authenticate(
+                        reason: 'Confirmez votre identité pour activer le verrouillage',
+                      );
+                      if (!success) return;
+                    }
+                    await BiometricService.instance.setEnabled(val);
+                    setState(() => _biometricEnabled = val);
+                  },
+                  theme: theme,
+                )
+              else
+                ListTile(
+                  leading: Icon(Icons.fingerprint_rounded, color: theme.colorScheme.onSurface.withAlpha(100)),
+                  title: const Text('Verrouillage biométrique'),
+                  subtitle: const Text('Non disponible sur cet appareil'),
+                  enabled: false,
+                ),
               const Divider(),
 
               ListTile(

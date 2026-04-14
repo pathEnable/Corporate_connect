@@ -11,6 +11,7 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
   final String roomName;
   final bool isGroup;
   final VoidCallback onShowInfo;
+  final VoidCallback onShowAI;
 
   const ChatAppBar({
     super.key,
@@ -18,6 +19,7 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
     required this.roomName,
     this.isGroup = false,
     required this.onShowInfo,
+    required this.onShowAI,
   });
 
   @override
@@ -73,6 +75,11 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
         ),
       ),
       actions: [
+        _buildActionButton(
+          icon: Icons.auto_awesome_rounded,
+          color: Colors.white70,
+          onPressed: onShowAI,
+        ),
         _buildActionButton(
           icon: Icons.videocam_rounded,
           color: Colors.white,

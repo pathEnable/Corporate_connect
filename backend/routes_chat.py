@@ -1,9 +1,10 @@
 import json
 import uuid
 import asyncio
-from datetime import datetime
-from typing import Dict, Set
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query, status
+from datetime import datetime, timezone
+from typing import Dict, Set, Optional, List, Any
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query, status, HTTPException, Body
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Message, Room, RoomMember, Profile
@@ -11,8 +12,126 @@ from security_utils import encrypt_data, decrypt_data
 from starlette.concurrency import run_in_threadpool
 from firebase_admin_config import send_push_notification
 from database import redis_client
+from routes_auth import get_current_user
 
 router = APIRouter(tags=["Chat"])
+
+# ── Schemas pour les nouvelles routes ─────────────────────────────────────────
+
+class VoteRequest(BaseModel):
+    option_index: int
+
+class TaskStatusRequest(BaseModel):
+    is_done: bool
+
+class ScheduleMessageRequest(BaseModel):
+    room_id: str
+    content: str
+    message_type: str = "text"
+    scheduled_for: str           # ISO 8601 : "2026-04-14T08:00:00Z"
+    metadata_: Optional[dict] = None
+
+# ── Route : Voter à un sondage ─────────────────────────────────────────────────
+
+@router.post("/rooms/{room_id}/messages/{message_id}/vote")
+def vote_poll(
+    room_id: str,
+    message_id: str,
+    body: VoteRequest,
+    db: Session = Depends(get_db),
+    current_user: Profile = Depends(get_current_user),
+):
+    """Voter pour une option d'un sondage. Chaque utilisateur ne peut voter qu'une fois."""
+    msg = db.query(Message).filter(
+        Message.id == message_id,
+        Message.room_id == room_id,
+        Message.message_type == "poll",
+    ).first()
+    if not msg:
+        raise HTTPException(status_code=404, detail="Sondage introuvable.")
+
+    meta = msg.metadata_ or {}
+    votes: dict = meta.get("votes", {})
+    user_key = str(current_user.id)
+
+    if user_key in votes:
+        raise HTTPException(status_code=409, detail="Vous avez déjà voté.")
+
+    votes[user_key] = body.option_index
+    meta["votes"] = votes
+    msg.metadata_ = meta
+    db.commit()
+    db.refresh(msg)
+    return {"detail": "Vote enregistré.", "votes": votes}
+
+
+# ── Route : Mettre à jour le statut d'une tâche ────────────────────────────────
+
+@router.patch("/rooms/{room_id}/messages/{message_id}/task")
+def update_task(
+    room_id: str,
+    message_id: str,
+    body: TaskStatusRequest,
+    db: Session = Depends(get_db),
+    current_user: Profile = Depends(get_current_user),
+):
+    """Marquer une tâche comme faite ou non faite."""
+    msg = db.query(Message).filter(
+        Message.id == message_id,
+        Message.room_id == room_id,
+        Message.message_type == "task",
+    ).first()
+    if not msg:
+        raise HTTPException(status_code=404, detail="Tâche introuvable.")
+
+    meta = msg.metadata_ or {}
+    meta["is_done"] = body.is_done
+    if body.is_done:
+        meta["completed_by"] = str(current_user.id)
+        meta["completed_at"] = datetime.now(timezone.utc).isoformat()
+    msg.metadata_ = meta
+    db.commit()
+    db.refresh(msg)
+    return {"detail": "Tâche mise à jour.", "metadata_": meta}
+
+
+# ── Route : Programmer un message ──────────────────────────────────────────────
+
+@router.post("/rooms/{room_id}/messages/schedule")
+def schedule_message(
+    room_id: str,
+    body: ScheduleMessageRequest,
+    db: Session = Depends(get_db),
+    current_user: Profile = Depends(get_current_user),
+):
+    """Enregistre un message programmé. Il sera envoyé par le scheduler automatiquement."""
+    # Vérifier l'appartenance
+    member = db.query(RoomMember).filter(
+        RoomMember.room_id == room_id,
+        RoomMember.profile_id == current_user.id,
+    ).first()
+    if not member:
+        raise HTTPException(status_code=403, detail="Vous n'êtes pas membre de ce salon.")
+
+    scheduled_dt = datetime.fromisoformat(body.scheduled_for.replace("Z", "+00:00"))
+    if scheduled_dt <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="La date d'envoi doit être dans le futur.")
+
+    new_msg = Message(
+        id=uuid.uuid4(),
+        room_id=room_id,
+        sender_id=current_user.id,
+        content=body.content,
+        message_type=body.message_type,
+        metadata_=body.metadata_,
+        scheduled_for=scheduled_dt,
+        is_sent=False,
+    )
+    db.add(new_msg)
+    db.commit()
+    return {"detail": "Message programmé avec succès.", "message_id": str(new_msg.id), "scheduled_for": scheduled_dt.isoformat()}
+
+
 
 
 class ConnectionManager:
@@ -327,7 +446,7 @@ async def websocket_chat(
             stored_content = message_data.get("content", "")
 
             # Fonction synchrone isolée pour ne pas bloquer l'Event Loop
-            def save_to_db(r_id, s_id, text_content, m_type, reply_id=None):
+            def save_to_db(r_id, s_id, text_content, m_type, reply_id=None, meta=None):
                 db_session = next(get_db())
                 try:
                     new_msg = Message(
@@ -337,10 +456,11 @@ async def websocket_chat(
                         content=text_content,
                         message_type=m_type,
                         reply_to_id=reply_id,
+                        metadata_=meta,
                     )
                     db_session.add(new_msg)
                     db_session.commit()
-                    return new_msg.id, new_msg.message_type
+                    return new_msg.id, new_msg.message_type, meta
                 except Exception as e:
                     db_session.rollback()
                     raise e
@@ -350,8 +470,11 @@ async def websocket_chat(
             try:
                 # Exécution dans un thread séparé ! (OPTIMISATION MAJEURE)
                 msg_reply_id = message_data.get("reply_to_id")
-                msg_id, final_m_type = await run_in_threadpool(
-                    save_to_db, room_id, user_id, stored_content, msg_type, msg_reply_id
+                extra_data = message_data.get("data")
+                metadata_to_save = extra_data.get("metadata_") if extra_data and isinstance(extra_data, dict) else None
+                
+                msg_id, final_m_type, saved_meta = await run_in_threadpool(
+                    save_to_db, room_id, user_id, stored_content, msg_type, msg_reply_id, metadata_to_save
                 )
 
                 # Préparer le message de diffusion
@@ -359,6 +482,7 @@ async def websocket_chat(
                     "type": "new_message",
                     "message_id": str(msg_id),
                     "room_id": room_id,
+                    "metadata_": saved_meta,
                     "sender_id": user_id,
                     "content": stored_content, # Transmis tel quel (chiffré E2EE)
                     "message_type": final_m_type,

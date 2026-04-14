@@ -16,6 +16,8 @@ class ProfileUpdateRequest(BaseModel):
     avatar_url: Optional[str] = None
     bio: Optional[str] = None
     job_title: Optional[str] = None
+    department: Optional[str] = None   # Nouveau
+    skills: Optional[str] = None       # Nouveau (CSV : "Python,Flutter,SQL")
     public_key: Optional[str] = None
     presence_status: Optional[str] = None
 
@@ -27,8 +29,12 @@ class ProfileResponse(BaseModel):
     full_name: str
     username: str
     avatar_url: Optional[str]
+    bio: Optional[str] = None
+    job_title: Optional[str] = None
     is_online: bool
     presence_status: str
+    is_active: bool = True
+    is_admin: bool = False
     public_key: Optional[str] = None
 
     class Config:
@@ -58,6 +64,10 @@ def update_profile(
         current_user.bio = request.bio
     if request.job_title is not None:
         current_user.job_title = request.job_title
+    if request.department is not None:
+        current_user.department = request.department
+    if request.skills is not None:
+        current_user.skills = request.skills
     if request.public_key is not None:
         current_user.public_key = request.public_key
     if request.presence_status is not None:
@@ -86,11 +96,29 @@ def search_users(
 def company_directory(
     db: Session = Depends(get_db),
     current_user: Profile = Depends(get_current_user),
+    q: Optional[str] = None,
+    department: Optional[str] = None,
+    presence_status: Optional[str] = None,
+    skills: Optional[str] = None,
 ):
-    """Lister tous les employés de l'entreprise (annuaire)."""
-    users = db.query(Profile).filter(
-        Profile.id != current_user.id
-    ).order_by(Profile.full_name).all()
+    """Lister tous les employés de l'entreprise avec filtres optionnels."""
+    query = db.query(Profile).filter(Profile.id != current_user.id, Profile.is_active == True)
+
+    if q:
+        query = query.filter(
+            (Profile.full_name.ilike(f"%{q}%")) |
+            (Profile.username.ilike(f"%{q}%")) |
+            (Profile.job_title.ilike(f"%{q}%"))
+        )
+    if department:
+        query = query.filter(Profile.department.ilike(f"%{department}%"))
+    if presence_status:
+        query = query.filter(Profile.presence_status == presence_status)
+    if skills:
+        # Chercher dans le champ CSV de compétences
+        query = query.filter(Profile.skills.ilike(f"%{skills}%"))
+
+    users = query.order_by(Profile.is_online.desc(), Profile.full_name).all()
     return users
 
 

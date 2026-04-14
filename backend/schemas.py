@@ -1,6 +1,7 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional, List
+from typing import Optional, List, Any, Dict
 from uuid import UUID
+from datetime import datetime
 
 
 class RegisterRequest(BaseModel):
@@ -47,7 +48,12 @@ class ProfileResponse(BaseModel):
     avatar_url: Optional[str]
     bio: Optional[str] = None
     job_title: Optional[str] = None
+    department: Optional[str] = None  # Nouveau
+    skills: Optional[str] = None      # Nouveau (CSV)
     is_online: bool
+    presence_status: str = "online"
+    is_active: bool = True
+    is_admin: bool = False
     public_key: Optional[str] = None
 
     class Config:
@@ -72,6 +78,9 @@ class MessageResponse(BaseModel):
     reply_to_id: Optional[UUID] = None
     is_read: bool = False
     created_at: str
+    metadata_: Optional[Dict[str, Any]] = None  # Nouveau : sondages/tâches
+    scheduled_for: Optional[datetime] = None     # Nouveau : programmation
+    is_sent: bool = True                         # Nouveau : statut d'envoi
 
     class Config:
         from_attributes = True

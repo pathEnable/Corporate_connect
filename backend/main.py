@@ -18,12 +18,28 @@ from routes_admin import router as admin_router
 from routes_notifications import router as notifications_router
 from routes_agora import router as agora_router
 from routes_calls import router as calls_router
+from routes_ai import router as ai_router
 from config import ALLOWED_ORIGINS
 import time
 import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 GITHUB_REPO = "pathEnable/Corporate_connect"
+
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+
+# Initialisation Sentry (Monitoring Backend)
+# SENTRY_DSN doit être configuré dans config.py ou les variables d'environnement (.env)
+SENTRY_DSN = os.getenv("SENTRY_DSN")
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[FastApiIntegration(), SqlalchemyIntegration()],
+        traces_sample_rate=1.0,
+        profiles_sample_rate=1.0,
+    )
 
 # Créer les tables au démarrage
 Base.metadata.create_all(bind=engine)
@@ -219,14 +235,19 @@ app.include_router(admin_router)
 app.include_router(notifications_router)
 app.include_router(agora_router)
 app.include_router(calls_router)
+app.include_router(ai_router)
 
-# ── Listener Redis Pub/Sub ──
-from routes_chat import start_redis_listener
+# ── Listener Redis Pub/Sub + Scheduler messages programmés ──
+from routes_chat import start_redis_listener, manager as chat_manager
+from scheduler import scheduled_message_worker
+from media_cleanup import media_cleanup_worker
 import asyncio
 
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(start_redis_listener())
+    asyncio.create_task(scheduled_message_worker(chat_manager))
+    asyncio.create_task(media_cleanup_worker())
 
 # ── Diagnostic & Fichiers statiques ──
 

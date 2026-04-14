@@ -8,7 +8,9 @@ import 'services/push_notification_service.dart';
 import 'services/update_service.dart';
 import 'services/offline_sync_service.dart';
 import 'services/local_database.dart';
+import 'services/biometric_service.dart';
 import 'widgets/update_dialog.dart';
+import 'widgets/lock_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shimmer/shimmer.dart';
 import 'providers/settings_provider.dart';
@@ -17,7 +19,7 @@ import 'theme/app_theme.dart';
 import 'widgets/call/global_call_listener.dart';
 import 'widgets/call/incoming_call_overlay.dart';
 import 'dart:async';
-
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -52,14 +54,34 @@ void main() async {
   // Container pour accéder aux providers hors arborescence (utilisé pour OfflineSyncService)
   final container = ProviderContainer();
 
-  runApp(
-    UncontrolledProviderScope(
-      container: container,
-      child: const AppResetter(
-        child: CorporateConnectApp(),
+  // DSN Configuration - à injecter via variables env ou config au besoin
+  const sentryDsn = String.fromEnvironment('SENTRY_DSN', defaultValue: '');
+
+  if (sentryDsn.isNotEmpty) {
+    await SentryFlutter.init(
+      (options) {
+        options.dsn = sentryDsn;
+        options.tracesSampleRate = 1.0;
+      },
+      appRunner: () => runApp(
+        UncontrolledProviderScope(
+          container: container,
+          child: const AppResetter(
+            child: CorporateConnectApp(),
+          ),
+        ),
       ),
-    ),
-  );
+    );
+  } else {
+    runApp(
+      UncontrolledProviderScope(
+        container: container,
+        child: const AppResetter(
+          child: CorporateConnectApp(),
+        ),
+      ),
+    );
+  }
   
   // Services secondaires (Firebase Messaging, etc.) en arrière-plan total
   _initializeBgServices(container);
@@ -110,11 +132,50 @@ Future<void> _initializeBgServices(ProviderContainer container) async {
   syncService.syncPendingRooms();
 }
 
-class CorporateConnectApp extends ConsumerWidget {
+class CorporateConnectApp extends ConsumerStatefulWidget {
   const CorporateConnectApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CorporateConnectApp> createState() => _CorporateConnectAppState();
+}
+
+class _CorporateConnectAppState extends ConsumerState<CorporateConnectApp>
+    with WidgetsBindingObserver {
+  bool _isLocked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      // L'app passe en arrière-plan : vérifier si on doit verrouiller
+      _checkAndLock();
+    }
+  }
+
+  Future<void> _checkAndLock() async {
+    final enabled = await BiometricService.instance.isEnabled();
+    if (enabled && mounted) {
+      setState(() => _isLocked = true);
+    }
+  }
+
+  void _unlock() {
+    if (mounted) setState(() => _isLocked = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
 
     return MaterialApp(
@@ -132,6 +193,9 @@ class CorporateConnectApp extends ConsumerWidget {
               children: [
                 if (child != null) child,
                 const IncomingCallOverlay(),
+                // Biometric lock overlay
+                if (_isLocked)
+                  LockScreen(onUnlocked: _unlock),
               ],
             ),
           ),
@@ -140,6 +204,9 @@ class CorporateConnectApp extends ConsumerWidget {
       theme: AppTheme.lightTheme(settings.fontScale, accentColorValue: settings.accentColor),
       darkTheme: AppTheme.darkTheme(settings.fontScale, accentColorValue: settings.accentColor),
       navigatorKey: navigatorKey,
+      navigatorObservers: [
+        SentryNavigatorObserver(),
+      ],
       home: const AuthGate(),
     );
   }

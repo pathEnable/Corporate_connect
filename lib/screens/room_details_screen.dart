@@ -1,11 +1,10 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../services/local_database.dart';
 import '../services/media_service.dart';
-import '../services/room_service.dart';
 import '../providers/profile_provider.dart';
+import '../providers/room_details_provider.dart';
 import '../widgets/premium_background.dart';
 import '../widgets/authenticated_image.dart';
 import 'image_viewer_screen.dart';
@@ -29,13 +28,18 @@ class RoomDetailsScreen extends ConsumerStatefulWidget {
   ConsumerState<RoomDetailsScreen> createState() => _RoomDetailsScreenState();
 }
 
-class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with SingleTickerProviderStateMixin {
+class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    // Déléguer l'initialisation des membres au provider
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(roomDetailsProvider(widget.roomId).notifier).initMembers(widget.members);
+    });
   }
 
   @override
@@ -47,6 +51,25 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
+    // Écoute les changements d'état pour afficher les SnackBars
+    ref.listen(roomDetailsProvider(widget.roomId), (_, next) {
+      if (!mounted) return;
+      if (next.status == RoomDetailsStatus.error && next.errorMessage != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(next.errorMessage!)),
+        );
+        ref.read(roomDetailsProvider(widget.roomId).notifier).clearFeedback();
+      } else if (next.status == RoomDetailsStatus.success && next.successMessage != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(next.successMessage!, style: const TextStyle(color: Colors.green))),
+        );
+        ref.read(roomDetailsProvider(widget.roomId).notifier).clearFeedback();
+        // Retourner à l'écran précédent pour forcer le rechargement
+        Navigator.pop(context, true);
+      }
+    });
+
     return PremiumBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -111,7 +134,6 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
         background: Stack(
           alignment: Alignment.center,
           children: [
-            // Background Header Glow
             Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -126,22 +148,17 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
               children: [
                 Hero(
                   tag: 'room_avatar_${widget.roomId}',
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                    ),
-                    child: CircleAvatar(
-                      radius: 50,
-                      backgroundColor: theme.colorScheme.primary,
-                      child: Icon(
-                        widget.isGroup ? Icons.groups_rounded : Icons.person_rounded,
-                        size: 50,
-                        color: Colors.black,
-                      ),
+                  child: CircleAvatar(
+                    radius: 50,
+                    backgroundColor: theme.colorScheme.primary,
+                    child: Icon(
+                      widget.isGroup ? Icons.groups_rounded : Icons.person_rounded,
+                      size: 50,
+                      color: Colors.black,
                     ),
                   ),
                 ).animate().scale(curve: Curves.easeOutBack, duration: 600.ms),
-                const SizedBox(height: 60), // Room for Title
+                const SizedBox(height: 60),
               ],
             ),
           ],
@@ -172,12 +189,14 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
         tabs: const [
           Tab(icon: Icon(Icons.people_alt_rounded, size: 20), text: 'Social'),
           Tab(icon: Icon(Icons.image_rounded, size: 20), text: 'Images'),
-          Tab(icon: Icon(Icons.insert_drive_file_rounded, size: 20), text: 'Doc'),
+          Tab(icon: Icon(Icons.cloud_rounded, size: 20), text: 'Drive'),
           Tab(icon: Icon(Icons.mic_rounded, size: 20), text: 'Vocal'),
         ],
       ),
     );
   }
+
+  // ─── Bottom Sheet "menu groupe" ─────────────────────────────────────────────
 
   void _showGroupMenu(BuildContext context) {
     showModalBottomSheet(
@@ -188,130 +207,177 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen> with Sing
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
         ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(2))),
-                const SizedBox(height: 24),
-                ListTile(
-                  leading: const Icon(Icons.exit_to_app_rounded, color: Colors.redAccent),
-                  title: const Text('Quitter le groupe', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _leaveRoom();
-                  },
-                ),
-                const SizedBox(height: 20),
-              ],
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(2)),
             ),
-          ),
+            const SizedBox(height: 24),
+            ListTile(
+              leading: const Icon(Icons.exit_to_app_rounded, color: Colors.redAccent),
+              title: const Text(
+                'Quitter le groupe',
+                style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
+              ),
+              onTap: () {
+                Navigator.pop(context); // fermer le bottom sheet
+                _confirmLeaveRoom();
+              },
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
     );
   }
 
-  Future<void> _leaveRoom() async {
+  // ─── Confirmation quitter le groupe (UI seule) ──────────────────────────────
+
+  Future<void> _confirmLeaveRoom() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Quitter le groupe ?'),
         content: const Text('Ceci supprimera le groupe de votre liste.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('ANNULER')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('QUITTER', style: TextStyle(color: Colors.red))),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('ANNULER'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('QUITTER', style: TextStyle(color: Colors.red)),
+          ),
         ],
       ),
     );
 
-    if (confirmed == true) {
+    if (confirmed == true && mounted) {
       final profile = ref.read(profileProvider).profileData;
       if (profile != null) {
-        await RoomService().leaveRoom(widget.roomId, profile['id']);
-        if (mounted) Navigator.popUntil(context, (route) => route.isFirst);
+        // ✅ Logique métier dans le notifier, pas dans le widget
+        final success = await ref
+            .read(roomDetailsProvider(widget.roomId).notifier)
+            .leaveRoom(widget.roomId, profile['id']);
+        if (success && mounted) {
+          Navigator.popUntil(context, (route) => route.isFirst);
+        }
       }
     }
   }
 
+  // ─── Onglet membres ─────────────────────────────────────────────────────────
+
   Widget _buildMembersTab() {
     final theme = Theme.of(context);
+    final detailsState = ref.watch(roomDetailsProvider(widget.roomId));
     final currentUserId = ref.read(profileProvider).profileData?['id'];
-    final bool isUserAdmin = widget.members.any((m) => m['id'] == currentUserId && m['is_admin_member'] == true);
+    final members = detailsState.members.isNotEmpty ? detailsState.members : widget.members;
+    final bool isUserAdmin = members.any(
+      (m) => m['id'] == currentUserId && m['is_admin_member'] == true,
+    );
+    final isLoading = detailsState.status == RoomDetailsStatus.loading;
 
-    return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 20),
+    return Stack(
       children: [
-        if (widget.isGroup && isUserAdmin)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            child: ListTile(
-              onTap: () async {
-                final existingIds = widget.members.map((m) => m['id'] as String).toList();
-                final selectedIds = await Navigator.push<List<String>>(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => AddMemberPickerScreen(existingMemberIds: existingIds),
+        ListView(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          children: [
+            if (widget.isGroup && isUserAdmin)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: ListTile(
+                  onTap: isLoading ? null : () => _openAddMemberPicker(members),
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.person_add_rounded, color: theme.colorScheme.primary, size: 22),
                   ),
-                );
+                  title: Text(
+                    'Ajouter des membres',
+                    style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ).animate().fadeIn().slideX(),
+            ...members.asMap().entries.map((entry) {
+              final index = entry.key;
+              final member = entry.value;
+              final bool isAdmin = member['is_admin_member'] == true;
+              final bool isMe = member['id'] == currentUserId;
 
-                if (selectedIds != null && selectedIds.isNotEmpty && mounted) {
-                  showDialog(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (context) => const Center(child: CircularProgressIndicator()),
-                  );
-
-                  try {
-                    for (String id in selectedIds) {
-                      await RoomService().addMember(widget.roomId, id);
-                    }
-                    if (mounted) {
-                      Navigator.pop(context); // Close loading dialog
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Membres ajoutés avec succès !', style: TextStyle(color: Colors.green))),
-                      );
-                      // Pop the details screen to force a refresh on next open
-                      Navigator.pop(context, true); 
-                    }
-                  } catch (e) {
-                    if (mounted) {
-                      Navigator.pop(context); // Close loading dialog
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text("Erreur lors de l'ajout: $e")),
-                      );
-                    }
-                  }
-                }
-              },
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: theme.colorScheme.primary.withValues(alpha: 0.1), shape: BoxShape.circle),
-                child: Icon(Icons.person_add_rounded, color: theme.colorScheme.primary, size: 22),
-              ),
-              title: Text('Ajouter des membres', style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold)),
+              return ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                leading: CircleAvatar(
+                  backgroundColor: isAdmin
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.surface.withValues(alpha: 0.2),
+                  child: Text(
+                    (member['full_name'] ?? 'U')[0].toUpperCase(),
+                    style: TextStyle(
+                      color: isAdmin ? Colors.black : theme.colorScheme.primary,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                title: Text(
+                  isMe ? "${member['full_name']} (Vous)" : member['full_name'],
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                subtitle: isAdmin
+                    ? Text(
+                        'Admin',
+                        style: TextStyle(
+                          color: theme.colorScheme.primary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.2,
+                        ),
+                      )
+                    : null,
+                trailing: isMe ? null : const Icon(Icons.chevron_right_rounded, size: 18, color: Colors.grey),
+              ).animate(delay: (index * 40).ms).fadeIn().slideX();
+            }),
+          ],
+        ),
+        // Indicateur de chargement global sans bloquer tout l'écran
+        if (isLoading)
+          const Positioned.fill(
+            child: ColoredBox(
+              color: Color(0x55000000),
+              child: Center(child: CircularProgressIndicator()),
             ),
-          ).animate().fadeIn().slideX(),
-        ...widget.members.asMap().entries.map((entry) {
-          final index = entry.key;
-          final member = entry.value;
-          final bool isAdmin = member['is_admin_member'] == true;
-          final bool isMe = member['id'] == currentUserId;
-
-          return ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-            leading: CircleAvatar(
-              backgroundColor: isAdmin ? theme.colorScheme.primary : theme.colorScheme.surface.withValues(alpha: 0.2),
-              child: Text(
-                (member['full_name'] ?? 'U')[0].toUpperCase(),
-                style: TextStyle(color: isAdmin ? Colors.black : theme.colorScheme.primary, fontWeight: FontWeight.bold),
-              ),
-            ),
-            title: Text(isMe ? "${member['full_name']} (Vous)" : member['full_name'], style: const TextStyle(fontWeight: FontWeight.w700)),
-            subtitle: isAdmin ? Text('Admin', style: TextStyle(color: theme.colorScheme.primary, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1.2)) : null,
-            trailing: isMe ? null : const Icon(Icons.chevron_right_rounded, size: 18, color: Colors.grey),
-          ).animate(delay: (index * 40).ms).fadeIn().slideX();
-        }),
+          ),
       ],
     );
   }
+
+  // ─── Navigation vers le sélecteur de membres ────────────────────────────────
+
+  Future<void> _openAddMemberPicker(List<Map<String, dynamic>> members) async {
+    final existingIds = members.map((m) => m['id'] as String).toList();
+    final selectedIds = await Navigator.push<List<String>>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AddMemberPickerScreen(existingMemberIds: existingIds),
+      ),
+    );
+
+    if (selectedIds != null && selectedIds.isNotEmpty && mounted) {
+      // ✅ Logique métier dans le notifier, pas dans le widget
+      await ref
+          .read(roomDetailsProvider(widget.roomId).notifier)
+          .addMembers(widget.roomId, selectedIds);
+    }
+  }
 }
+
+// ─── Widget dédié aux médias (images, fichiers, audio) ──────────────────────
 
 class _MediaTab extends StatefulWidget {
   final String roomId;
@@ -336,15 +402,102 @@ class _MediaTabState extends State<_MediaTab> {
     if (mounted) setState(() { _messages = msgs; _isLoading = false; });
   }
 
+  // ─── Icône selon l'extension du fichier ─────────────────────────────────
+
+  static IconData _fileIcon(String url) {
+    final ext = url.split('.').last.toLowerCase().split('?').first;
+    switch (ext) {
+      case 'pdf':  return Icons.picture_as_pdf_rounded;
+      case 'doc':
+      case 'docx': return Icons.description_rounded;
+      case 'xls':
+      case 'xlsx': return Icons.table_chart_rounded;
+      case 'ppt':
+      case 'pptx': return Icons.slideshow_rounded;
+      case 'zip':
+      case 'rar':  return Icons.folder_zip_rounded;
+      case 'mp4':
+      case 'mov':  return Icons.movie_rounded;
+      case 'mp3':
+      case 'wav':  return Icons.audiotrack_rounded;
+      default:     return Icons.insert_drive_file_rounded;
+    }
+  }
+
+  static Color _fileColor(String url) {
+    final ext = url.split('.').last.toLowerCase().split('?').first;
+    switch (ext) {
+      case 'pdf':  return Colors.red;
+      case 'doc':
+      case 'docx': return Colors.blue.shade600;
+      case 'xls':
+      case 'xlsx': return Colors.green.shade600;
+      case 'ppt':
+      case 'pptx': return Colors.orange;
+      case 'zip':
+      case 'rar':  return Colors.brown;
+      case 'mp4':
+      case 'mov':  return Colors.purple;
+      default:     return Colors.grey;
+    }
+  }
+
+  // ─── Grouper les fichiers par mois ──────────────────────────────────────
+
+  Map<String, List<Map<String, dynamic>>> _groupByMonth(List<Map<String, dynamic>> msgs) {
+    final grouped = <String, List<Map<String, dynamic>>>{};
+    for (final msg in msgs) {
+      try {
+        final dt = DateTime.parse(msg['created_at'].toString());
+        final key = '${_monthName(dt.month)} ${dt.year}';
+        grouped.putIfAbsent(key, () => []).add(msg);
+      } catch (_) {
+        grouped.putIfAbsent('Sans date', () => []).add(msg);
+      }
+    }
+    return grouped;
+  }
+
+  String _monthName(int month) {
+    const months = [
+      'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+      'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
+    ];
+    return months[month - 1];
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
-    if (_messages.isEmpty) return const Center(child: Text("Aucun média trouvé", style: TextStyle(color: Colors.grey)));
+    if (_messages.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              widget.type == 'file' ? Icons.cloud_off_rounded : Icons.perm_media_outlined,
+              size: 56,
+              color: Colors.grey.withAlpha(100),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              widget.type == 'file' ? 'Aucun fichier partagé' : 'Aucun media trouvé',
+              style: const TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
+      );
+    }
 
+    // ─── Onglet Images : grille ───────────────────────────────────────────
     if (widget.type == 'image') {
       return GridView.builder(
         padding: const EdgeInsets.all(4),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 4, mainAxisSpacing: 4),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 4,
+          mainAxisSpacing: 4,
+        ),
         itemCount: _messages.length,
         itemBuilder: (context, index) {
           final url = _messages[index]['content'];
@@ -353,8 +506,14 @@ class _MediaTabState extends State<_MediaTab> {
             builder: (context, snap) {
               if (snap.hasData) {
                 return GestureDetector(
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ImageViewerScreen(imageUrl: snap.data!))),
-                  child: Hero(tag: snap.data!, child: AuthenticatedNetworkImage(imageUrl: snap.data!, fit: BoxFit.cover)),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => ImageViewerScreen(imageUrl: snap.data!)),
+                  ),
+                  child: Hero(
+                    tag: snap.data!,
+                    child: AuthenticatedNetworkImage(imageUrl: snap.data!, fit: BoxFit.cover),
+                  ),
                 );
               }
               return Container(color: Colors.grey.withValues(alpha: 0.1));
@@ -364,16 +523,110 @@ class _MediaTabState extends State<_MediaTab> {
       ).animate().fadeIn();
     }
 
+    // ─── Onglet Vocal : liste simple ──────────────────────────────────────
+    if (widget.type == 'audio') {
+      return ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        itemCount: _messages.length,
+        itemBuilder: (context, index) {
+          final msg = _messages[index];
+          final theme = Theme.of(context);
+          return ListTile(
+            leading: CircleAvatar(
+              backgroundColor: theme.colorScheme.primary.withAlpha(20),
+              child: Icon(Icons.mic_rounded, color: theme.colorScheme.primary, size: 20),
+            ),
+            title: Text(
+              msg['content'].toString().split('/').last,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text(msg['created_at'].toString().split('T')[0]),
+          ).animate(delay: (index * 30).ms).fadeIn().slideY();
+        },
+      );
+    }
+
+    // ─── Onglet Drive (fichiers) : groupe par mois + icônes par type ─────
+    final grouped = _groupByMonth(_messages);
+    final groups = grouped.entries.toList();
+
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      itemCount: _messages.length,
-      itemBuilder: (context, index) {
-        final msg = _messages[index];
-        return ListTile(
-          leading: Icon(widget.type == 'file' ? Icons.description_rounded : Icons.mic_rounded, color: Colors.grey),
-          title: Text(msg['content'].toString().split('/').last, maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: Text(msg['created_at'].toString().split('T')[0]),
-        ).animate(delay: (index * 30).ms).fadeIn().slideY();
+      padding: const EdgeInsets.only(bottom: 24),
+      itemCount: groups.length,
+      itemBuilder: (context, gi) {
+        final groupTitle = groups[gi].key;
+        final files = groups[gi].value;
+        final theme = Theme.of(context);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ─ En-tête du groupe (mois) ─
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
+              child: Row(
+                children: [
+                  Icon(Icons.calendar_month_rounded,
+                      size: 14, color: theme.colorScheme.primary.withAlpha(180)),
+                  const SizedBox(width: 6),
+                  Text(
+                    groupTitle,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                      letterSpacing: 0.8,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Divider(
+                      color: theme.colorScheme.primary.withAlpha(30),
+                      height: 1,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // ─ Fichiers du groupe ─
+            ...files.asMap().entries.map((e) {
+              final index = e.key;
+              final msg = e.value;
+              final url = msg['content'].toString();
+              final fileName = url.split('/').last.split('?').first;
+              final icon = _fileIcon(url);
+              final color = _fileColor(url);
+              final date = msg['created_at'].toString().split('T')[0];
+
+              return ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                leading: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: color.withAlpha(20),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: color.withAlpha(50)),
+                  ),
+                  child: Icon(icon, color: color, size: 22),
+                ),
+                title: Text(
+                  fileName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                ),
+                subtitle: Text(
+                  date,
+                  style: TextStyle(
+                      fontSize: 11, color: theme.colorScheme.onSurface.withAlpha(120)),
+                ),
+                trailing: Icon(Icons.download_rounded, color: theme.colorScheme.primary, size: 20),
+              ).animate(delay: ((gi * 5 + index) * 30).ms).fadeIn().slideX(begin: 0.05);
+            }),
+          ],
+        );
       },
     );
   }

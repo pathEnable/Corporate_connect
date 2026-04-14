@@ -7,6 +7,10 @@ import 'dart:io';
 import 'audio_player_widget.dart';
 import '../../services/media_service.dart';
 import '../../screens/image_viewer_screen.dart';
+import '../poll_message_widget.dart';
+import '../task_message_widget.dart';
+import '../meeting_message_widget.dart';
+import 'reaction_picker.dart';
 
 class MessageBubble extends StatelessWidget {
   final String content;
@@ -20,6 +24,9 @@ class MessageBubble extends StatelessWidget {
   final String? caption;
   final String? localPath;
   final VoidCallback? onReply;
+  final Function(String emoji)? onReaction;
+  final Map<String, dynamic>? reactions;
+  final String? currentUserId;
 
   const MessageBubble({
     super.key,
@@ -34,7 +41,17 @@ class MessageBubble extends StatelessWidget {
     this.caption,
     this.localPath,
     this.onReply,
+    this.onReaction,
+    this.reactions,
+    this.currentUserId,
+    this.metadata,
+    this.roomId,
+    this.messageId,
   });
+
+  final Map<String, dynamic>? metadata;
+  final String? roomId;
+  final String? messageId;
 
   @override
   Widget build(BuildContext context) {
@@ -48,7 +65,17 @@ class MessageBubble extends StatelessWidget {
     return GestureDetector(
       onLongPress: () {
         HapticFeedback.mediumImpact();
-        if (onReply != null) onReply!();
+        // Show reaction picker first, fallback to reply
+        if (onReaction != null) {
+          _showReactionMenu(context);
+        } else if (onReply != null) {
+          onReply!();
+        }
+      },
+      onDoubleTap: () {
+        // Quick reaction with 👍 on double tap
+        HapticFeedback.selectionClick();
+        onReaction?.call('👍');
       },
       child: Align(
         alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -101,6 +128,25 @@ class MessageBubble extends StatelessWidget {
                 _FileContent(content: content, isMe: isMe, localPath: localPath)
               else if (type == 'audio')
                 AudioPlayerWidget(url: content, isMe: isMe, localPath: localPath)
+              else if (type == 'poll' && metadata != null && roomId != null && messageId != null)
+                PollMessageWidget(
+                  messageId: messageId!,
+                  roomId: roomId!,
+                  metadata: metadata!,
+                  isMe: isMe,
+                )
+              else if (type == 'task' && metadata != null && roomId != null && messageId != null)
+                TaskMessageWidget(
+                  messageId: messageId!,
+                  roomId: roomId!,
+                  metadata: metadata!,
+                  isMe: isMe,
+                )
+              else if (type == 'meeting' && metadata != null)
+                MeetingMessageWidget(
+                  metadata: metadata!,
+                  isMe: isMe,
+                )
               else
                 Text(
                   content,
@@ -144,6 +190,14 @@ class MessageBubble extends StatelessWidget {
                   ],
                 ],
               ),
+              // Réactions sous le message
+              if (reactions != null && reactions!.isNotEmpty)
+                ReactionsDisplay(
+                  reactions: reactions!,
+                  isMe: isMe,
+                  currentUserId: currentUserId,
+                  onTapReaction: onReaction,
+                ),
             ],
           ),
         ).animate().fadeIn(duration: 300.ms).scale(begin: const Offset(0.9, 0.9), curve: Curves.easeOutBack).slideX(begin: isMe ? 0.2 : -0.2, end: 0),
@@ -158,6 +212,23 @@ class MessageBubble extends StatelessWidget {
     } catch (_) {
       return '';
     }
+  }
+
+  void _showReactionMenu(BuildContext context) {
+    final overlay = Overlay.of(context);
+    late OverlayEntry entry;
+
+    entry = OverlayEntry(
+      builder: (ctx) => ReactionPicker(
+        onDismiss: () => entry.remove(),
+        onReactionSelected: (emoji) {
+          entry.remove();
+          onReaction?.call(emoji);
+        },
+      ),
+    );
+
+    overlay.insert(entry);
   }
 }
 

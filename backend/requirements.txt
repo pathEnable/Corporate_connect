@@ -11,3 +11,7 @@ agora-token-builder
 python-dotenv
 firebase-admin
 httpx
+alembic
+sentry-sdk[fastapi]
+google-generativeai
+mistralai

@@ -28,6 +28,8 @@ class CallScreen extends ConsumerStatefulWidget {
 
 class _CallScreenState extends ConsumerState<CallScreen> {
   final DateTime _startTime = DateTime.now();
+  double? _localVideoX;
+  double? _localVideoY;
 
   @override
   void initState() {
@@ -49,9 +51,9 @@ class _CallScreenState extends ConsumerState<CallScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(callProvider);
 
-    // Écouter le changement de remoteUid pour arrêter la sonnerie
+    // Écouter le changement de remoteUids pour arrêter la sonnerie
     ref.listen(callProvider, (previous, next) {
-      if (next.remoteUid != null && previous?.remoteUid == null) {
+      if (next.remoteUids.isNotEmpty && (previous == null || previous.remoteUids.isEmpty)) {
         RingtoneService.instance.stop();
       }
     });
@@ -101,37 +103,57 @@ class _CallScreenState extends ConsumerState<CallScreen> {
         // Local Video (Overlay)
         if (widget.isVideo && state.localUserJoined && state.engine != null)
           Positioned(
-            right: 20,
-            top: 60,
-            child: Hero(
-              tag: 'localVideo',
-              child: Container(
-                width: 110,
-                height: 160,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(80),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                  border: Border.all(color: Colors.white.withAlpha(50), width: 1.5),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: state.isCameraOn 
-                    ? AgoraVideoView(
-                        controller: VideoViewController(
-                          rtcEngine: state.engine!,
-                          canvas: const VideoCanvas(uid: 0),
-                        ),
-                      )
-                    : Container(
-                        color: Colors.grey[900],
-                        child: const Icon(Icons.videocam_off_rounded, color: Colors.white54),
+            left: _localVideoX,
+            top: _localVideoY ?? 60,
+            right: _localVideoX == null ? 20 : null,
+            child: GestureDetector(
+              onPanUpdate: (details) {
+                setState(() {
+                  _localVideoX = (_localVideoX ?? (MediaQuery.of(context).size.width - 130)) + details.delta.dx;
+                  _localVideoY = (_localVideoY ?? 60) + details.delta.dy;
+                  
+                  // Clamp to screen bounds roughly
+                  if (_localVideoX! < 0) _localVideoX = 0;
+                  if (_localVideoY! < 0) _localVideoY = 0;
+                });
+              },
+              child: Hero(
+                tag: 'localVideo',
+                child: Container(
+                  width: 110,
+                  height: 160,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withAlpha(80),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
                       ),
+                    ],
+                    border: Border.all(color: Colors.white.withAlpha(50), width: 1.5),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: state.isScreenSharing
+                      ? Container(
+                          color: Colors.blueAccent.withAlpha(200),
+                          child: const Center(
+                            child: Icon(Icons.screen_share_rounded, color: Colors.white, size: 40),
+                          ),
+                        )
+                      : (state.isCameraOn 
+                          ? AgoraVideoView(
+                              controller: VideoViewController(
+                                rtcEngine: state.engine!,
+                                canvas: const VideoCanvas(uid: 0),
+                              ),
+                            )
+                          : Container(
+                              color: Colors.grey[900],
+                              child: const Icon(Icons.videocam_off_rounded, color: Colors.white54),
+                            )),
+                  ),
                 ),
               ),
             ),
@@ -153,13 +175,19 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      widget.remoteUserName,
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: -0.5,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          widget.remoteUserName,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildNetworkIndicator(state.networkQuality),
+                      ],
                     ),
                     Row(
                       children: [
@@ -167,11 +195,11 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                           width: 8,
                           height: 8,
                           decoration: BoxDecoration(
-                            color: state.remoteUid != null ? Colors.greenAccent : Colors.orangeAccent,
+                            color: state.remoteUids.isNotEmpty ? Colors.greenAccent : Colors.orangeAccent,
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: (state.remoteUid != null ? Colors.greenAccent : Colors.orangeAccent).withAlpha(100),
+                                color: (state.remoteUids.isNotEmpty ? Colors.greenAccent : Colors.orangeAccent).withAlpha(100),
                                 blurRadius: 4,
                                 spreadRadius: 1,
                               )
@@ -180,7 +208,9 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          state.remoteUid != null ? "En communication" : "Appel en cours...",
+                          state.remoteUids.isNotEmpty 
+                              ? "${state.remoteUids.length} participant(s)" 
+                              : "Appel en cours...",
                           style: TextStyle(
                             color: Colors.white.withAlpha(180),
                             fontSize: 13,
@@ -222,19 +252,28 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
+                    // Speaker toggle
+                    _buildCallAction(
+                      theme: theme,
+                      icon: state.isSpeakerOn ? Icons.volume_up_rounded : Icons.volume_down_rounded,
+                      isActive: state.isSpeakerOn,
+                      onPressed: () => ref.read(callProvider.notifier).toggleSpeaker(),
+                    ),
+                    // Mic toggle
                     _buildCallAction(
                       theme: theme,
                       icon: state.isMicOn ? Icons.mic_rounded : Icons.mic_off_rounded,
                       isActive: state.isMicOn,
                       onPressed: () => ref.read(callProvider.notifier).toggleMic(),
                     ),
+                    // End Call
                     _buildCallAction(
                       theme: theme,
                       icon: Icons.call_end_rounded,
                       isEnd: true,
                       onPressed: () async {
                         final duration = DateTime.now().difference(_startTime).inSeconds;
-                        final status = state.remoteUid != null ? "completed" : "missed";
+                        final status = state.remoteUids.isNotEmpty ? "completed" : "missed";
                         
                         try {
                           await callService.logCall(
@@ -252,17 +291,31 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                         if (mounted) Navigator.pop(context);
                       },
                     ),
-                    if (widget.isVideo)
+                      // Screen Share
+                      _buildCallAction(
+                        theme: theme,
+                        icon: state.isScreenSharing ? Icons.stop_screen_share_rounded : Icons.screen_share_rounded,
+                        isActive: state.isScreenSharing,
+                        onPressed: () => ref.read(callProvider.notifier).toggleScreenShare(),
+                      ),
+                      // Camera toggle
                       _buildCallAction(
                         theme: theme,
                         icon: state.isCameraOn ? Icons.videocam_rounded : Icons.videocam_off_rounded,
                         isActive: state.isCameraOn,
                         onPressed: () => ref.read(callProvider.notifier).toggleCamera(),
                       ),
-                  ],
+                      // Camera flip
+                      _buildCallAction(
+                        theme: theme,
+                        icon: Icons.flip_camera_ios_rounded,
+                        isActive: false,
+                        onPressed: () => ref.read(callProvider.notifier).switchCamera(),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
         if (state.isLoading)
           const Center(child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3)),
         
@@ -280,14 +333,44 @@ class _CallScreenState extends ConsumerState<CallScreen> {
   }
 
   Widget _buildRemoteVideo(CallState state, ThemeData theme) {
-    if (state.remoteUid != null && widget.isVideo && state.engine != null) {
-      return AgoraVideoView(
-        controller: VideoViewController.remote(
-          rtcEngine: state.engine!,
-          canvas: VideoCanvas(uid: state.remoteUid),
-          connection: RtcConnection(channelId: widget.channelId),
-        ),
-      );
+    if (state.remoteUids.isNotEmpty && widget.isVideo && state.engine != null) {
+      if (state.remoteUids.length == 1) {
+        return AgoraVideoView(
+          controller: VideoViewController.remote(
+            rtcEngine: state.engine!,
+            canvas: VideoCanvas(uid: state.remoteUids.first),
+            connection: RtcConnection(channelId: widget.channelId),
+          ),
+        );
+      } else {
+        return GridView.builder(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: state.remoteUids.length > 2 ? 2 : 1,
+            childAspectRatio: state.remoteUids.length > 2 ? 1.0 : 0.8,
+          ),
+          itemCount: state.remoteUids.length,
+          itemBuilder: (context, index) {
+            final uid = state.remoteUids.elementAt(index);
+            return Container(
+              margin: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withAlpha(30)),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: AgoraVideoView(
+                  controller: VideoViewController.remote(
+                    rtcEngine: state.engine!,
+                    canvas: VideoCanvas(uid: uid),
+                    connection: RtcConnection(channelId: widget.channelId),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      }
     } else {
       return Stack(
         fit: StackFit.expand,
@@ -323,9 +406,9 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                if (state.remoteUid == null)
+                if (state.remoteUids.isEmpty)
                   Text(
-                    "Appel vocal en cours...",
+                    "En attente des autres participants...",
                     style: TextStyle(color: Colors.white.withAlpha(150), fontSize: 16),
                   ),
               ],
@@ -334,6 +417,40 @@ class _CallScreenState extends ConsumerState<CallScreen> {
         ],
       );
     }
+  }
+
+  Widget _buildNetworkIndicator(int quality) {
+    Color color = Colors.grey;
+    IconData icon = Icons.signal_cellular_alt_rounded;
+    
+    // 0: Unknown, 1: Excellent, 2: Good, 3: Poor, 4: Bad, 5: VBad, 6: Down
+    if (quality == 1 || quality == 2) {
+      color = Colors.greenAccent;
+    } else if (quality == 3) {
+      color = Colors.orangeAccent;
+    } else if (quality >= 4 && quality <= 6) {
+      color = Colors.redAccent;
+      icon = Icons.signal_cellular_connected_no_internet_0_bar_rounded;
+    }
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.black.withAlpha(100),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 14),
+          const SizedBox(width: 4),
+          Text(
+            quality == 0 ? "Calcul..." : (quality <= 2 ? "Excellente" : (quality == 3 ? "Moyenne" : "Faible")),
+            style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildCallAction({

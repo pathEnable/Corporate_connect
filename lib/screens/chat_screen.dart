@@ -11,6 +11,7 @@ import '../widgets/chat/skeleton_message.dart';
 import '../services/room_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/premium_background.dart';
+import '../widgets/ai_summary_panel.dart';
 import 'room_details_screen.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
@@ -73,6 +74,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     super.dispose();
   }
 
+  void _showAISummary() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => AISummaryPanel(roomId: widget.roomId),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Optimisation : On n'écoute que les propriétés nécessaires pour éviter des rebuilds inutiles
@@ -99,6 +109,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         roomName: widget.roomName,
         isGroup: widget.isGroup,
         onShowInfo: _showGroupInfo,
+        onShowAI: _showAISummary,
       ),
       body: Column(
         children: [
@@ -117,6 +128,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     itemCount: messages.length,
                     itemBuilder: (context, index) {
                       final msg = messages[index];
+                      final msgId = msg['message_id']?.toString() ?? msg['id']?.toString() ?? '';
                       return MessageBubble(
                         content: msg['content'] ?? '',
                         isMe: msg['sender_id'].toString() == _userId,
@@ -128,7 +140,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         replyToContent: msg['reply_to_content'],
                         caption: msg['caption'],
                         localPath: msg['local_path'],
+                        // Réactions
+                        currentUserId: _userId,
+                        reactions: msg['reactions'] != null
+                            ? Map<String, dynamic>.from(msg['reactions'] as Map)
+                            : null,
+                        onReaction: msgId.isNotEmpty
+                            ? (emoji) => ref
+                                .read(chatProvider(widget.roomId).notifier)
+                                .toggleReaction(msgId, emoji)
+                            : null,
                         onReply: () => setState(() => _replyingTo = msg),
+                        messageId: msgId,
+                        roomId: widget.roomId,
+                        metadata: msg['metadata_'] != null
+                            ? Map<String, dynamic>.from(msg['metadata_'] as Map)
+                            : null,
                       );
                     },
                   ),
@@ -146,6 +173,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             roomId: widget.roomId,
             replyingTo: _replyingTo,
             onCancelReply: () => setState(() => _replyingTo = null),
+            members: _members,
           ),
         ],
       ),

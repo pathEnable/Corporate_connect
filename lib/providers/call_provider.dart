@@ -59,13 +59,18 @@ class CallNotifier extends AutoDisposeNotifier<CallState> {
           },
           onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
             RingtoneService.instance.stop();
-            state = state.copyWith(remoteUid: remoteUid);
+            state = state.addRemoteUid(remoteUid);
+          },
+          onNetworkQuality: (connection, remoteUid, txQuality, rxQuality) {
+            if (remoteUid == 0 || state.remoteUids.contains(remoteUid)) {
+              state = state.copyWith(networkQuality: txQuality.index);
+            }
           },
           onUserOffline: (RtcConnection connection, int remoteUid, UserOfflineReasonType reason) {
-            state = state.updateRemoteUid(null);
+            state = state.removeRemoteUid(remoteUid);
           },
           onLeaveChannel: (RtcConnection connection, RtcStats stats) {
-            state = state.copyWith(localUserJoined: false, remoteUid: null);
+            state = state.copyWith(localUserJoined: false, remoteUids: const {});
           },
           onError: (ErrorCodeType err, String msg) {
             state = state.copyWith(errorMessage: "Erreur Agora: $msg", isLoading: false);
@@ -93,6 +98,28 @@ class CallNotifier extends AutoDisposeNotifier<CallState> {
     final newState = !state.isCameraOn;
     await state.engine?.muteLocalVideoStream(state.isCameraOn);
     state = state.copyWith(isCameraOn: newState);
+  }
+  
+  Future<void> toggleSpeaker() async {
+    final newState = !state.isSpeakerOn;
+    await state.engine?.setEnableSpeakerphone(newState);
+    state = state.copyWith(isSpeakerOn: newState);
+  }
+
+  Future<void> switchCamera() async {
+    await state.engine?.switchCamera();
+  }
+
+  Future<void> toggleScreenShare() async {
+    if (state.engine == null) return;
+    
+    final newState = !state.isScreenSharing;
+    if (newState) {
+      await state.engine?.startScreenCapture(const ScreenCaptureParameters2(captureAudio: true, captureVideo: true));
+    } else {
+      await state.engine?.stopScreenCapture();
+    }
+    state = state.copyWith(isScreenSharing: newState);
   }
 
   Future<void> leaveChannel() async {

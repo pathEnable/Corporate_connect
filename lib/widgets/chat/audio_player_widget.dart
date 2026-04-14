@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:audioplayers/audioplayers.dart';
+import 'package:just_audio/just_audio.dart' as ja;
 import '../../theme/app_theme.dart';
 import '../../services/media_service.dart';
 
@@ -22,15 +22,17 @@ class AudioPlayerWidget extends StatefulWidget {
 }
 
 class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
-  late AudioPlayer _audioPlayer;
-  PlayerState _playerState = PlayerState.stopped;
+  late ja.AudioPlayer _audioPlayer;
+  bool _isPlaying = false;
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
+  double _playbackSpeed = 1.0;
+  
   late StreamSubscription _durationSubscription;
   late StreamSubscription _positionSubscription;
   late StreamSubscription _playerStateSubscription;
 
-  // Mock waveform for visualization
+  // Mock waveform for visualization fallback
   final List<double> _waveformData = [
     0.3, 0.5, 0.4, 0.7, 0.5, 0.9, 0.6, 0.4, 0.8, 0.5, 
     0.3, 0.6, 0.4, 0.7, 0.5, 1.0, 0.6, 0.4, 0.8, 0.5,
@@ -40,19 +42,42 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
   @override
   void initState() {
     super.initState();
-    _audioPlayer = AudioPlayer();
+    _audioPlayer = ja.AudioPlayer();
     
-    _playerStateSubscription = _audioPlayer.onPlayerStateChanged.listen((state) {
-      if (mounted) setState(() => _playerState = state);
+    _playerStateSubscription = _audioPlayer.playerStateStream.listen((state) {
+      if (mounted) {
+        setState(() {
+          _isPlaying = state.playing && state.processingState != ja.ProcessingState.completed;
+          if (state.processingState == ja.ProcessingState.completed) {
+            _audioPlayer.seek(Duration.zero);
+            _audioPlayer.pause();
+          }
+        });
+      }
     });
 
-    _durationSubscription = _audioPlayer.onDurationChanged.listen((duration) {
-      if (mounted) setState(() => _duration = duration);
+    _durationSubscription = _audioPlayer.durationStream.listen((duration) {
+      if (mounted && duration != null) setState(() => _duration = duration);
     });
 
-    _positionSubscription = _audioPlayer.onPositionChanged.listen((position) {
+    _positionSubscription = _audioPlayer.positionStream.listen((position) {
       if (mounted) setState(() => _position = position);
     });
+
+    _initAudio();
+  }
+
+  Future<void> _initAudio() async {
+    try {
+      if (widget.localPath != null && File(widget.localPath!).existsSync()) {
+        await _audioPlayer.setFilePath(widget.localPath!);
+      } else {
+        final fullUrl = await MediaService().getDownloadUrl(widget.url);
+        await _audioPlayer.setUrl(fullUrl);
+      }
+    } catch (_) {
+      try { await _audioPlayer.setUrl(widget.url); } catch (_) {}
+    }
   }
 
   @override
@@ -65,22 +90,25 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
   }
 
   Future<void> _togglePlay() async {
-    if (_playerState == PlayerState.playing) {
+    if (_isPlaying) {
       await _audioPlayer.pause();
     } else {
-      Source source;
-      if (widget.localPath != null && File(widget.localPath!).existsSync()) {
-        source = DeviceFileSource(widget.localPath!);
-      } else {
-        try {
-          final fullUrl = await MediaService().getDownloadUrl(widget.url);
-          source = UrlSource(fullUrl);
-        } catch (e) {
-          source = UrlSource(widget.url);
-        }
-      }
-      await _audioPlayer.play(source);
+      await _audioPlayer.play();
     }
+  }
+
+  Future<void> _toggleSpeed() async {
+    double newSpeed;
+    if (_playbackSpeed == 1.0) {
+      newSpeed = 1.5;
+    } else if (_playbackSpeed == 1.5) {
+      newSpeed = 2.0;
+    } else {
+      newSpeed = 1.0;
+    }
+    
+    await _audioPlayer.setSpeed(newSpeed);
+    setState(() => _playbackSpeed = newSpeed);
   }
 
   String _formatDuration(Duration duration) {
@@ -113,7 +141,7 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                _playerState == PlayerState.playing 
+                _isPlaying
                     ? Icons.pause_rounded 
                     : Icons.play_arrow_rounded,
                 color: primaryColor,
@@ -162,6 +190,20 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
                     Text(
                       _formatDuration(_position),
                       style: TextStyle(color: secondaryColor, fontSize: 10),
+                    ),
+                    GestureDetector(
+                      onTap: _toggleSpeed,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: primaryColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          "${_playbackSpeed}x",
+                          style: TextStyle(color: primaryColor, fontSize: 9, fontWeight: FontWeight.bold),
+                        ),
+                      ),
                     ),
                     Text(
                       _formatDuration(_duration),

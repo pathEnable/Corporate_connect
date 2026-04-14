@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -16,14 +16,16 @@ class Profile(Base):
     full_name = Column(String, index=True, nullable=False)
     username = Column(String, unique=True, index=True)
     avatar_url = Column(String, nullable=True)
-    bio = Column(String, nullable=True) # Nouveau : Biographie de l'utilisateur
-    job_title = Column(String, nullable=True) # Nouveau : Poste occupé
+    bio = Column(String, nullable=True) # Biographie de l'utilisateur
+    job_title = Column(String, nullable=True) # Poste occupé
+    department = Column(String, nullable=True)  # Nouveau : Département de l'utilisateur
+    skills = Column(String, nullable=True)  # Nouveau : Compétences (séparées par des virgules)
     is_online = Column(Boolean, default=False)
-    presence_status = Column(String, default="online") # 'online', 'busy', 'dnd', 'meeting', 'remote'
+    presence_status = Column(String, default="online") # 'online', 'busy', 'dnd', 'meeting', 'remote', 'vacation'
     fcm_token = Column(String, nullable=True)
     public_key = Column(String, nullable=True) # Clé publique pour l'E2EE (Base64)
-    is_active = Column(Boolean, default=True) # Nouveau : Pour bannissement
-    is_admin = Column(Boolean, default=False) # Nouveau : Pour accès admin
+    is_active = Column(Boolean, default=True) # Pour bannissement
+    is_admin = Column(Boolean, default=False) # Pour accès admin
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -61,10 +63,15 @@ class Message(Base):
     room_id = Column(UUID(as_uuid=True), ForeignKey("rooms.id", ondelete="CASCADE"), nullable=False, index=True)
     sender_id = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
     content = Column(Text, nullable=True)
-    message_type = Column(String, default="text")
+    message_type = Column(String, default="text")  # 'text','image','file','audio','poll','task'
     reply_to_id = Column(UUID(as_uuid=True), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True)
-    is_read = Column(Boolean, default=False) # Nouveau : Accusé de lecture
+    is_read = Column(Boolean, default=False) # Accusé de lecture
     read_at = Column(DateTime(timezone=True), nullable=True) # Date de lecture
+    # Nouveau : Métadonnées pour sondages et tâches (JSON)
+    metadata_ = Column(JSON, nullable=True)
+    # Nouveau : Messages programmés
+    scheduled_for = Column(DateTime(timezone=True), nullable=True)
+    is_sent = Column(Boolean, default=True)  # False = programmé, pas encore envoyé
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     room = relationship("Room", back_populates="messages")

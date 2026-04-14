@@ -65,6 +65,7 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
     return ChatState(
       messages: const [],
       typingUsers: const {},
+      members: const {},
       memberKeys: const {},
       isLoading: false,
     );
@@ -92,12 +93,17 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
     try {
       final members = await _roomService.getRoomMembers(roomId);
       final keys = <String, String>{};
+      final names = <String, String>{};
       for (var m in members) {
+        final id = m['id'].toString();
         if (m['public_key'] != null) {
-          keys[m['id'].toString()] = m['public_key'];
+          keys[id] = m['public_key'];
         }
+        names[id] = m['username'] ?? m['full_name'] ?? 'Inconnu';
       }
-      if (!_isDisposed) state = state.copyWith(memberKeys: keys);
+      if (!_isDisposed) {
+        state = state.copyWith(memberKeys: keys, members: names);
+      }
       
       // Déchiffrement du cache local dès qu'on a les clés
       if (state.messages.isNotEmpty) {
@@ -337,17 +343,58 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
         }
       });
     } else if (message['type'] == 'user_joined') {
-      // Quelqu'un a rejoint le salon → mettre à jour la présence
-      if (!_isDisposed) {
-        state = state.copyWith(otherUserOnline: true);
-      }
+      if (!_isDisposed) state = state.copyWith(otherUserOnline: true);
     } else if (message['type'] == 'user_left') {
-      // Quelqu'un a quitté le salon → mettre à jour la présence
       final leftUserId = message['user_id'];
       if (leftUserId != _userId && !_isDisposed) {
         state = state.copyWith(otherUserOnline: false);
       }
+    } else if (message['type'] == 'reaction_update') {
+      // Mise à jour des réactions d'un message reçue via WebSocket
+      final msgId = message['message_id']?.toString();
+      final reactions = message['reactions'];
+      if (msgId != null && reactions != null && !_isDisposed) {
+        final updated = state.messages.map((m) {
+          if (m['id'].toString() == msgId) {
+            return {...m, 'reactions': reactions};
+          }
+          return m;
+        }).toList();
+        state = state.copyWith(messages: updated);
+      }
     }
+  }
+
+  /// Bascule une réaction emoji sur un message (optimiste + WebSocket).
+  void toggleReaction(String messageId, String emoji) {
+    if (_userId == null) return;
+
+    // 1. Mise à jour optimiste locale immédiate
+    final updatedMessages = state.messages.map((m) {
+      if (m['id'].toString() != messageId) return m;
+
+      final reactions = Map<String, dynamic>.from(
+        (m['reactions'] as Map<String, dynamic>?) ?? {},
+      );
+      final users = List<String>.from((reactions[emoji] as List?) ?? []);
+
+      if (users.contains(_userId)) {
+        users.remove(_userId);
+      } else {
+        users.add(_userId!);
+      }
+      reactions[emoji] = users;
+      return {...m, 'reactions': reactions};
+    }).toList();
+
+    if (!_isDisposed) state = state.copyWith(messages: updatedMessages);
+
+    // 2. Envoyer via WebSocket pour persistance serveur
+    _chatService.sendMessage(
+      emoji,
+      type: 'reaction',
+      data: {'message_id': messageId, 'emoji': emoji},
+    );
   }
 
   void sendMessage(String content, String type, {Map<String, dynamic>? extraData}) async {
@@ -389,6 +436,8 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
       'status': 'pending',
       'is_encrypted': wasEncrypted,
       'created_at': DateTime.now().toIso8601String(),
+      if (extraData != null && extraData.containsKey('metadata_'))
+        'metadata_': extraData['metadata_'],
     };
 
     if (!_isDisposed) {
