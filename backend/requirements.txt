@@ -12,6 +12,6 @@ python-dotenv
 firebase-admin
 httpx
 alembic
-sentry-sdk[fastapi]
+sentry-sdk[fastapi]>=2.0.0
 google-generativeai
 mistralai
