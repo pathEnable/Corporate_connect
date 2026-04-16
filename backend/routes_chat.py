@@ -213,7 +213,7 @@ async def start_redis_listener():
     """Tâche en arrière-plan écoutant les messages Redis et les distribuant localement."""
     pubsub = redis_client.pubsub()
     await pubsub.subscribe("chat_broadcast")
-    print("🚀 Redis PubSub listener started")
+    print("[Redis] Redis PubSub listener started")
     try:
         async for message in pubsub.listen():
             if message["type"] == "message":

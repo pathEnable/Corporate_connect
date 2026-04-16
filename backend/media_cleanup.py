@@ -36,7 +36,7 @@ async def media_cleanup_worker():
     Worker d'arrière-plan pour le nettoyage des médias.
     S'exécute toutes les 6 heures.
     """
-    print("🧹 Worker de nettoyage des médias démarré.")
+    print("[MediaCleanup] Worker de nettoyage des medias demarre.")
     
     # Attendre un peu au démarrage pour ne pas surcharger l'init
     await asyncio.sleep(60)

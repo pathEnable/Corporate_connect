@@ -17,7 +17,7 @@ async def scheduled_message_worker(manager):
     Vérifie toutes les 60s s'il existe des messages programmés à envoyer.
     Un message est dû quand :  scheduled_for <= now()  ET  is_sent == False
     """
-    print("⏰ Scheduler de messages programmés démarré.")
+    print("[Scheduler] Scheduler de messages programmes demarre.")
     while True:
         try:
             await _flush_pending_messages(manager)
