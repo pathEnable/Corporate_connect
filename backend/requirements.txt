@@ -11,7 +11,7 @@ agora-token-builder==1.0.0
 python-dotenv~=1.0.0
 firebase-admin~=6.5.0
 httpx~=0.28.0
-alembic==1.15.2
+alembic~=1.18.0
 sentry-sdk[fastapi]~=2.0.0
 google-generativeai~=0.8.6
 mistralai~=2.3.2

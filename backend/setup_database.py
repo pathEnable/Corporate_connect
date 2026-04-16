@@ -14,21 +14,21 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def create_tables():
     """Créer toutes les tables définies dans les modèles."""
-    print("🔧 Création des tables...")
+    print("Mise en place des tables...")
     Base.metadata.create_all(bind=engine)
-    print("✅ Tables créées avec succès !")
+    print("Tables creees avec succes !")
     
     # Lister les tables créées
     from sqlalchemy import inspect
     inspector = inspect(engine)
     tables = inspector.get_table_names()
-    print(f"\n📋 Tables dans la base de données :")
+    print(f"\nTables dans la base de données :")
     for table in tables:
         columns = inspector.get_columns(table)
-        print(f"  📁 {table} ({len(columns)} colonnes)")
+        print(f"  [Table] {table} ({len(columns)} colonnes)")
         for col in columns:
             nullable = "NULL" if col['nullable'] else "NOT NULL"
-            print(f"      ├─ {col['name']} : {col['type']} {nullable}")
+            print(f"      - {col['name']} : {col['type']} {nullable}")
 
 
 def create_admin():
@@ -37,7 +37,7 @@ def create_admin():
     try:
         existing = db.query(Profile).filter(Profile.email == "admin@corporate-connect.com").first()
         if existing:
-            print("\n⚠️  L'administrateur existe déjà.")
+            print("\nAdmin: L'administrateur existe deja.")
             return
         
         admin = Profile(
@@ -50,10 +50,10 @@ def create_admin():
         )
         db.add(admin)
         db.commit()
-        print("\n✅ Administrateur créé !")
-        print("   📧 Email : admin@corporate-connect.com")
-        print("   🔑 Mot de passe : Admin@123")
-        print("   ⚠️  CHANGEZ CE MOT DE PASSE EN PRODUCTION !")
+        print("\nAdmin: Administrateur cree !")
+        print("   Email : admin@corporate-connect.com")
+        print("   Mot de passe : Admin@123")
+        print("   Attention: CHANGEZ CE MOT DE PASSE EN PRODUCTION !")
     finally:
         db.close()
 
@@ -61,29 +61,25 @@ def create_admin():
 def verify_connection():
     """Vérifier la connexion à la base de données."""
     from config import DATABASE_URL
-    print(f"🔌 Connexion à : {DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else DATABASE_URL}")
+    print(f"Connexion a : {DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else DATABASE_URL}")
     try:
         with engine.connect() as conn:
-            conn.execute("SELECT 1" if hasattr(conn, 'execute') else None)
-        print("✅ Connexion réussie !")
+            from sqlalchemy import text
+            conn.execute(text("SELECT 1"))
+        print("Connexion reussie !")
         return True
     except Exception as e:
-        print(f"❌ Erreur de connexion : {e}")
-        print("\n💡 Assurez-vous que :")
-        print("   1. PostgreSQL est installé et démarré")
-        print("   2. La base 'connect_db' existe")
-        print("   3. Les identifiants dans config.py sont corrects")
-        print("\n   Commandes pour créer la base :")
-        print("   $ psql -U postgres")
-        print("   postgres=# CREATE DATABASE connect_db;")
-        print("   postgres=# CREATE USER user WITH PASSWORD 'password';")
-        print("   postgres=# GRANT ALL PRIVILEGES ON DATABASE connect_db TO user;")
+        print(f"Erreur de connexion : {e}")
+        print("\nAssurez-vous que :")
+        print("   1. PostgreSQL est installe et demarre")
+        print("   2. La base de donnees existe")
+        print("   3. Les identifiants dans .env sont corrects")
         return False
 
 
 if __name__ == "__main__":
     print("=" * 55)
-    print("  Corporate Connect — Setup Base de Données")
+    print("  Corporate Connect - Setup Base de Donnees")
     print("=" * 55)
     print()
     
@@ -91,7 +87,7 @@ if __name__ == "__main__":
         create_tables()
         create_admin()
         print("\n" + "=" * 55)
-        print("  ✅ Base de données prête !")
+        print("  Base de données prete !")
         print("=" * 55)
     else:
-        print("\n❌ Impossible de continuer sans connexion à la base.")
+        print("\nImpossible de continuer sans connexion a la base.")
