@@ -65,8 +65,8 @@ class _GlobalCallListenerState extends ConsumerState<GlobalCallListener> {
           break;
         case 'call_cancel':
           ref.read(callProvider.notifier).onCallCancelled();
-          // Fermer toute UI CallKit native active
-          FlutterCallkitIncoming.endAllCalls();
+          // Fermer toute UI CallKit native active (uniquement mobile)
+          if (!kIsWeb) FlutterCallkitIncoming.endAllCalls();
           break;
       }
     });
