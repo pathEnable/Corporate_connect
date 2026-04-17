@@ -42,7 +42,7 @@ def send_push_notification(token: str, title: str, body: str, data: dict = None,
         priority='high',  # Priorité haute pour les appels — réveille l'app
         notification=messaging.AndroidNotification(
             channel_id='call_channel',  # Canal déclaré dans AndroidManifest
-            priority=messaging.AndroidNotificationPriority.MAX,
+            notification_priority='max',
             default_vibrate_timings=True,
         ) if not is_call else None,  # Pour les appels, pas de notif visible (CallKit gère)
     )

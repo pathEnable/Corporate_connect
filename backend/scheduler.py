@@ -26,8 +26,8 @@ async def scheduled_message_worker(manager):
         await asyncio.sleep(60)  # cadence : 1 minute
 
 
-def _flush_pending_messages(manager):
-    """Wrapper synchrone appelé dans run_in_threadpool."""
+async def _flush_pending_messages(manager):
+    """Vérifie et envoie les messages programmés."""
     db: Session = SessionLocal()
     try:
         now = datetime.now(timezone.utc)
@@ -45,6 +45,8 @@ def _flush_pending_messages(manager):
             return
 
         print(f"[Scheduler] {len(pending)} message(s) programmé(s) à envoyer.")
+
+        from database import redis_client
 
         for msg in pending:
             msg.is_sent = True
@@ -67,17 +69,11 @@ def _flush_pending_messages(manager):
             }
 
             # Publier via Redis (le listener distribue aux WebSockets actifs)
-            import asyncio as _asyncio
-            from database import redis_client
-
-            async def _pub(payload, r_id):
-                data = {"room_id": r_id, "payload": payload}
+            try:
+                data = {"room_id": room_id, "payload": broadcast_payload}
                 await redis_client.publish("chat_broadcast", json.dumps(data))
-
-            # Planifier la coroutine Redis depuis le thread
-            loop = _asyncio.get_event_loop()
-            if loop.is_running():
-                loop.create_task(_pub(broadcast_payload, room_id))
+            except Exception as e:
+                print(f"[Scheduler] Erreur Redis publish: {e}")
 
             # Envoyer les notifications push aux membres hors-ligne
             members = db.query(RoomMember).filter(RoomMember.room_id == msg.room_id).all()
@@ -98,6 +94,7 @@ def _flush_pending_messages(manager):
                             notif_body = "📊 Nouveau sondage"
                         elif msg.message_type == "task":
                             notif_body = "✅ Nouvelle tâche assignée"
+                        
                         send_push_notification(
                             token=p.fcm_token,
                             title=sender_name if not room or not room.is_group else f"{sender_name} ({room.name})",

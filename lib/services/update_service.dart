@@ -13,11 +13,12 @@ class UpdateService {
   /// Vérifie si une mise à jour est disponible
   Future<Map<String, dynamic>?> checkForUpdate() async {
     try {
-      final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/version'));
+      final response =
+          await http.get(Uri.parse('${ApiConfig.baseUrl}/version'));
       if (response.statusCode == 200) {
         final serverData = jsonDecode(response.body);
         final int serverVersion = serverData['version_code'];
-        
+
         final packageInfo = await PackageInfo.fromPlatform();
         final int currentVersion = int.parse(packageInfo.buildNumber);
 

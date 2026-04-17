@@ -1,5 +1,5 @@
 import time
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from database import get_db
 from models import CallLog, Profile, RoomMember
@@ -133,7 +133,7 @@ async def initiate_call(
 @router.post("/{call_id}/answer")
 async def answer_call(
     call_id: UUID,
-    channel_name: str = None,
+    data: dict = Body(...),
     current_user: Profile = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -141,6 +141,7 @@ async def answer_call(
     Le destinataire accepte l'appel. Met à jour le statut et
     retourne le token Agora pour rejoindre le canal.
     """
+    channel_name = data.get("channel_name")
     call = db.query(CallLog).filter(CallLog.id == call_id).first()
     if not call:
         raise HTTPException(status_code=404, detail="Appel introuvable")

@@ -52,11 +52,14 @@ class CallSignalingService {
     try {
       final token = await _authService.getToken();
       final response = await http.post(
-        Uri.parse('${ApiConfig.baseUrl}/calls/$callId/answer?channel_name=$channelName'),
+        Uri.parse('${ApiConfig.baseUrl}/calls/$callId/answer'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
+        body: jsonEncode({
+          'channel_name': channelName,
+        }),
       );
 
       if (response.statusCode == 200) {

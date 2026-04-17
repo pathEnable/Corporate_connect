@@ -22,6 +22,11 @@ class HomeNotifier extends Notifier<HomeState> {
 
   @override
   HomeState build() {
+    // Empêche la destruction/recréation du provider lors des rebuilds
+    // de l'arborescence (ex. changement de thème, verrouillage biométrique).
+    // Sans keepAlive, _init() serait rappelé à chaque retour en foreground.
+    ref.keepAlive();
+
     ref.listen(roomMigrationProvider, (previous, next) {
       if (next.isNotEmpty) {
         _handleRoomMigrations(next);
@@ -33,7 +38,7 @@ class HomeNotifier extends Notifier<HomeState> {
       _globalEventsSub?.cancel();
     });
     
-    // Chargement initial
+    // Chargement initial (appelé une seule fois grâce à keepAlive)
     _init();
     
     return HomeState();

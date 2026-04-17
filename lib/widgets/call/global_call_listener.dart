@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_callkit_incoming/entities/call_event.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../main.dart';
 import '../../providers/call_provider.dart';
 import '../../models/call_state.dart';
@@ -24,6 +26,8 @@ class GlobalCallListener extends ConsumerStatefulWidget {
 class _GlobalCallListenerState extends ConsumerState<GlobalCallListener> {
   StreamSubscription<Map<String, dynamic>>? _wsSubscription;
   StreamSubscription<dynamic>? _callKitSubscription;
+  // Flag pour éviter d'empiler plusieurs overlays d'appel entrant
+  bool _isIncomingScreenVisible = false;
 
   @override
   void initState() {
@@ -41,7 +45,8 @@ class _GlobalCallListenerState extends ConsumerState<GlobalCallListener> {
 
   /// Écoute les événements du WebSocket global (temps réel, app en foreground).
   void _listenToWebSocket() {
-    _wsSubscription = GlobalPresenceService.instance.globalEventsStream.listen((event) {
+    _wsSubscription =
+        GlobalPresenceService.instance.globalEventsStream.listen((event) {
       final type = event['type']?.toString() ?? '';
       debugPrint('📡 GlobalCallListener WS event: $type');
 
@@ -80,22 +85,41 @@ class _GlobalCallListenerState extends ConsumerState<GlobalCallListener> {
 
     // Mettre à jour le CallProvider
     ref.read(callProvider.notifier).onIncomingCall(
-      callId: callId,
-      channelName: channelName,
-      callerName: callerName,
-      callerAvatar: callerAvatar,
-      roomId: roomId,
-      isVideo: isVideo,
-    );
+          callId: callId,
+          channelName: channelName,
+          callerName: callerName,
+          callerAvatar: callerAvatar,
+          roomId: roomId,
+          isVideo: isVideo,
+        );
+
+    // ✅ FIX PERMISSIONS : Demander les permissions dès maintenant (en arrière-plan),
+    // avant que l'utilisateur clique sur "Accepter". Évite le délai qui peut
+    // faire rater la synchronisation avec le serveur Agora.
+    _prefetchPermissions(isVideo);
 
     // Naviguer vers l'écran d'appel entrant (overlay)
     _navigateToIncomingCall();
   }
 
-  /// Écoute les événements CallKit (pour quand l'utilisateur interagit 
+  /// Pré-demande les permissions micro/caméra en arrière-plan.
+  Future<void> _prefetchPermissions(bool isVideo) async {
+    if (kIsWeb) return;
+    try {
+      await Permission.microphone.request();
+      if (isVideo) await Permission.camera.request();
+    } catch (e) {
+      debugPrint('⚠️ Erreur pré-demande permissions: $e');
+    }
+  }
+
+  /// Écoute les événements CallKit (pour quand l'utilisateur interagit
   /// avec la notification native en arrière-plan).
   void _listenToCallKit() {
-    _callKitSubscription = FlutterCallkitIncoming.onEvent.listen((CallEvent? event) {
+    if (kIsWeb) return;
+
+    _callKitSubscription =
+        FlutterCallkitIncoming.onEvent.listen((CallEvent? event) {
       if (event == null) return;
       debugPrint('📱 CallKit event: ${event.event}');
 
@@ -131,13 +155,13 @@ class _GlobalCallListenerState extends ConsumerState<GlobalCallListener> {
     final currentState = ref.read(callProvider);
     if (currentState.phase == CallPhase.idle) {
       ref.read(callProvider.notifier).onIncomingCall(
-        callId: callId,
-        channelName: channelName,
-        callerName: callerName,
-        callerAvatar: callerAvatar,
-        roomId: roomId,
-        isVideo: isVideo,
-      );
+            callId: callId,
+            channelName: channelName,
+            callerName: callerName,
+            callerAvatar: callerAvatar,
+            roomId: roomId,
+            isVideo: isVideo,
+          );
     }
 
     // Accepter l'appel et naviguer
@@ -151,19 +175,20 @@ class _GlobalCallListenerState extends ConsumerState<GlobalCallListener> {
   /// L'utilisateur a refusé via CallKit.
   void _handleCallKitDecline(Map<String, dynamic> extra) {
     final currentState = ref.read(callProvider);
-    if (currentState.phase == CallPhase.incomingRinging || currentState.callId != null) {
+    if (currentState.phase == CallPhase.incomingRinging ||
+        currentState.callId != null) {
       ref.read(callProvider.notifier).rejectCall();
     } else {
       // L'appel n'a pas encore été traité — rejeter directement via API
       final callId = extra['call_id']?.toString() ?? '';
       if (callId.isNotEmpty) {
         ref.read(callProvider.notifier).onIncomingCall(
-          callId: callId,
-          channelName: '',
-          callerName: '',
-          roomId: '',
-          isVideo: false,
-        );
+              callId: callId,
+              channelName: '',
+              callerName: '',
+              roomId: '',
+              isVideo: false,
+            );
         ref.read(callProvider.notifier).rejectCall();
       }
     }
@@ -171,18 +196,28 @@ class _GlobalCallListenerState extends ConsumerState<GlobalCallListener> {
 
   /// Naviguer vers l'écran d'appel entrant (IncomingCallOverlay).
   void _navigateToIncomingCall() {
-    final nav = navigatorKey.currentState;
-    if (nav != null) {
-      nav.push(
-        PageRouteBuilder(
-          opaque: false,
-          pageBuilder: (_, __, ___) => const _IncomingCallScreen(),
-          transitionsBuilder: (_, animation, __, child) {
-            return FadeTransition(opacity: animation, child: child);
-          },
-        ),
-      );
+    // Guard : ne pas empiler deux overlays si l'un est déjà visible
+    if (_isIncomingScreenVisible) {
+      debugPrint('⚠️ Overlay appel entrant déjà visible — ignoré');
+      return;
     }
+
+    final nav = navigatorKey.currentState;
+    if (nav == null) return;
+
+    _isIncomingScreenVisible = true;
+    nav.push(
+      PageRouteBuilder(
+        opaque: false,
+        pageBuilder: (_, __, ___) => const _IncomingCallScreen(),
+        transitionsBuilder: (_, animation, __, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
+    ).whenComplete(() {
+      // Quand l'overlay est fermé (peu importe la raison), réinitialiser le flag
+      _isIncomingScreenVisible = false;
+    });
   }
 
   /// Naviguer vers le CallScreen (après acceptation).
@@ -202,7 +237,6 @@ class _GlobalCallListenerState extends ConsumerState<GlobalCallListener> {
   }
 }
 
-
 /// Écran d'appel entrant (overlay semi-transparent) avec effet Glassmorphism.
 class _IncomingCallScreen extends ConsumerWidget {
   const _IncomingCallScreen();
@@ -221,10 +255,12 @@ class _IncomingCallScreen extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    final hasAvatar = callState.otherUserAvatar != null && callState.otherUserAvatar!.isNotEmpty;
+    final hasAvatar = callState.otherUserAvatar != null &&
+        callState.otherUserAvatar!.isNotEmpty;
 
     return Scaffold(
-      backgroundColor: Colors.transparent, // Background transparent pour voir l'effet
+      backgroundColor:
+          Colors.transparent, // Background transparent pour voir l'effet
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -235,13 +271,15 @@ class _IncomingCallScreen extends ConsumerWidget {
               fit: BoxFit.cover,
             )
           else
-            Container(color: const Color(0xFF1E293B)), // Fallback dark gradient base
+            Container(
+                color: const Color(0xFF1E293B)), // Fallback dark gradient base
 
           // Couche d'assombrissement et de flou (Glassmorphism)
           BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
             child: Container(
-              color: Colors.black.withValues(alpha: 0.65), // Assombrir fortement l'arrière-plan
+              color: Colors.black.withValues(
+                  alpha: 0.65), // Assombrir fortement l'arrière-plan
             ),
           ),
 
@@ -250,7 +288,7 @@ class _IncomingCallScreen extends ConsumerWidget {
             child: Column(
               children: [
                 const Spacer(flex: 2),
-                
+
                 // Avatar avec effet de lueur
                 Container(
                   decoration: BoxDecoration(
@@ -266,22 +304,26 @@ class _IncomingCallScreen extends ConsumerWidget {
                   child: Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 2),
+                      border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.2), width: 2),
                     ),
                     padding: const EdgeInsets.all(4),
                     child: CircleAvatar(
                       radius: 65,
                       backgroundColor: const Color(0xFF2A2A4A),
-                      backgroundImage: hasAvatar ? NetworkImage(callState.otherUserAvatar!) : null,
+                      backgroundImage: hasAvatar
+                          ? NetworkImage(callState.otherUserAvatar!)
+                          : null,
                       child: !hasAvatar
-                          ? const Icon(Icons.person, size: 65, color: Colors.white70)
+                          ? const Icon(Icons.person,
+                              size: 65, color: Colors.white70)
                           : null,
                     ),
                   ),
                 ),
-                
+
                 const SizedBox(height: 32),
-                
+
                 // Nom de l'appelant
                 Text(
                   callState.otherUserName ?? 'Inconnu',
@@ -293,9 +335,9 @@ class _IncomingCallScreen extends ConsumerWidget {
                   ),
                   textAlign: TextAlign.center,
                 ),
-                
+
                 const SizedBox(height: 12),
-                
+
                 // Type d'appel avec animation organique
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -307,7 +349,9 @@ class _IncomingCallScreen extends ConsumerWidget {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      callState.isVideo ? 'Appel vidéo entrant' : 'Appel audio entrant',
+                      callState.isVideo
+                          ? 'Appel vidéo entrant'
+                          : 'Appel audio entrant',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.8),
                         fontSize: 18,
@@ -318,9 +362,9 @@ class _IncomingCallScreen extends ConsumerWidget {
                     const _AnimatedRippleDots(), // Animation améliorée
                   ],
                 ),
-                
+
                 const Spacer(flex: 3),
-                
+
                 // Boutons d'action (Accepter / Refuser) en mode premium
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 40),
@@ -334,12 +378,13 @@ class _IncomingCallScreen extends ConsumerWidget {
                         label: 'Refuser',
                         onTap: () async {
                           await ref.read(callProvider.notifier).rejectCall();
-                          if (context.mounted && Navigator.of(context).canPop()) {
+                          if (context.mounted &&
+                              Navigator.of(context).canPop()) {
                             Navigator.of(context).pop();
                           }
                         },
                       ),
-                      
+
                       // Accepter (Plus grand et animé)
                       _PremiumCallActionButton(
                         icon: Icons.call,
@@ -347,11 +392,14 @@ class _IncomingCallScreen extends ConsumerWidget {
                         label: 'Accepter',
                         isPulse: true, // Faire pulser le bouton d'acceptation
                         onTap: () async {
-                          final success = await ref.read(callProvider.notifier).acceptCall();
+                          final success = await ref
+                              .read(callProvider.notifier)
+                              .acceptCall();
                           if (success && context.mounted) {
                             // Remplacer l'overlay par le CallScreen
                             navigatorKey.currentState?.pushAndRemoveUntil(
-                              MaterialPageRoute(builder: (_) => const CallScreen()),
+                              MaterialPageRoute(
+                                  builder: (_) => const CallScreen()),
                               (route) => route.isFirst,
                             );
                           }
@@ -387,10 +435,12 @@ class _PremiumCallActionButton extends StatefulWidget {
   });
 
   @override
-  State<_PremiumCallActionButton> createState() => _PremiumCallActionButtonState();
+  State<_PremiumCallActionButton> createState() =>
+      _PremiumCallActionButtonState();
 }
 
-class _PremiumCallActionButtonState extends State<_PremiumCallActionButton> with SingleTickerProviderStateMixin {
+class _PremiumCallActionButtonState extends State<_PremiumCallActionButton>
+    with SingleTickerProviderStateMixin {
   AnimationController? _pulseController;
   Animation<double>? _pulseAnimation;
 
@@ -425,7 +475,8 @@ class _PremiumCallActionButtonState extends State<_PremiumCallActionButton> with
             width: 75,
             height: 75,
             decoration: BoxDecoration(
-              color: widget.color.withValues(alpha: 0.9), // Lame légèrement transcendante
+              color: widget.color
+                  .withValues(alpha: 0.9), // Lame légèrement transcendante
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(

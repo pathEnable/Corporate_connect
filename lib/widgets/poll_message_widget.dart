@@ -7,6 +7,7 @@ import '../../services/api_config.dart';
 class PollMessageWidget extends StatefulWidget {
   final String messageId;
   final String roomId;
+  final String question; // Ajouté
   final Map<String, dynamic> metadata;
   final bool isMe;
 
@@ -14,6 +15,7 @@ class PollMessageWidget extends StatefulWidget {
     super.key,
     required this.messageId,
     required this.roomId,
+    required this.question, // Ajouté
     required this.metadata,
     required this.isMe,
   });
@@ -42,13 +44,37 @@ class _PollMessageWidgetState extends State<PollMessageWidget> {
     }
   }
 
-  List<String> get _options => List<String>.from(_meta['options'] ?? []);
-  Map<String, dynamic> get _votes => Map<String, dynamic>.from(_meta['votes'] ?? {});
-  String get _question => _meta['question'] ?? 'Sondage';
+  List<Map<String, dynamic>> get _options {
+    final rawOptions = _meta['options'];
+    if (rawOptions is! List) return [];
+    
+    return rawOptions.map((opt) {
+      if (opt is Map) {
+        return Map<String, dynamic>.from(opt);
+      } else {
+        // Fallback pour le format List<String>
+        return {'text': opt.toString()};
+      }
+    }).toList();
+  }
+  
+  Map<String, dynamic> get _votes {
+    final rawVotes = _meta['votes'];
+    if (rawVotes is Map) {
+      return Map<String, dynamic>.from(rawVotes);
+    }
+    return {};
+  }
+  
+  String get _question => widget.question.isNotEmpty ? widget.question : (_meta['question'] ?? 'Sondage');
   int get _totalVotes => _votes.length;
 
-  int _getVoteCount(int index) =>
-      _votes.values.where((v) => v == index).length;
+  int _getVoteCount(int index) {
+    return _votes.values.where((v) {
+      // Gérer le cas où l'index est stocké comme String ou int
+      return v.toString() == index.toString();
+    }).length;
+  }
 
   Future<void> _vote(int optionIndex) async {
     if (_isVoting) return;
@@ -204,7 +230,8 @@ class _PollMessageWidgetState extends State<PollMessageWidget> {
           // Options
           ..._options.asMap().entries.map((entry) {
             final i = entry.key;
-            final label = entry.value;
+            final option = entry.value;
+            final label = option['text']?.toString() ?? 'Option';
             final count = _getVoteCount(i);
             final pct = _totalVotes > 0 ? count / _totalVotes : 0.0;
             final votersForOption = _votes.entries.where((e) => e.value == i).map((e) => e.key).toList();

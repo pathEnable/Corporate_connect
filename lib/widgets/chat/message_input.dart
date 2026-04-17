@@ -947,6 +947,7 @@ class _CreatePollModalState extends ConsumerState<_CreatePollModal> {
       'poll',
       extraData: {
         'metadata_': {
+          'question': question,
           'options': optionsData,
           'total_votes': 0,
         }

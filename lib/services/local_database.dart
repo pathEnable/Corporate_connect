@@ -39,7 +39,7 @@ class LocalDatabase {
     try {
       return await openDatabase(
         path,
-        version: 12,
+        version: 13,
         password: dbPassword, // Paramètre SQLCipher pour chiffrer les fichiers .db
         onCreate: _createDB,
         onUpgrade: _upgradeDB,
@@ -151,6 +151,10 @@ class LocalDatabase {
         )
       ''');
     }
+    if (oldVersion < 13) {
+      await db.execute("ALTER TABLE messages ADD COLUMN metadata_ TEXT");
+      await db.execute("ALTER TABLE messages ADD COLUMN reactions TEXT");
+    }
   }
 
   Future<void> _createDB(Database db, int version) async {
@@ -167,6 +171,8 @@ class LocalDatabase {
         reply_to_content TEXT,
         caption TEXT,
         local_path TEXT,
+        metadata_ TEXT,
+        reactions TEXT,
         created_at TEXT NOT NULL
       )
     ''');
@@ -246,6 +252,8 @@ class LocalDatabase {
           'reply_to_content': msg['reply_to_content'],
           'caption': msg['caption'] ?? (msg['data'] != null ? msg['data']['caption'] : null),
           'local_path': msg['local_path'],
+          'metadata_': msg['metadata_'] != null ? jsonEncode(msg['metadata_']) : null,
+          'reactions': msg['reactions'] != null ? jsonEncode(msg['reactions']) : null,
           'created_at': msg['created_at'] ?? msg['timestamp'],
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
@@ -315,12 +323,33 @@ class LocalDatabase {
   Future<List<Map<String, dynamic>>> getMessages(String roomId) async {
     if (kIsWeb) return [];
     final db = await instance.database;
-    return await db.query(
+    final results = await db.query(
       'messages',
       where: 'room_id = ?',
       whereArgs: [roomId],
       orderBy: 'created_at ASC',
     );
+
+    return results.map((row) {
+      final msg = Map<String, dynamic>.from(row);
+      if (msg['metadata_'] != null) {
+        try {
+          msg['metadata_'] = jsonDecode(msg['metadata_']);
+        } catch (e) {
+          debugPrint("❌ Erreur décodage metadata_: $e");
+          msg['metadata_'] = null;
+        }
+      }
+      if (msg['reactions'] != null) {
+        try {
+          msg['reactions'] = jsonDecode(msg['reactions']);
+        } catch (e) {
+          debugPrint("❌ Erreur décodage reactions: $e");
+          msg['reactions'] = null;
+        }
+      }
+      return msg;
+    }).toList();
   }
 
   Future<void> saveRooms(List<Map<String, dynamic>> rooms) async {

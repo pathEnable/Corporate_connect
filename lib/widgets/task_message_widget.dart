@@ -9,6 +9,7 @@ import '../providers/chat_provider.dart';
 class TaskMessageWidget extends ConsumerStatefulWidget {
   final String messageId;
   final String roomId;
+  final String title; // Ajouté
   final Map<String, dynamic> metadata;
   final bool isMe;
 
@@ -16,6 +17,7 @@ class TaskMessageWidget extends ConsumerStatefulWidget {
     super.key,
     required this.messageId,
     required this.roomId,
+    required this.title, // Ajouté
     required this.metadata,
     required this.isMe,
   });
@@ -34,7 +36,7 @@ class _TaskMessageWidgetState extends ConsumerState<TaskMessageWidget>
   @override
   void initState() {
     super.initState();
-    _meta = Map<String, dynamic>.from(widget.metadata);
+    _meta = widget.metadata;
     _checkController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
@@ -52,7 +54,7 @@ class _TaskMessageWidgetState extends ConsumerState<TaskMessageWidget>
     if (widget.metadata != oldWidget.metadata) {
       final wasDone = _isDone;
       setState(() {
-        _meta = Map<String, dynamic>.from(widget.metadata);
+        _meta = widget.metadata;
       });
       if (!wasDone && _isDone) {
         _checkController.forward();
@@ -68,11 +70,11 @@ class _TaskMessageWidgetState extends ConsumerState<TaskMessageWidget>
     super.dispose();
   }
 
-  bool get _isDone => _meta['is_done'] == true;
-  String get _title => _meta['title'] ?? 'Tâche assignée';
-  String get _description => _meta['description'] ?? '';
-  String get _assigneeName => _meta['assignee_name'] ?? '';
-  String get _deadline => _meta['deadline'] ?? '';
+  bool get _isDone => _meta['is_done'] == true || _meta['status'] == 'done';
+  String get _title => widget.title.isNotEmpty ? widget.title : (_meta['title']?.toString() ?? 'Tâche assignée');
+  String get _description => _meta['description']?.toString() ?? '';
+  String get _assigneeName => _meta['assignee_name']?.toString() ?? '';
+  String get _deadline => _meta['deadline']?.toString() ?? '';
 
   Future<void> _toggleDone() async {
     if (_isUpdating) return;

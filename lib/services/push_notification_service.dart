@@ -7,8 +7,8 @@ import 'package:flutter_callkit_incoming/entities/call_kit_params.dart';
 import 'package:flutter_callkit_incoming/entities/android_params.dart';
 import 'package:flutter_callkit_incoming/entities/ios_params.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
-import 'package:uuid/uuid.dart';
 import 'dart:convert';
+import 'package:flutter/foundation.dart'; // Ajouté
 import 'auth_service.dart';
 import 'api_config.dart';
 import '../main.dart';
@@ -16,19 +16,26 @@ import '../screens/chat_screen.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  if (kIsWeb) return; // Pas de background handler FCM sur Web avec cette config
+  
   await Firebase.initializeApp();
   debugPrint("Handling a background message: ${message.messageId}");
   
-  // Si c'est un appel, on déclenche CallKit immédiatement en arrière-plan
   if (message.data['type'] == 'call_offer') {
     await _showCallKitIncoming(message.data);
   }
 }
 
 Future<void> _showCallKitIncoming(Map<String, dynamic> data) async {
-  final uuid = const Uuid().v4();
+  if (kIsWeb) return; // CallKit non supporté sur Web
+
+  // ✅ FIX BUG 8 : Utiliser le vrai call_id comme ID CallKit
+  // (au lieu d'un UUID aléatoire) pour pouvoir l'éteindre spécifiquement.
+  final callId = data['call_id']?.toString();
+  if (callId == null || callId.isEmpty) return;
+
   final params = CallKitParams(
-    id: uuid,
+    id: callId,
     nameCaller: data['caller_name'] ?? 'Inconnu',
     appName: 'Corporate Connect',
     avatar: data['caller_avatar'] ?? '',
@@ -75,8 +82,28 @@ class PushNotificationService {
 
   static Future<void> initialize() async {
     // 1. Initialiser Firebase
-    await Firebase.initializeApp();
+    try {
+      if (kIsWeb) {
+        // Sur Web, Firebase nécessite absolument des options (FirebaseOptions).
+        // Si DefaultFirebaseOptions n'est pas généré, on ignore silencieusement 
+        // ou on logue un avertissement clair pour éviter de bloquer l'UI.
+        debugPrint("🌐 Initialisation Firebase Web...");
+        // await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform); 
+        // ↑ Décommenter après avoir lancé 'flutterfire configure'
+        
+        // Pour l'instant, on tente une init basique mais on s'attend à ce que ça échoue 
+        // si les options manquent.
+        await Firebase.initializeApp();
+      } else {
+        await Firebase.initializeApp();
+      }
+    } catch (e) {
+      debugPrint("Firebase initialization info: $e");
+      debugPrint("💡 Note: Sur Web, assurez-vous d'avoir configuré Firebase avec 'flutterfire configure'.");
+    }
     
+    if (kIsWeb) return; // On arrête l'init FCM/Notifications ici pour le Web
+
     // Configurer le handler d'arrière-plan
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
@@ -105,12 +132,15 @@ class PushNotificationService {
     // 4. Écouter les messages en avant-plan
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       if (message.data['type'] == 'call_offer') {
-        // En avant-plan, on laisse l'Overlay interne gérer la sonnerie si possible,
-        // mais on affiche quand même CallKit pour la cohérence OS.
-        _showCallKitIncoming(message.data);
-      } else {
-        _showLocalNotification(message);
+        // ✅ FIX BUG 1 : En FOREGROUND, le WebSocket (GlobalCallListener) gère
+        // déjà les call_offer via l'overlay in-app. Si on appelait aussi
+        // _showCallKitIncoming ici, l'acceptation serait déclenchée DEUX FOIS
+        // → double appel API answerCall() → erreur serveur + double connexion Agora.
+        // CallKit n'est déclenché QUE pour les messages en BACKGROUND (handler isolé).
+        debugPrint('📲 FCM call_offer en foreground : géré par WebSocket, ignoré ici.');
+        return;
       }
+      _showLocalNotification(message);
     });
 
     // 5. Gérer le clic sur une notification en arrière-plan
@@ -132,26 +162,32 @@ class PushNotificationService {
   }
 
   static Future<void> registerToken(String fcmToken) async {
-    final authToken = await _authService.getToken();
-    if (authToken == null) {
-      debugPrint("FCM Registration: Aucun token d'authentification trouvé. Abandon.");
-      return;
-    }
-
-    Future<Response> makeRequest(String token) async {
-      return await _dio.post(
-        '${ApiConfig.baseUrl}/notifications/register-token',
-        data: {'fcm_token': fcmToken},
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $token',
-          },
-          validateStatus: (status) => status! < 500, // On gère les 401 nous-mêmes
-        ),
-      );
-    }
-
     try {
+      // Vérifier si Firebase est bien initialisé avant de faire quoi que ce soit
+      if (Firebase.apps.isEmpty) {
+        debugPrint("⚠️ FCM Registration: Firebase n'est pas initialisé. Abandon.");
+        return;
+      }
+      
+      final authToken = await _authService.getToken();
+      if (authToken == null) {
+        debugPrint("FCM Registration: Aucun token d'authentification trouvé. Abandon.");
+        return;
+      }
+
+      Future<Response> makeRequest(String token) async {
+        return await _dio.post(
+          '${ApiConfig.baseUrl}/notifications/register-token',
+          data: {'fcm_token': fcmToken},
+          options: Options(
+            headers: {
+              'Authorization': 'Bearer $token',
+            },
+            validateStatus: (status) => status! < 500,
+          ),
+        );
+      }
+
       var response = await makeRequest(authToken);
       
       if (response.statusCode == 401) {
@@ -170,9 +206,6 @@ class PushNotificationService {
         }
         
         debugPrint("FCM Registration: Échec critique après tentative de rafraîchissement (Status: ${response.statusCode}).");
-        if (response.statusCode == 401) {
-          debugPrint("FCM Registration: La session semble totalement expirée. Reconnexion requise.");
-        }
       } else if (response.statusCode == 200) {
         debugPrint("FCM Registration: Succès.");
       } else {

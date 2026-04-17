@@ -3,11 +3,13 @@ import 'package:intl/intl.dart';
 import 'package:add_2_calendar/add_2_calendar.dart';
 
 class MeetingMessageWidget extends StatelessWidget {
+  final String title; // Ajouté
   final Map<String, dynamic> metadata;
   final bool isMe;
 
   const MeetingMessageWidget({
     super.key,
+    required this.title, // Ajouté
     required this.metadata,
     required this.isMe,
   });
@@ -41,7 +43,7 @@ class MeetingMessageWidget extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final title = metadata['title'] ?? 'Réunion';
+    final title = this.title.isNotEmpty ? this.title : (metadata['title'] ?? 'Réunion');
     final description = metadata['description'] ?? '';
     final startDateStr = metadata['start_date'];
     

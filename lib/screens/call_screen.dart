@@ -243,6 +243,7 @@ class _CallScreenState extends ConsumerState<CallScreen> with TickerProviderStat
   // ═══ ÉTAT : Appel connecté ═══
   Widget _buildConnected(CallState callState) {
     final engine = AgoraService().engine;
+    final hasRemote = callState.remoteUid != null;
 
     return Column(
       children: [
@@ -265,7 +266,35 @@ class _CallScreenState extends ConsumerState<CallScreen> with TickerProviderStat
             fontFeatures: [FontFeature.tabularFigures()],
           ),
         ),
+
+        // Si l'autre n'est pas encore arrivé dans le canal Agora,
+        // afficher un indicateur discret (sans bloquer l'interface)
+        if (!hasRemote) ...[
+          const SizedBox(height: 8),
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 14, height: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.5,
+                  valueColor: AlwaysStoppedAnimation(Colors.white38),
+                ),
+              ),
+              SizedBox(width: 8),
+              Text(
+                'En attente de la connexion…',
+                style: TextStyle(color: Colors.white38, fontSize: 12),
+              ),
+            ],
+          ),
+        ],
+
         const Spacer(),
+
+        // Appel audio sans vidéo : afficher l'avatar au centre
+        if (!callState.isVideo)
+          _buildAvatar(callState, radius: 55),
 
         // Vidéo locale (petit rectangle en bas à droite)
         if (callState.isVideo && !callState.isVideoDisabled && engine != null)
@@ -294,6 +323,8 @@ class _CallScreenState extends ConsumerState<CallScreen> with TickerProviderStat
               ),
             ),
           ),
+
+        const Spacer(),
 
         // Contrôles
         _buildCallControls(callState),

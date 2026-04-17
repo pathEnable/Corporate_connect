@@ -48,7 +48,8 @@ class BiometricService {
 
   /// Lance le challenge biométrique. Renvoie `true` si l'utilisateur s'est
   /// authentifié avec succès.
-  Future<bool> authenticate({String reason = 'Déverrouillez Corporate Connect'}) async {
+  Future<bool> authenticate(
+      {String reason = 'Déverrouillez Corporate Connect'}) async {
     try {
       return await _auth.authenticate(
         localizedReason: reason,

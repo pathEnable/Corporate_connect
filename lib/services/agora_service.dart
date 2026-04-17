@@ -55,11 +55,13 @@ class AgoraService {
   }
 
   /// Rejoint un canal Agora.
+  /// [forceSpeaker] : true = haut-parleur (vidéo), false = écouteur (audio vocal).
   Future<void> joinChannel({
     required String token,
     required String channelName,
     required int uid,
     bool enableVideo = true,
+    bool forceSpeaker = false,
   }) async {
     if (_engine == null || !_isInitialized) {
       throw Exception('Agora engine non initialisé. Appeler initEngine() d\'abord.');
@@ -68,26 +70,40 @@ class AgoraService {
     if (enableVideo) {
       await _engine!.enableVideo();
     } else {
+      await _engine!.disableVideo();
       await _engine!.enableAudio();
     }
 
-    await _engine!.startPreview();
+    // Routage audio : haut-parleur pour vidéo, écouteur pour appel vocal (Mobile uniquement)
+    if (!kIsWeb) {
+      try {
+        await _engine!.setEnableSpeakerphone(forceSpeaker || enableVideo);
+        debugPrint('🔊 Routage audio : ${(forceSpeaker || enableVideo) ? "haut-parleur" : "écouteur"}');
+      } catch (e) {
+        debugPrint('⚠️ Erreur lors du réglage du haut-parleur: $e');
+      }
+    } else {
+      debugPrint('🔊 Routage audio ignoré sur Web');
+    }
+    if (enableVideo) {
+      await _engine!.startPreview();
+    }
 
     await _engine!.joinChannel(
       token: token,
       channelId: channelName,
       uid: uid,
-      options: const ChannelMediaOptions(
+      options: ChannelMediaOptions(
         autoSubscribeAudio: true,
-        autoSubscribeVideo: true,
+        autoSubscribeVideo: enableVideo,
         publishMicrophoneTrack: true,
-        publishCameraTrack: true,
+        publishCameraTrack: enableVideo,
         clientRoleType: ClientRoleType.clientRoleBroadcaster,
       ),
     );
 
     _isInChannel = true;
-    debugPrint('🎙️ Rejoint canal: $channelName');
+    debugPrint('🎙️ Rejoint canal: $channelName (video: $enableVideo)');
   }
 
   /// Quitte le canal (sans détruire le moteur).

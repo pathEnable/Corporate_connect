@@ -144,6 +144,7 @@ class MessageBubble extends StatelessWidget {
                         PollMessageWidget(
                           messageId: messageId!,
                           roomId: roomId!,
+                          question: content,
                           metadata: metadata!,
                           isMe: isMe,
                         )
@@ -151,11 +152,13 @@ class MessageBubble extends StatelessWidget {
                         TaskMessageWidget(
                           messageId: messageId!,
                           roomId: roomId!,
+                          title: content,
                           metadata: metadata!,
                           isMe: isMe,
                         )
                       else if (type == 'meeting' && metadata != null)
                         MeetingMessageWidget(
+                          title: content,
                           metadata: metadata!,
                           isMe: isMe,
                         )

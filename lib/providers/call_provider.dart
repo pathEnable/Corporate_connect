@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/call_state.dart';
 import '../services/agora_service.dart';
+import '../services/call_service.dart';
 import '../services/call_signaling_service.dart';
 import '../services/ringtone_service.dart';
 
@@ -20,6 +21,8 @@ class CallNotifier extends Notifier<CallState> {
 
   Timer? _durationTimer;
   Timer? _timeoutTimer;
+  // ✅ FIX BUG 5 : Timer cancellable pour éviter le double reset
+  Timer? _resetTimer;
 
   static const Duration _callTimeout = Duration(seconds: 40);
 
@@ -134,7 +137,6 @@ class CallNotifier extends Notifier<CallState> {
   }) {
     if (state.phase != CallPhase.idle) {
       debugPrint('⚠️ Appel entrant ignoré : déjà en appel');
-      // On pourrait rejeter automatiquement ici
       _signalingService.rejectCall(callId: callId);
       return;
     }
@@ -151,8 +153,10 @@ class CallNotifier extends Notifier<CallState> {
       clearErrorMessage: true,
     );
 
-    // Jouer la sonnerie d'appel entrant
-    _ringtoneService.playRingtone();
+    // ✅ FIX BUG 2 : On ne fait pas await sur playRingtone() pour éviter la
+    // race condition quand CallKit accepte immédiatement après onIncomingCall().
+    // Le stop() dans acceptCall() arrivera après que le player soit initialisé.
+    _ringtoneService.playRingtone().ignore();
   }
 
   /// Le destinataire accepte l'appel.
@@ -206,7 +210,7 @@ class CallNotifier extends Notifier<CallState> {
       debugPrint('❌ Erreur init Agora (receiver): $e');
       state = state.copyWith(
         phase: CallPhase.ended,
-        errorMessage: 'Erreur de connexion audio/vidéo',
+        errorMessage: 'Erreur: ${e.toString().replaceAll('Exception: ', '')}',
       );
       _scheduleReset();
       return false;
@@ -248,7 +252,7 @@ class CallNotifier extends Notifier<CallState> {
       debugPrint('❌ Erreur Agora (appelant après acceptation): $e');
       state = state.copyWith(
         phase: CallPhase.ended,
-        errorMessage: 'Erreur de connexion audio/vidéo',
+        errorMessage: 'Erreur: ${e.toString().replaceAll('Exception: ', '')}',
       );
       _scheduleReset();
     }
@@ -274,7 +278,9 @@ class CallNotifier extends Notifier<CallState> {
 
   /// L'appelant a annulé (reçu par le destinataire).
   void onCallCancelled() {
-    if (state.phase != CallPhase.incomingRinging) return;
+    // ✅ FIX BUG 9 : Aussi gérer 'connecting' — l'appelant peut annuler
+    // pendant que le destinataire est en train d'accepter.
+    if (state.phase != CallPhase.incomingRinging && state.phase != CallPhase.connecting) return;
 
     debugPrint('📞 L\'appelant a annulé');
     _ringtoneService.stop();
@@ -285,11 +291,15 @@ class CallNotifier extends Notifier<CallState> {
   // CONTRÔLES PENDANT L'APPEL
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// Raccrocher (utilisable à tout moment).
+  /// Raccrocher (utilisable à tout moment, quel que soit l'état).
   Future<void> hangUp() async {
     if (state.callId != null) {
       if (state.phase == CallPhase.outgoingRinging) {
         await cancelCall();
+      } else if (state.phase == CallPhase.incomingRinging) {
+        // ✅ FIX BUG 3 : Cas manquant — l'utilisateur raccroche depuis CallKit
+        // alors que l'appel est encore en train de sonner (pas encore accepté).
+        await rejectCall();
       } else if (state.phase == CallPhase.connected || state.phase == CallPhase.connecting) {
         await _signalingService.endCall(callId: state.callId!);
         await _ringtoneService.playEndCallTone();
@@ -343,15 +353,20 @@ class CallNotifier extends Notifier<CallState> {
       throw Exception('Données Agora manquantes');
     }
 
-    final engine = await _agoraService.initEngine(state.appId!);
+    // Guard : ne pas ré-initialiser si déjà dans le canal
+    if (AgoraService().isInChannel) {
+      debugPrint('⚠️ _initAgoraAndJoin appelé alors qu\'on est déjà dans un canal — ignoré');
+      return;
+    }
+
+    final engine = await AgoraService().initEngine(state.appId!);
 
     // Enregistrer les handlers d'événements
     engine.registerEventHandler(RtcEngineEventHandler(
-      onUserJoined: (connection, remoteUid, elapsed) {
-        debugPrint('👤 Utilisateur distant rejoint: $remoteUid');
-        state = state.copyWith(remoteUid: remoteUid);
-        
-        // Les deux participants passent par 'connecting' avant de rejoindre Agora
+      onJoinChannelSuccess: (connection, elapsed) {
+        // ✅ FIX BLOCAGE : on passe à "connected" dès qu'on rejoint le canal,
+        // sans attendre onUserJoined. L'audio/vidéo local est déjà actif.
+        debugPrint('✅ Canal Agora rejoint avec succès (elapsed: ${elapsed}ms)');
         if (state.phase == CallPhase.connecting) {
           _ringtoneService.stop();
           _timeoutTimer?.cancel();
@@ -362,6 +377,11 @@ class CallNotifier extends Notifier<CallState> {
           );
           _startDurationTimer();
         }
+      },
+      onUserJoined: (connection, remoteUid, elapsed) {
+        // Mise à jour du remoteUid quand l'autre participant arrive
+        debugPrint('👤 Utilisateur distant rejoint: $remoteUid');
+        state = state.copyWith(remoteUid: remoteUid);
       },
       onUserOffline: (connection, remoteUid, reason) {
         debugPrint('👤 Utilisateur distant parti: $remoteUid (reason: $reason)');
@@ -378,15 +398,25 @@ class CallNotifier extends Notifier<CallState> {
       },
       onError: (err, msg) {
         debugPrint('❌ Agora error: $err - $msg');
+        // Erreur critique : terminér proprement
+        if (state.phase == CallPhase.connecting || state.phase == CallPhase.connected) {
+          state = state.copyWith(
+            phase: CallPhase.ended,
+            errorMessage: 'Erreur de connexion ($err)',
+          );
+          _scheduleReset();
+        }
       },
     ));
 
-    // Rejoindre le canal
-    await _agoraService.joinChannel(
+    // Rejoindre le canal avec le bon routage audio
+    await AgoraService().joinChannel(
       token: state.agoraToken!,
       channelName: state.channelName!,
       uid: 0,
       enableVideo: state.isVideo,
+      // Vidéo : haut-parleur forcé. Audio : écouteur par défaut.
+      forceSpeaker: state.isVideo,
     );
   }
 
@@ -403,6 +433,20 @@ class CallNotifier extends Notifier<CallState> {
   Future<void> _endAndCleanup({required CallPhase phase, String? error}) async {
     _timeoutTimer?.cancel();
     _durationTimer?.cancel();
+
+    // ✅ FIX BUG 6 : Enregistrer l'appel dans l'historique si une connexion a eu lieu
+    if (state.connectedAt != null && state.roomId != null) {
+      final endTime = DateTime.now();
+      final duration = endTime.difference(state.connectedAt!).inSeconds;
+      callService.logCall(
+        roomId: state.roomId!,
+        startTime: state.connectedAt!,
+        endTime: endTime,
+        duration: duration,
+        status: error != null ? 'missed' : 'completed',
+        callType: state.isVideo ? 'video' : 'audio',
+      );
+    }
 
     state = state.copyWith(
       phase: phase,
@@ -423,7 +467,10 @@ class CallNotifier extends Notifier<CallState> {
 
   /// Réinitialise l'état après un délai (pour afficher un feedback visuel).
   void _scheduleReset() {
-    Future.delayed(const Duration(seconds: 2), () {
+    // ✅ FIX BUG 5 : Timer cancellable — évite le double reset si deux fins
+    // d'appel arrivent quasi-simultanément (ex: WS call_ended + onUserOffline Agora).
+    _resetTimer?.cancel();
+    _resetTimer = Timer(const Duration(seconds: 2), () {
       if (state.phase == CallPhase.ended) {
         state = CallState.initial;
       }
@@ -433,6 +480,7 @@ class CallNotifier extends Notifier<CallState> {
   void _cleanup() {
     _timeoutTimer?.cancel();
     _durationTimer?.cancel();
+    _resetTimer?.cancel();
     _ringtoneService.stop();
   }
 

@@ -141,6 +141,8 @@ class CorporateConnectApp extends ConsumerStatefulWidget {
 class _CorporateConnectAppState extends ConsumerState<CorporateConnectApp>
     with WidgetsBindingObserver {
   bool _isLocked = false;
+  // Horodatage de la dernière mise en pause (pour éviter les faux positifs)
+  DateTime? _pausedAt;
 
   @override
   void initState() {
@@ -157,8 +159,23 @@ class _CorporateConnectAppState extends ConsumerState<CorporateConnectApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
+      _pausedAt = DateTime.now();
       // L'app passe en arrière-plan : vérifier si on doit verrouiller
       _checkAndLock();
+    } else if (state == AppLifecycleState.resumed) {
+      // L'app revient en premier plan : sync légère en arrière-plan.
+      // On NE recharge PAS tout — juste un refresh silencieux si l'app
+      // a été en pause au moins 30 secondes (pour éviter les refreshs
+      // inutiles lors d'une courte interruption).
+      final pausedAt = _pausedAt;
+      if (pausedAt != null) {
+        final elapsed = DateTime.now().difference(pausedAt);
+        if (elapsed.inSeconds >= 30) {
+          // Sync silencieuse : met à jour les rooms sans afficher de spinner
+          ref.read(homeProvider.notifier).refreshRooms();
+        }
+      }
+      _pausedAt = null;
     }
   }
 
