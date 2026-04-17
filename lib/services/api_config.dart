@@ -55,9 +55,12 @@ class ApiConfig {
   };
 
   /// Construit une URL complète pour afficher un média (avatar, image, etc.)
-  /// Ne passe AUCUN jeton dans l'URL pour des raisons de sécurité.
-  /// Les requêtes doivent utiliser AuthenticatedNetworkImage pour fournir les Headers.
+  /// Si l'url fournie est déjà absolue (comme Cloudinary), elle est retournée telle quelle.
+  /// Les requêtes doivent utiliser AuthenticatedNetworkImage pour fournir les Headers au cas où.
   static String getMediaUrl(String relativeUrl) {
+    if (relativeUrl.startsWith('http://') || relativeUrl.startsWith('https://')) {
+      return relativeUrl;
+    }
     String path = relativeUrl.replaceFirst("/media", "");
     if (!path.startsWith('/')) path = '/$path';
     return '$baseUrl/media$path';

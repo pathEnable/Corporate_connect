@@ -1,130 +1,444 @@
+import 'dart:async';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/call_state.dart';
 import '../services/agora_service.dart';
+import '../services/call_signaling_service.dart';
 import '../services/ringtone_service.dart';
 
-final callProvider = NotifierProvider.autoDispose<CallNotifier, CallState>(() {
+/// Provider global pour l'état de l'appel en cours.
+final callProvider = NotifierProvider<CallNotifier, CallState>(() {
   return CallNotifier();
 });
 
-class CallNotifier extends AutoDisposeNotifier<CallState> {
+class CallNotifier extends Notifier<CallState> {
   final AgoraService _agoraService = AgoraService();
-  
+  final CallSignalingService _signalingService = CallSignalingService();
+  final RingtoneService _ringtoneService = RingtoneService();
+
+  Timer? _durationTimer;
+  Timer? _timeoutTimer;
+
+  static const Duration _callTimeout = Duration(seconds: 40);
+
   @override
   CallState build() {
     ref.onDispose(() {
-      _agoraService.leaveChannel();
+      _cleanup();
     });
-    return const CallState();
+    return CallState.initial;
   }
 
-  Future<void> _requestPermissions(bool isVideo) async {
-    Map<Permission, PermissionStatus> statuses = await [
-      Permission.microphone,
-      if (isVideo) Permission.camera,
-    ].request();
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FLUX APPELANT (Outgoing Call)
+  // ═══════════════════════════════════════════════════════════════════════════
 
-    if (statuses[Permission.microphone] != PermissionStatus.granted) {
-      throw 'Accès au microphone requis pour l\'appel';
+  /// L'utilisateur A lance un appel.
+  Future<bool> initiateCall({
+    required String roomId,
+    required bool isVideo,
+    String? otherUserName,
+    String? otherUserAvatar,
+  }) async {
+    // Vérifier qu'aucun appel n'est en cours
+    if (state.phase != CallPhase.idle) {
+      debugPrint('⚠️ Un appel est déjà en cours');
+      return false;
     }
-    if (isVideo && statuses[Permission.camera] != PermissionStatus.granted) {
-      throw 'Accès à la caméra requis pour la vidéo';
-    }
-  }
 
-  Future<void> initCall(String channelId, bool isVideo) async {
-    state = state.copyWith(isLoading: true, errorMessage: null);
-    
-    try {
-      // 1. Permissions Guard
-      await _requestPermissions(isVideo);
-
-      // 2. Play waiting tone
-      RingtoneService.instance.playWaitingTone();
-
-      // 3. Token & Engine
-      final tokenData = await _agoraService.fetchToken(channelId);
-      final String token = tokenData['token'];
-      final String appId = tokenData['app_id'];
-
-      final engine = await _agoraService.getEngine(appId, isVideo: isVideo);
-      
-      // 3. Handlers
-      engine.registerEventHandler(
-        RtcEngineEventHandler(
-          onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
-            state = state.copyWith(localUserJoined: true, isLoading: false);
-          },
-          onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
-            RingtoneService.instance.stop();
-            state = state.addRemoteUid(remoteUid);
-          },
-          onNetworkQuality: (connection, remoteUid, txQuality, rxQuality) {
-            if (remoteUid == 0 || state.remoteUids.contains(remoteUid)) {
-              state = state.copyWith(networkQuality: txQuality.index);
-            }
-          },
-          onUserOffline: (RtcConnection connection, int remoteUid, UserOfflineReasonType reason) {
-            state = state.removeRemoteUid(remoteUid);
-          },
-          onLeaveChannel: (RtcConnection connection, RtcStats stats) {
-            state = state.copyWith(localUserJoined: false, remoteUids: const {});
-          },
-          onError: (ErrorCodeType err, String msg) {
-            state = state.copyWith(errorMessage: "Erreur Agora: $msg", isLoading: false);
-          },
-        ),
+    // Demander les permissions
+    final granted = await _requestPermissions(isVideo);
+    if (!granted) {
+      state = state.copyWith(
+        errorMessage: 'Permissions micro/caméra refusées',
       );
+      return false;
+    }
 
-      state = state.copyWith(engine: engine);
+    // Mettre en état "appel sortant"
+    state = state.copyWith(
+      phase: CallPhase.outgoingRinging,
+      isVideo: isVideo,
+      isCaller: true,
+      roomId: roomId,
+      otherUserName: otherUserName,
+      otherUserAvatar: otherUserAvatar,
+      clearErrorMessage: true,
+    );
 
-      // 4. Join
-      await _agoraService.joinChannel(token, channelId, 0, isVideo: isVideo);
+    // Appeler le backend pour initier l'appel
+    final result = await _signalingService.initiateCall(
+      roomId: roomId,
+      isVideo: isVideo,
+    );
 
+    if (result == null) {
+      state = state.copyWith(
+        phase: CallPhase.ended,
+        errorMessage: 'Impossible de lancer l\'appel',
+      );
+      _scheduleReset();
+      return false;
+    }
+
+    // Mettre à jour avec les infos du backend
+    state = state.copyWith(
+      callId: result['call_id'],
+      agoraToken: result['agora_token'],
+      appId: result['app_id'],
+      channelName: result['channel_name'],
+    );
+
+    // Jouer la tonalité d'attente (tut... tut...)
+    _ringtoneService.playWaitingTone();
+
+    // ✅ BUG FIX : L'appelant N'ENTRE PAS dans Agora ici.
+    // Il attend que le destinataire décroche (événement WS call_answered)
+    // pour rejoindre le canal, via onCallAnswered().
+
+    // Timer timeout : si pas de réponse après 40s, annuler
+    _timeoutTimer = Timer(_callTimeout, () {
+      if (state.phase == CallPhase.outgoingRinging) {
+        debugPrint('⏰ Timeout appel — annulation automatique');
+        cancelCall();
+      }
+    });
+
+    return true;
+  }
+
+  /// L'appelant annule l'appel (raccroche avant que B décroche).
+  Future<void> cancelCall() async {
+    if (state.callId != null) {
+      await _signalingService.cancelCall(callId: state.callId!);
+    }
+    await _ringtoneService.stop();
+    await _ringtoneService.playEndCallTone();
+    await _endAndCleanup(phase: CallPhase.ended);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FLUX DESTINATAIRE (Incoming Call)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Un appel entrant est reçu (appelé par GlobalCallListener).
+  void onIncomingCall({
+    required String callId,
+    required String channelName,
+    required String callerName,
+    String? callerAvatar,
+    required String roomId,
+    required bool isVideo,
+  }) {
+    if (state.phase != CallPhase.idle) {
+      debugPrint('⚠️ Appel entrant ignoré : déjà en appel');
+      // On pourrait rejeter automatiquement ici
+      _signalingService.rejectCall(callId: callId);
+      return;
+    }
+
+    state = state.copyWith(
+      phase: CallPhase.incomingRinging,
+      callId: callId,
+      channelName: channelName,
+      roomId: roomId,
+      isVideo: isVideo,
+      isCaller: false,
+      otherUserName: callerName,
+      otherUserAvatar: callerAvatar,
+      clearErrorMessage: true,
+    );
+
+    // Jouer la sonnerie d'appel entrant
+    _ringtoneService.playRingtone();
+  }
+
+  /// Le destinataire accepte l'appel.
+  Future<bool> acceptCall() async {
+    if (state.phase != CallPhase.incomingRinging || state.callId == null) {
+      return false;
+    }
+
+    // Arrêter la sonnerie
+    await _ringtoneService.stop();
+
+    // Demander les permissions
+    final granted = await _requestPermissions(state.isVideo);
+    if (!granted) {
+      state = state.copyWith(
+        errorMessage: 'Permissions refusées',
+        phase: CallPhase.ended,
+      );
+      _scheduleReset();
+      return false;
+    }
+
+    state = state.copyWith(phase: CallPhase.connecting);
+
+    // Appeler le backend pour accepter
+    final result = await _signalingService.answerCall(
+      callId: state.callId!,
+      channelName: state.channelName ?? '',
+    );
+
+    if (result == null) {
+      state = state.copyWith(
+        phase: CallPhase.ended,
+        errorMessage: 'Erreur de connexion',
+      );
+      _scheduleReset();
+      return false;
+    }
+
+    // Mettre à jour les infos Agora
+    state = state.copyWith(
+      agoraToken: result['agora_token'],
+      appId: result['app_id'],
+      channelName: result['channel_name'],
+    );
+
+    // Initialiser Agora et rejoindre le canal
+    try {
+      await _initAgoraAndJoin();
     } catch (e) {
-      state = state.copyWith(isLoading: false, errorMessage: e.toString());
+      debugPrint('❌ Erreur init Agora (receiver): $e');
+      state = state.copyWith(
+        phase: CallPhase.ended,
+        errorMessage: 'Erreur de connexion audio/vidéo',
+      );
+      _scheduleReset();
+      return false;
+    }
+
+    return true;
+  }
+
+  /// Le destinataire refuse l'appel.
+  Future<void> rejectCall() async {
+    if (state.callId != null) {
+      await _signalingService.rejectCall(callId: state.callId!);
+    }
+    await _ringtoneService.stop();
+    await _endAndCleanup(phase: CallPhase.idle); // Retour direct à idle
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ÉVÉNEMENTS REÇUS VIA WEBSOCKET GLOBAL
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// L'autre participant a décroché (reçu par l'appelant).
+  /// ✅ BUG FIX : C'est ici que l'appelant rejoint Agora (pas dans initiateCall).
+  Future<void> onCallAnswered() async {
+    if (state.phase != CallPhase.outgoingRinging) return;
+
+    debugPrint('📞 Appel accepté — rejoindre le canal Agora');
+    _ringtoneService.stop();
+    _timeoutTimer?.cancel();
+
+    // Passer en mode connexion
+    state = state.copyWith(phase: CallPhase.connecting);
+
+    // Rejoindre Agora maintenant que les deux sont prêts
+    try {
+      await _initAgoraAndJoin();
+      // La phase passe à connected via onUserJoined dans _initAgoraAndJoin()
+    } catch (e) {
+      debugPrint('❌ Erreur Agora (appelant après acceptation): $e');
+      state = state.copyWith(
+        phase: CallPhase.ended,
+        errorMessage: 'Erreur de connexion audio/vidéo',
+      );
+      _scheduleReset();
     }
   }
 
-  Future<void> toggleMic() async {
-    final newState = !state.isMicOn;
-    await state.engine?.muteLocalAudioStream(state.isMicOn); // Agora use "mute" so if mic was ON (true), we send true to mute it.
-    state = state.copyWith(isMicOn: newState);
+  /// L'autre participant a refusé (reçu par l'appelant).
+  void onCallRejected() {
+    if (state.phase != CallPhase.outgoingRinging) return;
+
+    debugPrint('📞 Appel refusé par le destinataire');
+    _ringtoneService.stop();
+    _timeoutTimer?.cancel();
+    _endAndCleanup(phase: CallPhase.ended, error: 'Appel refusé');
   }
 
-  Future<void> toggleCamera() async {
-    final newState = !state.isCameraOn;
-    await state.engine?.muteLocalVideoStream(state.isCameraOn);
-    state = state.copyWith(isCameraOn: newState);
-  }
-  
-  Future<void> toggleSpeaker() async {
-    final newState = !state.isSpeakerOn;
-    await state.engine?.setEnableSpeakerphone(newState);
-    state = state.copyWith(isSpeakerOn: newState);
+  /// L'autre participant a raccroché (reçu par n'importe qui).
+  void onCallEnded() {
+    debugPrint('📞 L\'autre participant a raccroché');
+    _ringtoneService.stop();
+    _ringtoneService.playEndCallTone();
+    _endAndCleanup(phase: CallPhase.ended);
   }
 
-  Future<void> switchCamera() async {
-    await state.engine?.switchCamera();
+  /// L'appelant a annulé (reçu par le destinataire).
+  void onCallCancelled() {
+    if (state.phase != CallPhase.incomingRinging) return;
+
+    debugPrint('📞 L\'appelant a annulé');
+    _ringtoneService.stop();
+    _endAndCleanup(phase: CallPhase.idle); // Retour silencieux à idle
   }
 
-  Future<void> toggleScreenShare() async {
-    if (state.engine == null) return;
-    
-    final newState = !state.isScreenSharing;
-    if (newState) {
-      await state.engine?.startScreenCapture(const ScreenCaptureParameters2(captureAudio: true, captureVideo: true));
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CONTRÔLES PENDANT L'APPEL
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Raccrocher (utilisable à tout moment).
+  Future<void> hangUp() async {
+    if (state.callId != null) {
+      if (state.phase == CallPhase.outgoingRinging) {
+        await cancelCall();
+      } else if (state.phase == CallPhase.connected || state.phase == CallPhase.connecting) {
+        await _signalingService.endCall(callId: state.callId!);
+        await _ringtoneService.playEndCallTone();
+        await _endAndCleanup(phase: CallPhase.ended);
+      }
     } else {
-      await state.engine?.stopScreenCapture();
+      await _endAndCleanup(phase: CallPhase.idle);
     }
-    state = state.copyWith(isScreenSharing: newState);
   }
 
-  Future<void> leaveChannel() async {
-    RingtoneService.instance.stop();
-    await _agoraService.leaveChannel();
-    state = const CallState(isLoading: false);
+  void toggleMute() {
+    final newMuted = !state.isMuted;
+    _agoraService.toggleMute(newMuted);
+    state = state.copyWith(isMuted: newMuted);
+  }
+
+  void toggleVideo() {
+    final newDisabled = !state.isVideoDisabled;
+    _agoraService.toggleVideo(newDisabled);
+    state = state.copyWith(isVideoDisabled: newDisabled);
+  }
+
+  void toggleSpeaker() {
+    final newSpeaker = !state.isSpeakerOn;
+    _agoraService.toggleSpeaker(newSpeaker);
+    state = state.copyWith(isSpeakerOn: newSpeaker);
+  }
+
+  void switchCamera() {
+    _agoraService.switchCamera();
+    state = state.copyWith(isFrontCamera: !state.isFrontCamera);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // INTERNALS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Future<bool> _requestPermissions(bool needVideo) async {
+    final micStatus = await Permission.microphone.request();
+    if (!micStatus.isGranted) return false;
+    
+    if (needVideo) {
+      final camStatus = await Permission.camera.request();
+      if (!camStatus.isGranted) return false;
+    }
+    return true;
+  }
+
+  Future<void> _initAgoraAndJoin() async {
+    if (state.appId == null || state.agoraToken == null || state.channelName == null) {
+      throw Exception('Données Agora manquantes');
+    }
+
+    final engine = await _agoraService.initEngine(state.appId!);
+
+    // Enregistrer les handlers d'événements
+    engine.registerEventHandler(RtcEngineEventHandler(
+      onUserJoined: (connection, remoteUid, elapsed) {
+        debugPrint('👤 Utilisateur distant rejoint: $remoteUid');
+        state = state.copyWith(remoteUid: remoteUid);
+        
+        // Les deux participants passent par 'connecting' avant de rejoindre Agora
+        if (state.phase == CallPhase.connecting) {
+          _ringtoneService.stop();
+          _timeoutTimer?.cancel();
+          final now = DateTime.now();
+          state = state.copyWith(
+            phase: CallPhase.connected,
+            connectedAt: now,
+          );
+          _startDurationTimer();
+        }
+      },
+      onUserOffline: (connection, remoteUid, reason) {
+        debugPrint('👤 Utilisateur distant parti: $remoteUid (reason: $reason)');
+        if (state.remoteUid == remoteUid) {
+          // L'autre a quitté → appel terminé
+          _ringtoneService.playEndCallTone();
+          _endAndCleanup(phase: CallPhase.ended);
+        }
+      },
+      onUserMuteVideo: (connection, remoteUid, muted) {
+        if (state.remoteUid == remoteUid) {
+          state = state.copyWith(isRemoteVideoEnabled: !muted);
+        }
+      },
+      onError: (err, msg) {
+        debugPrint('❌ Agora error: $err - $msg');
+      },
+    ));
+
+    // Rejoindre le canal
+    await _agoraService.joinChannel(
+      token: state.agoraToken!,
+      channelName: state.channelName!,
+      uid: 0,
+      enableVideo: state.isVideo,
+    );
+  }
+
+  void _startDurationTimer() {
+    _durationTimer?.cancel();
+    _durationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (state.connectedAt != null) {
+        final duration = DateTime.now().difference(state.connectedAt!);
+        state = state.copyWith(callDuration: duration);
+      }
+    });
+  }
+
+  Future<void> _endAndCleanup({required CallPhase phase, String? error}) async {
+    _timeoutTimer?.cancel();
+    _durationTimer?.cancel();
+
+    state = state.copyWith(
+      phase: phase,
+      errorMessage: error,
+    );
+
+    // Libérer Agora
+    try {
+      await _agoraService.dispose();
+    } catch (e) {
+      debugPrint('⚠️ Erreur cleanup Agora: $e');
+    }
+
+    if (phase == CallPhase.ended) {
+      _scheduleReset();
+    }
+  }
+
+  /// Réinitialise l'état après un délai (pour afficher un feedback visuel).
+  void _scheduleReset() {
+    Future.delayed(const Duration(seconds: 2), () {
+      if (state.phase == CallPhase.ended) {
+        state = CallState.initial;
+      }
+    });
+  }
+
+  void _cleanup() {
+    _timeoutTimer?.cancel();
+    _durationTimer?.cancel();
+    _ringtoneService.stop();
+  }
+
+  /// Réinitialise l'état immédiatement (pour la navigation).
+  void resetState() {
+    _cleanup();
+    state = CallState.initial;
   }
 }

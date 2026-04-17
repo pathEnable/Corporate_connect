@@ -26,18 +26,44 @@ elif os.path.exists(SERVICE_ACCOUNT_FILE):
 else:
     print(f"CRITICAL: Firebase service account file {SERVICE_ACCOUNT_FILE} not found and FIREBASE_SERVICE_ACCOUNT_JSON env not set!")
 
-def send_push_notification(token: str, title: str, body: str, data: dict = None):
-    """Envoie une notification push via FCM."""
+def send_push_notification(token: str, title: str, body: str, data: dict = None, is_call: bool = False):
+    """Envoie une notification push via FCM.
+    
+    Pour les appels (is_call=True), envoie avec priorité maximale afin de
+    réveiller l'app en arrière-plan et déclencher flutter_callkit_incoming.
+    """
     if not token:
         return
     
-    message = messaging.Message(
-        notification=messaging.Notification(
-            title=title,
-            body=body,
+    # Convertir toutes les valeurs data en string (exigence FCM)
+    str_data = {k: str(v) for k, v in (data or {}).items()}
+
+    android_config = messaging.AndroidConfig(
+        priority='high',  # Priorité haute pour les appels — réveille l'app
+        notification=messaging.AndroidNotification(
+            channel_id='call_channel',  # Canal déclaré dans AndroidManifest
+            priority=messaging.AndroidNotificationPriority.MAX,
+            default_vibrate_timings=True,
+        ) if not is_call else None,  # Pour les appels, pas de notif visible (CallKit gère)
+    )
+
+    apns_config = messaging.APNSConfig(
+        headers={'apns-priority': '10'},  # Priorité max APNS
+        payload=messaging.APNSPayload(
+            aps=messaging.Aps(
+                sound='default',
+                badge=1,
+                content_available=True,  # Réveille l'app en background (iOS)
+            )
         ),
-        data=data or {},
+    ) if is_call else None
+
+    message = messaging.Message(
+        notification=messaging.Notification(title=title, body=body) if not is_call else None,
+        data=str_data,
         token=token,
+        android=android_config,
+        apns=apns_config,
     )
     
     try:
@@ -47,3 +73,4 @@ def send_push_notification(token: str, title: str, body: str, data: dict = None)
     except Exception as e:
         print('Error sending message:', e)
         return None
+

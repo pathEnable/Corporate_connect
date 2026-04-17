@@ -1,65 +1,123 @@
-import 'package:agora_rtc_engine/agora_rtc_engine.dart';
-import 'package:flutter/foundation.dart';
+/// Phase du cycle de vie d'un appel.
+enum CallPhase {
+  /// Aucun appel en cours
+  idle,
+  /// Appel sortant en train de sonner chez le destinataire
+  outgoingRinging,
+  /// Appel entrant reçu (sonnerie côté destinataire)
+  incomingRinging,
+  /// En cours de connexion (après acceptation, avant que l'audio/vidéo soit établi)
+  connecting,
+  /// Appel actif et connecté
+  connected,
+  /// Appel terminé (affichage temporaire avant retour)
+  ended,
+}
 
-@immutable
+/// État complet d'un appel.
 class CallState {
-  final bool localUserJoined;
-  final Set<int> remoteUids;
-  final bool isMicOn;
-  final bool isCameraOn;
-  final bool isScreenSharing;
-  final bool isLoading;
-  final String? errorMessage;
-  final RtcEngine? engine;
+  final CallPhase phase;
+  final String? callId;
+  final String? channelName;
+  final String? agoraToken;
+  final String? appId;
+  final String? roomId;
+  
+  /// Infos sur l'autre participant
+  final String? otherUserName;
+  final String? otherUserAvatar;
+  
+  /// Type d'appel
+  final bool isVideo;
+  final bool isCaller; // true = émetteur, false = destinataire
+  
+  /// Contrôles
+  final bool isMuted;
+  final bool isVideoDisabled;
   final bool isSpeakerOn;
-  final int networkQuality;
+  final bool isFrontCamera;
+  
+  /// Connexion Agora
+  final int? remoteUid;
+  final bool isRemoteVideoEnabled;
+  
+  /// Timer
+  final Duration callDuration;
+  final DateTime? connectedAt; // Heure de connexion effective
+  
+  /// Erreurs
+  final String? errorMessage;
 
   const CallState({
-    this.localUserJoined = false,
-    this.remoteUids = const {},
-    this.isMicOn = true,
-    this.isCameraOn = true,
-    this.isScreenSharing = false,
-    this.isLoading = true,
+    this.phase = CallPhase.idle,
+    this.callId,
+    this.channelName,
+    this.agoraToken,
+    this.appId,
+    this.roomId,
+    this.otherUserName,
+    this.otherUserAvatar,
+    this.isVideo = false,
+    this.isCaller = true,
+    this.isMuted = false,
+    this.isVideoDisabled = false,
+    this.isSpeakerOn = false,
+    this.isFrontCamera = true,
+    this.remoteUid,
+    this.isRemoteVideoEnabled = false,
+    this.callDuration = Duration.zero,
+    this.connectedAt,
     this.errorMessage,
-    this.engine,
-    this.isSpeakerOn = true, // By default mostly true for video, but we toggle it
-    this.networkQuality = 0, // 0 means unknown based on Agora constants
   });
 
+  /// CopyWith avec support explicite de la mise à null de champs optionnels.
+  /// Utiliser clearErrorMessage: true pour remettre errorMessage à null.
   CallState copyWith({
-    bool? localUserJoined,
-    Set<int>? remoteUids,
-    bool? isMicOn,
-    bool? isCameraOn,
-    bool? isScreenSharing,
-    bool? isLoading,
-    String? errorMessage,
-    RtcEngine? engine,
+    CallPhase? phase,
+    String? callId,
+    String? channelName,
+    String? agoraToken,
+    String? appId,
+    String? roomId,
+    String? otherUserName,
+    String? otherUserAvatar,
+    bool? isVideo,
+    bool? isCaller,
+    bool? isMuted,
+    bool? isVideoDisabled,
     bool? isSpeakerOn,
-    int? networkQuality,
+    bool? isFrontCamera,
+    int? remoteUid,
+    bool? isRemoteVideoEnabled,
+    Duration? callDuration,
+    DateTime? connectedAt,
+    String? errorMessage,
+    bool clearErrorMessage = false,
+    bool clearRemoteUid = false,
   }) {
     return CallState(
-      localUserJoined: localUserJoined ?? this.localUserJoined,
-      remoteUids: remoteUids ?? this.remoteUids,
-      isMicOn: isMicOn ?? this.isMicOn,
-      isCameraOn: isCameraOn ?? this.isCameraOn,
-      isScreenSharing: isScreenSharing ?? this.isScreenSharing,
-      isLoading: isLoading ?? this.isLoading,
-      errorMessage: errorMessage ?? this.errorMessage,
-      engine: engine ?? this.engine,
+      phase: phase ?? this.phase,
+      callId: callId ?? this.callId,
+      channelName: channelName ?? this.channelName,
+      agoraToken: agoraToken ?? this.agoraToken,
+      appId: appId ?? this.appId,
+      roomId: roomId ?? this.roomId,
+      otherUserName: otherUserName ?? this.otherUserName,
+      otherUserAvatar: otherUserAvatar ?? this.otherUserAvatar,
+      isVideo: isVideo ?? this.isVideo,
+      isCaller: isCaller ?? this.isCaller,
+      isMuted: isMuted ?? this.isMuted,
+      isVideoDisabled: isVideoDisabled ?? this.isVideoDisabled,
       isSpeakerOn: isSpeakerOn ?? this.isSpeakerOn,
-      networkQuality: networkQuality ?? this.networkQuality,
+      isFrontCamera: isFrontCamera ?? this.isFrontCamera,
+      remoteUid: clearRemoteUid ? null : (remoteUid ?? this.remoteUid),
+      isRemoteVideoEnabled: isRemoteVideoEnabled ?? this.isRemoteVideoEnabled,
+      callDuration: callDuration ?? this.callDuration,
+      connectedAt: connectedAt ?? this.connectedAt,
+      errorMessage: clearErrorMessage ? null : (errorMessage ?? this.errorMessage),
     );
   }
-  
-  // Add or remote UID
-  CallState addRemoteUid(int uid) {
-    return copyWith(remoteUids: {...remoteUids, uid});
-  }
 
-  CallState removeRemoteUid(int uid) {
-    final updated = Set<int>.from(remoteUids)..remove(uid);
-    return copyWith(remoteUids: updated);
-  }
+  /// Retourne un état complètement réinitialisé.
+  static const CallState initial = CallState();
 }

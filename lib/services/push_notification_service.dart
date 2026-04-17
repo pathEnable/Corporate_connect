@@ -34,8 +34,15 @@ Future<void> _showCallKitIncoming(Map<String, dynamic> data) async {
     avatar: data['caller_avatar'] ?? '',
     handle: 'Appel entrant...',
     type: data['is_video'] == 'true' ? 1 : 0,
-    duration: 30000,
-    extra: <String, dynamic>{'room_id': data['room_id']},
+    duration: 40000,
+    extra: <String, dynamic>{
+      'room_id': data['room_id'] ?? '',
+      'call_id': data['call_id'] ?? '',
+      'channel_name': data['channel_name'] ?? '',
+      'caller_name': data['caller_name'] ?? '',
+      'caller_avatar': data['caller_avatar'] ?? '',
+      'is_video': data['is_video'] ?? 'false',
+    },
     android: AndroidParams(
       isCustomNotification: true,
       isShowLogo: false,
@@ -51,6 +58,7 @@ Future<void> _showCallKitIncoming(Map<String, dynamic> data) async {
   );
   await FlutterCallkitIncoming.showCallkitIncoming(params);
 }
+
 
 class PushNotificationService {
   static final FirebaseMessaging _fcm = FirebaseMessaging.instance;

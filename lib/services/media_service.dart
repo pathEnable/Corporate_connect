@@ -122,11 +122,15 @@ class MediaService {
       if (await file.exists()) return savePath;
 
       // 3. Téléchargement via Dio
-      final token = await _authService.getToken();
+      final isCloudinary = url.contains('cloudinary.com');
+      final options = isCloudinary 
+          ? Options() 
+          : Options(headers: {'Authorization': 'Bearer ${await _authService.getToken()}'});
+
       await _dio.download(
         url,
         savePath,
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
+        options: options,
       );
 
       return savePath;

@@ -140,3 +140,15 @@ class CallLogResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class CallInitiateRequest(BaseModel):
+    room_id: UUID
+    is_video: bool = False
+
+
+class CallInitiateResponse(BaseModel):
+    call_id: UUID
+    agora_token: str
+    app_id: str
+    channel_name: str

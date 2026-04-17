@@ -34,14 +34,21 @@ class ScheduleMessageRequest(BaseModel):
 # ── Route : Voter à un sondage ─────────────────────────────────────────────────
 
 @router.post("/rooms/{room_id}/messages/{message_id}/vote")
-def vote_poll(
+async def vote_poll(
     room_id: str,
     message_id: str,
     body: VoteRequest,
     db: Session = Depends(get_db),
     current_user: Profile = Depends(get_current_user),
 ):
-    """Voter pour une option d'un sondage. Chaque utilisateur ne peut voter qu'une fois."""
+    """Voter pour une option d'un sondage. L'utilisateur peut changer son vote."""
+    # Vérification d'appartenance
+    member = db.query(RoomMember).filter(
+        RoomMember.room_id == room_id, RoomMember.profile_id == current_user.id
+    ).first()
+    if not member:
+        raise HTTPException(status_code=403, detail="Vous n'êtes pas membre de ce salon.")
+
     msg = db.query(Message).filter(
         Message.id == message_id,
         Message.room_id == room_id,
@@ -54,21 +61,31 @@ def vote_poll(
     votes: dict = meta.get("votes", {})
     user_key = str(current_user.id)
 
-    if user_key in votes:
-        raise HTTPException(status_code=409, detail="Vous avez déjà voté.")
-
+    # Enregistrer ou modifier le vote
     votes[user_key] = body.option_index
     meta["votes"] = votes
     msg.metadata_ = meta
     db.commit()
     db.refresh(msg)
+
+    # Diffuser la mise à jour en temps réel
+    await manager.broadcast_to_room(
+        room_id,
+        {
+            "type": "message_updated",
+            "message_id": str(msg.id),
+            "room_id": room_id,
+            "metadata_": meta,
+        }
+    )
+
     return {"detail": "Vote enregistré.", "votes": votes}
 
 
 # ── Route : Mettre à jour le statut d'une tâche ────────────────────────────────
 
 @router.patch("/rooms/{room_id}/messages/{message_id}/task")
-def update_task(
+async def update_task(
     room_id: str,
     message_id: str,
     body: TaskStatusRequest,
@@ -76,6 +93,13 @@ def update_task(
     current_user: Profile = Depends(get_current_user),
 ):
     """Marquer une tâche comme faite ou non faite."""
+    # Vérification d'appartenance
+    member = db.query(RoomMember).filter(
+        RoomMember.room_id == room_id, RoomMember.profile_id == current_user.id
+    ).first()
+    if not member:
+        raise HTTPException(status_code=403, detail="Vous n'êtes pas membre de ce salon.")
+
     msg = db.query(Message).filter(
         Message.id == message_id,
         Message.room_id == room_id,
@@ -89,9 +113,26 @@ def update_task(
     if body.is_done:
         meta["completed_by"] = str(current_user.id)
         meta["completed_at"] = datetime.now(timezone.utc).isoformat()
+    else:
+        # Nettoyage si on décoche la tâche
+        meta.pop("completed_by", None)
+        meta.pop("completed_at", None)
+
     msg.metadata_ = meta
     db.commit()
     db.refresh(msg)
+
+    # Diffuser la mise à jour en temps réel
+    await manager.broadcast_to_room(
+        room_id,
+        {
+            "type": "message_updated",
+            "message_id": str(msg.id),
+            "room_id": room_id,
+            "metadata_": meta,
+        }
+    )
+
     return {"detail": "Tâche mise à jour.", "metadata_": meta}
 
 

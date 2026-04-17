@@ -58,14 +58,15 @@ class MessageBubble extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final notMeBgColor = isDark ? theme.colorScheme.surfaceContainerHighest : Colors.white;
-    final notMeTextColor = isDark ? Colors.white : Colors.black87;
-    final replyBorderColor = isMe ? Colors.white : theme.colorScheme.primary;
+    final meColor = isDark ? const Color(0xFF056162) : const Color(0xFFE7FFDB);
+    final notMeBgColor = isDark ? const Color(0xFF262D31) : const Color(0xFFFFFFFF);
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final replyBorderColor = isMe ? Colors.white.withAlpha(200) : theme.colorScheme.primary;
+    final bubbleColor = isMe ? meColor : notMeBgColor;
 
     return GestureDetector(
       onLongPress: () {
         HapticFeedback.mediumImpact();
-        // Show reaction picker first, fallback to reply
         if (onReaction != null) {
           _showReactionMenu(context);
         } else if (onReply != null) {
@@ -73,134 +74,166 @@ class MessageBubble extends StatelessWidget {
         }
       },
       onDoubleTap: () {
-        // Quick reaction with 👍 on double tap
         HapticFeedback.selectionClick();
         onReaction?.call('👍');
       },
-      child: Align(
-        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOutCubic,
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
-          decoration: BoxDecoration(
-            color: isMe ? const Color(0xFF26E9CF) : notMeBgColor,
-            borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(16),
-              topRight: const Radius.circular(16),
-              bottomLeft: isMe ? const Radius.circular(16) : const Radius.circular(4),
-              bottomRight: isMe ? const Radius.circular(4) : const Radius.circular(16),
-            ),
-            border: Border.all(
-              color: isMe 
-                ? const Color(0xFF1AA18E).withValues(alpha: 0.2)
-                : theme.colorScheme.onSurface.withValues(alpha: 0.1),
-              width: 1,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              if (replyToContent != null)
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  margin: const EdgeInsets.only(bottom: 6),
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: isMe ? Colors.white.withAlpha(40) : Colors.black.withAlpha(13),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border(left: BorderSide(color: replyBorderColor, width: 4)),
-                  ),
-                  child: Text(
-                    replyToContent!.length > 60 ? '${replyToContent!.substring(0, 60)}...' : replyToContent!,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontStyle: FontStyle.italic,
-                      color: isMe ? Colors.white.withAlpha(220) : notMeTextColor.withAlpha(180),
-                    ),
-                  ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Row(
+          mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!isMe)
+              Padding(
+                padding: const EdgeInsets.only(top: 0),
+                child: CustomPaint(
+                  painter: TailPainter(isMe: false, color: bubbleColor),
+                  size: const Size(8, 12),
                 ),
-              if (type == 'image')
-                _ImageContent(url: content, localPath: localPath)
-              else if (type == 'file')
-                _FileContent(content: content, isMe: isMe, localPath: localPath)
-              else if (type == 'audio')
-                AudioPlayerWidget(url: content, isMe: isMe, localPath: localPath)
-              else if (type == 'poll' && metadata != null && roomId != null && messageId != null)
-                PollMessageWidget(
-                  messageId: messageId!,
-                  roomId: roomId!,
-                  metadata: metadata!,
-                  isMe: isMe,
-                )
-              else if (type == 'task' && metadata != null && roomId != null && messageId != null)
-                TaskMessageWidget(
-                  messageId: messageId!,
-                  roomId: roomId!,
-                  metadata: metadata!,
-                  isMe: isMe,
-                )
-              else if (type == 'meeting' && metadata != null)
-                MeetingMessageWidget(
-                  metadata: metadata!,
-                  isMe: isMe,
-                )
-              else
-                Text(
-                  content,
-                  style: TextStyle(
-                    color: isMe ? Colors.white : notMeTextColor,
-                    fontSize: 15.5,
-                    height: 1.3,
+              ),
+            Flexible(
+              child: Container(
+                constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
+                decoration: BoxDecoration(
+                  color: bubbleColor,
+                  borderRadius: BorderRadius.only(
+                    topLeft: isMe ? const Radius.circular(8) : Radius.zero,
+                    topRight: isMe ? Radius.zero : const Radius.circular(8),
+                    bottomLeft: const Radius.circular(8),
+                    bottomRight: const Radius.circular(8),
                   ),
-                ),
-              if (caption != null && caption!.isNotEmpty && type != 'text')
-                Padding(
-                  padding: const EdgeInsets.only(top: 8.0, bottom: 4.0),
-                  child: Text(
-                    caption!,
-                    style: TextStyle(
-                      color: isMe ? Colors.white : notMeTextColor,
-                      fontSize: 14.5,
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 4),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox(width: 4),
-                  Text(
-                    _formatTime(timestamp),
-                    style: TextStyle(
-                      color: isMe ? Colors.white60 : Colors.grey,
-                      fontSize: 11,
-                    ),
-                  ),
-                  if (isMe) ...[
-                    const SizedBox(width: 4),
-                    Icon(
-                      status == 'pending' ? Icons.access_time_rounded : 
-                      (isRead ? Icons.done_all_rounded : Icons.done_rounded),
-                      size: 14,
-                      color: isRead ? Colors.blueAccent : Colors.white60,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withAlpha(20),
+                      blurRadius: 1,
+                      offset: const Offset(0, 1),
                     ),
                   ],
-                ],
-              ),
-              // Réactions sous le message
-              if (reactions != null && reactions!.isNotEmpty)
-                ReactionsDisplay(
-                  reactions: reactions!,
-                  isMe: isMe,
-                  currentUserId: currentUserId,
-                  onTapReaction: onReaction,
                 ),
-            ],
-          ),
-        ).animate().fadeIn(duration: 300.ms).scale(begin: const Offset(0.9, 0.9), curve: Curves.easeOutBack).slideX(begin: isMe ? 0.2 : -0.2, end: 0),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (replyToContent != null)
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          margin: const EdgeInsets.only(bottom: 4),
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withAlpha(20),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border(left: BorderSide(color: replyBorderColor, width: 4)),
+                          ),
+                          child: Text(
+                            replyToContent!.length > 60 ? '${replyToContent!.substring(0, 60)}...' : replyToContent!,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontStyle: FontStyle.italic,
+                              color: textColor.withAlpha(180),
+                            ),
+                          ),
+                        ),
+                      if (type == 'image')
+                        _ImageContent(url: content, localPath: localPath)
+                      else if (type == 'file')
+                        _FileContent(content: content, isMe: isMe, localPath: localPath)
+                      else if (type == 'audio')
+                        AudioPlayerWidget(url: content, isMe: isMe, localPath: localPath)
+                      else if (type == 'poll' && metadata != null && roomId != null && messageId != null)
+                        PollMessageWidget(
+                          messageId: messageId!,
+                          roomId: roomId!,
+                          metadata: metadata!,
+                          isMe: isMe,
+                        )
+                      else if (type == 'task' && metadata != null && roomId != null && messageId != null)
+                        TaskMessageWidget(
+                          messageId: messageId!,
+                          roomId: roomId!,
+                          metadata: metadata!,
+                          isMe: isMe,
+                        )
+                      else if (type == 'meeting' && metadata != null)
+                        MeetingMessageWidget(
+                          metadata: metadata!,
+                          isMe: isMe,
+                        )
+                      else
+                        Wrap(
+                          alignment: WrapAlignment.end,
+                          crossAxisAlignment: WrapCrossAlignment.end,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8.0, bottom: 2.0),
+                              child: Text(
+                                content,
+                                style: TextStyle(
+                                  color: textColor,
+                                  fontSize: 15.5,
+                                  height: 1.3,
+                                ),
+                              ),
+                            ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  _formatTime(timestamp),
+                                  style: TextStyle(
+                                    color: (isDark && isMe) ? Colors.white70 : Colors.black54,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                                if (isMe) ...[
+                                  const SizedBox(width: 4),
+                                  Icon(
+                                    status == 'pending' ? Icons.access_time_rounded : 
+                                    (isRead ? Icons.done_all_rounded : Icons.done_rounded),
+                                    size: 14,
+                                    color: isRead ? Colors.blue : ((isDark && isMe) ? Colors.white70 : Colors.black54),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
+                        ),
+                      if (caption != null && caption!.isNotEmpty && type != 'text')
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4.0),
+                          child: Text(
+                            caption!,
+                            style: TextStyle(
+                              color: textColor,
+                              fontSize: 14.5,
+                            ),
+                          ),
+                        ),
+                      if (reactions != null && reactions!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4.0),
+                          child: ReactionsDisplay(
+                            reactions: reactions!,
+                            isMe: isMe,
+                            currentUserId: currentUserId,
+                            onTapReaction: onReaction,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ).animate().fadeIn(duration: 200.ms).slideY(begin: 0.1, end: 0),
+            ),
+            if (isMe)
+              Padding(
+                padding: const EdgeInsets.only(top: 0),
+                child: CustomPaint(
+                  painter: TailPainter(isMe: true, color: bubbleColor),
+                  size: const Size(8, 12),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -394,4 +427,34 @@ class _FileContent extends StatelessWidget {
       ),
     );
   }
+}
+
+class TailPainter extends CustomPainter {
+  final bool isMe;
+  final Color color;
+
+  TailPainter({required this.isMe, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var paint = Paint()..color = color;
+    var path = Path();
+    
+    if (isMe) {
+      path.moveTo(0, 0); 
+      path.lineTo(size.width, 0); 
+      path.lineTo(0, size.height); 
+      path.close();
+    } else {
+      path.moveTo(size.width, 0); 
+      path.lineTo(0, 0); 
+      path.lineTo(size.width, size.height); 
+      path.close();
+    }
+    
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

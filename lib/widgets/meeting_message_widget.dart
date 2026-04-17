@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:add_2_calendar/add_2_calendar.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 
 class MeetingMessageWidget extends StatelessWidget {
   final Map<String, dynamic> metadata;
@@ -27,9 +26,11 @@ class MeetingMessageWidget extends StatelessWidget {
     
     if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Événement ajouté à votre calendrier natif !"),
-          backgroundColor: Colors.green,
+        SnackBar(
+          content: const Text("Événement ajouté à votre agenda"),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          backgroundColor: Colors.teal.shade700,
         ),
       );
     }
@@ -38,148 +39,145 @@ class MeetingMessageWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     final title = metadata['title'] ?? 'Réunion';
     final description = metadata['description'] ?? '';
     final startDateStr = metadata['start_date'];
-    final endDateStr = metadata['end_date'];
-
+    
     DateTime? start;
-    DateTime? end;
     if (startDateStr != null) start = DateTime.tryParse(startDateStr);
-    if (endDateStr != null) end = DateTime.tryParse(endDateStr);
 
-    final dateFormatter = DateFormat('dd MMM yyyy, HH:mm', 'fr_FR');
+    final dateFormatter = DateFormat('EEEE d MMM', 'fr_FR');
     final timeFormatter = DateFormat('HH:mm', 'fr_FR');
 
-    final Color bgColor = isMe 
-        ? Colors.white.withAlpha(40) 
-        : theme.colorScheme.primary.withAlpha(20);
-    final Color textColor = isMe ? Colors.white : theme.colorScheme.onSurface;
+    // WhatsApp style Colors
+    final bubbleColor = isMe
+        ? (isDark ? const Color(0xFF005C4B) : const Color(0xFFE2F7CB))
+        : (isDark ? const Color(0xFF202C33) : Colors.white);
+    
+    final textColor = isMe 
+        ? (isDark ? Colors.white : Colors.black87) 
+        : (isDark ? Colors.white : Colors.black87);
+        
+    final mutedTextColor = textColor.withAlpha(160);
 
     return Container(
-      width: 280,
+      width: 260,
       margin: const EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isMe ? Colors.white.withAlpha(50) : theme.colorScheme.primary.withAlpha(30),
-        ),
+        color: bubbleColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(isDark ? 30 : 10),
+            blurRadius: 2,
+            offset: const Offset(0, 1),
+          )
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: isMe ? Colors.black.withAlpha(30) : theme.colorScheme.primary.withAlpha(15),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            ),
+          // En-tête : Date et icône "Événement"
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  Icons.event_available_rounded,
-                  color: isMe ? Colors.white : theme.colorScheme.primary,
-                  size: 24,
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: isMe 
+                      ? (isDark ? Colors.white.withAlpha(20) : Colors.teal.withAlpha(30))
+                      : theme.colorScheme.primary.withAlpha(isDark ? 30 : 20),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.event_note_rounded,
+                    color: isMe ? (isDark ? Colors.white : Colors.teal.shade700) : theme.colorScheme.primary,
+                    size: 20,
+                  ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    "Invitation à une réunion",
-                    style: TextStyle(
-                      color: isMe ? Colors.white70 : theme.colorScheme.primary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.5,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          color: textColor,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (start != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          "${dateFormatter.format(start).replaceFirstMapped(RegExp(r'^\w'), (m) => m[0]!.toUpperCase())} à ${timeFormatter.format(start)}",
+                          style: TextStyle(
+                            color: mutedTextColor,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ],
             ),
           ),
           
-          // Body
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
+          if (description.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Text(
+                description,
+                style: TextStyle(
+                  color: mutedTextColor,
+                  fontSize: 13,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          
+          // Séparateur fin
+          Divider(
+            height: 1, 
+            thickness: 0.5, 
+            color: textColor.withAlpha(30)
+          ),
+          
+          // Bouton flottant sans bord "Ajouter à l'agenda"
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => _addToCalendar(context),
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                alignment: Alignment.center,
+                child: Text(
+                  "Ajouter à l'agenda",
                   style: TextStyle(
-                    color: textColor,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
+                    color: isMe ? (isDark ? Colors.tealAccent.shade100 : Colors.teal.shade800) : theme.colorScheme.primary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                if (description.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    description,
-                    style: TextStyle(
-                      color: textColor.withAlpha(180),
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                
-                // Date & Time
-                if (start != null)
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: isMe ? Colors.black.withAlpha(20) : Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.schedule_rounded,
-                          size: 16,
-                          color: isMe ? Colors.white70 : theme.colorScheme.primary,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            "${dateFormatter.format(start)}${end != null ? ' - ${timeFormatter.format(end)}' : ''}",
-                            style: TextStyle(
-                              color: isMe ? Colors.white : Colors.black87,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                
-                const SizedBox(height: 16),
-                
-                // Add to Calendar Button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _addToCalendar(context),
-                    icon: const Icon(Icons.add_alarm_rounded, size: 18),
-                    label: const Text("Ajouter à l'agenda"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isMe ? Colors.white : theme.colorScheme.primary,
-                      foregroundColor: isMe ? theme.colorScheme.primary : Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 300.ms).slideY(begin: 0.05);
+    );
   }
 }

@@ -75,8 +75,16 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
         final fullUrl = await MediaService().getDownloadUrl(widget.url);
         await _audioPlayer.setUrl(fullUrl);
       }
+      if (_audioPlayer.duration != null && mounted) {
+        setState(() => _duration = _audioPlayer.duration!);
+      }
     } catch (_) {
-      try { await _audioPlayer.setUrl(widget.url); } catch (_) {}
+      try { 
+        await _audioPlayer.setUrl(widget.url); 
+        if (_audioPlayer.duration != null && mounted) {
+          setState(() => _duration = _audioPlayer.duration!);
+        }
+      } catch (_) {}
     }
   }
 

@@ -17,7 +17,6 @@ import 'providers/settings_provider.dart';
 import 'providers/home_provider.dart';
 import 'theme/app_theme.dart';
 import 'widgets/call/global_call_listener.dart';
-import 'widgets/call/incoming_call_overlay.dart';
 import 'dart:async';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
@@ -192,7 +191,6 @@ class _CorporateConnectAppState extends ConsumerState<CorporateConnectApp>
             child: Stack(
               children: [
                 if (child != null) child,
-                const IncomingCallOverlay(),
                 // Biometric lock overlay
                 if (_isLocked)
                   LockScreen(onUnlocked: _unlock),

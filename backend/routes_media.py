@@ -1,6 +1,8 @@
 import os
 import shutil
 import uuid
+import cloudinary
+import cloudinary.uploader
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -18,27 +20,27 @@ for d in [IMAGES_DIR, DOCS_DIR]:
     if not os.path.exists(d):
         os.makedirs(d)
 
+# Configurer Cloudinary (récupère automatiquement CLOUDINARY_URL depuis l'environnement)
+cloudinary.config(secure=True)
+
 @router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
     current_user: Profile = Depends(get_current_user),
 ):
-    """Télécharger un fichier sur le serveur."""
-    file_ext = os.path.splitext(file.filename)[1].lower()
-    unique_filename = f"{uuid.uuid4()}{file_ext}"
+    """Télécharger un fichier directement sur Cloudinary."""
     
-    is_image = file_ext in [".png", ".jpg", ".jpeg", ".gif", ".webp"]
-    target_dir = IMAGES_DIR if is_image else DOCS_DIR
-    file_path = os.path.join(target_dir, unique_filename)
-
-    with open(file_path, "wb") as buffer:
-        file.file.seek(0, os.SEEK_END)
-        file_size = file.file.tell()
-        file.file.seek(0)
-        shutil.copyfileobj(file.file, buffer)
-
-    # URL sécurisée via le backend
-    file_url = f"/media/download/{unique_filename}"
+    try:
+        # L'argument resource_type="auto" détecte automatiquement s'il s'agit d'une image, audio, ou document
+        response = cloudinary.uploader.upload(
+            file.file, 
+            resource_type="auto", 
+            folder="corporate_connect_uploads"
+        )
+        file_url = response.get("secure_url")
+        file_size = response.get("bytes", 0)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Échec de l'upload Cloudinary: {str(e)}")
 
     return {
         "filename": file.filename,

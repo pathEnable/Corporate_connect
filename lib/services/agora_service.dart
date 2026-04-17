@@ -1,76 +1,145 @@
-import 'dart:convert';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
-import 'auth_service.dart';
-import 'api_config.dart';
+import 'package:flutter/foundation.dart';
 
+/// Service Agora RTC — Singleton avec réinitialisation propre entre les appels.
+/// 
+/// Cycle de vie :
+///   1. initEngine(appId) — crée le moteur (une seule fois par appel)
+///   2. joinChannel(token, channelName) — rejoint le canal
+///   3. leaveChannel() — quitte le canal (sans détruire le moteur)
+///   4. dispose() — détruit le moteur (à la fin de l'appel complet)
 class AgoraService {
   static final AgoraService _instance = AgoraService._internal();
   factory AgoraService() => _instance;
   AgoraService._internal();
 
   RtcEngine? _engine;
-  final AuthService _authService = AuthService();
+  bool _isInitialized = false;
+  bool _isInChannel = false;
 
-  // URL de base pour les requêtes API (doit correspondre au backend)
-  static String get _apiBaseUrl => '${ApiConfig.baseUrl}/agora';
+  /// Retourne le moteur Agora (ou null si non initialisé).
+  RtcEngine? get engine => _engine;
+  
+  /// Vrai si le moteur est initialisé et prêt.
+  bool get isInitialized => _isInitialized;
+  
+  /// Vrai si on est actuellement dans un canal.
+  bool get isInChannel => _isInChannel;
 
-  Future<void> initAgora() async {
-    // On récupère d'abord un token de test ou l'App ID via le backend si nécessaire
-    // Mais ici on initialise le moteur avec l'App ID qu'on recevra du backend
-  }
+  /// Initialise le moteur Agora. Peut être appelé plusieurs fois sans risque.
+  Future<RtcEngine> initEngine(String appId) async {
+    // Si déjà initialisé, réutiliser
+    if (_engine != null && _isInitialized) {
+      debugPrint('🎙️ Agora engine déjà initialisé, réutilisation');
+      return _engine!;
+    }
 
-  Future<RtcEngine> getEngine(String appId, {bool isVideo = true}) async {
-    if (_engine != null) return _engine!;
+    // Nettoyer si dans un état sale
+    if (_engine != null) {
+      try {
+        await _engine!.release();
+      } catch (_) {}
+      _engine = null;
+      _isInitialized = false;
+    }
 
+    debugPrint('🎙️ Création nouveau moteur Agora');
     _engine = createAgoraRtcEngine();
     await _engine!.initialize(RtcEngineContext(
       appId: appId,
       channelProfile: ChannelProfileType.channelProfileCommunication,
     ));
 
-    if (isVideo) {
-      await _engine!.enableVideo();
-      await _engine!.startPreview();
-    } else {
-      await _engine!.enableAudio();
-    }
-    
+    _isInitialized = true;
     return _engine!;
   }
 
-  Future<Map<String, dynamic>> fetchToken(String channelName, {int uid = 0}) async {
-    final response = await _authService.authenticatedRequest(
-      url: '$_apiBaseUrl/token?channel_name=$channelName&uid=$uid',
-      method: 'GET',
-    );
-
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception('Erreur lors de la récupération du token Agora');
+  /// Rejoint un canal Agora.
+  Future<void> joinChannel({
+    required String token,
+    required String channelName,
+    required int uid,
+    bool enableVideo = true,
+  }) async {
+    if (_engine == null || !_isInitialized) {
+      throw Exception('Agora engine non initialisé. Appeler initEngine() d\'abord.');
     }
-  }
 
-  Future<void> joinChannel(String token, String channelName, int uid, {bool isVideo = true}) async {
-    if (_engine == null) throw Exception("Engine non initialisé");
-    
+    if (enableVideo) {
+      await _engine!.enableVideo();
+    } else {
+      await _engine!.enableAudio();
+    }
+
+    await _engine!.startPreview();
+
     await _engine!.joinChannel(
       token: token,
       channelId: channelName,
       uid: uid,
-      options: ChannelMediaOptions(
-        clientRoleType: ClientRoleType.clientRoleBroadcaster,
-        publishCameraTrack: isVideo,
+      options: const ChannelMediaOptions(
+        autoSubscribeAudio: true,
+        autoSubscribeVideo: true,
         publishMicrophoneTrack: true,
+        publishCameraTrack: true,
+        clientRoleType: ClientRoleType.clientRoleBroadcaster,
       ),
     );
+
+    _isInChannel = true;
+    debugPrint('🎙️ Rejoint canal: $channelName');
   }
 
+  /// Quitte le canal (sans détruire le moteur).
   Future<void> leaveChannel() async {
+    if (_engine != null && _isInChannel) {
+      try {
+        await _engine!.leaveChannel();
+        debugPrint('🎙️ Canal quitté');
+      } catch (e) {
+        debugPrint('⚠️ Erreur leaveChannel: $e');
+      }
+      _isInChannel = false;
+    }
+  }
+
+  /// Libère complètement le moteur. Doit être appelé à la fin de chaque appel.
+  Future<void> dispose() async {
+    debugPrint('🎙️ Destruction moteur Agora');
+    
+    if (_isInChannel) {
+      await leaveChannel();
+    }
+
     if (_engine != null) {
-      await _engine!.leaveChannel();
-      await _engine!.release();
+      try {
+        await _engine!.stopPreview();
+      } catch (_) {}
+      try {
+        await _engine!.release();
+      } catch (_) {}
       _engine = null;
     }
+
+    _isInitialized = false;
+    _isInChannel = false;
+  }
+
+  // ═══ Contrôles pendant l'appel ═══
+
+  Future<void> toggleMute(bool mute) async {
+    await _engine?.muteLocalAudioStream(mute);
+  }
+
+  Future<void> toggleVideo(bool disable) async {
+    await _engine?.muteLocalVideoStream(disable);
+  }
+
+  Future<void> switchCamera() async {
+    await _engine?.switchCamera();
+  }
+
+  Future<void> toggleSpeaker(bool enable) async {
+    await _engine?.setEnableSpeakerphone(enable);
   }
 }

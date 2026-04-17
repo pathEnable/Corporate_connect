@@ -362,6 +362,18 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
         }).toList();
         state = state.copyWith(messages: updated);
       }
+    } else if (message['type'] == 'message_updated') {
+      final msgId = message['message_id']?.toString();
+      final metadata = message['metadata_'];
+      if (msgId != null && metadata != null && !_isDisposed) {
+        final updated = state.messages.map((m) {
+          if (m['id'].toString() == msgId) {
+            return {...m, 'metadata_': metadata};
+          }
+          return m;
+        }).toList();
+        state = state.copyWith(messages: updated);
+      }
     }
   }
 

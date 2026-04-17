@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../screens/call_screen.dart';
+import '../../providers/call_provider.dart';
 import '../../providers/chat_provider.dart';
 import '../../theme/app_theme.dart';
 
@@ -283,23 +284,22 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
     );
   }
 
-  void _startCall(BuildContext context, WidgetRef ref, {required bool isVideo}) {
-    ref.read(chatProvider(roomId).notifier).sendMessage(
-      isVideo ? 'Appel vidéo' : 'Appel audio',
-      'call_offer',
-      extraData: {'channel_id': roomId, 'is_video': isVideo},
+  void _startCall(BuildContext context, WidgetRef ref, {required bool isVideo}) async {
+    // Utiliser le nouveau système de signalisation
+    final success = await ref.read(callProvider.notifier).initiateCall(
+      roomId: roomId,
+      isVideo: isVideo,
+      otherUserName: roomName,
     );
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => CallScreen(
-          remoteUserName: roomName,
-          channelId: roomId,
-          isVideo: isVideo,
+    if (success && context.mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const CallScreen(),
         ),
-      ),
-    );
+      );
+    }
   }
 }
 

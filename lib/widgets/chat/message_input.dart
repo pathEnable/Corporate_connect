@@ -11,6 +11,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../providers/chat_provider.dart';
 import '../../services/media_service.dart';
 import '../../screens/media_preview_screen.dart';
@@ -538,6 +539,16 @@ class _MessageInputState extends ConsumerState<MessageInput> {
 
   Future<void> _startRecording() async {
     try {
+      final status = await Permission.microphone.request();
+      if (status != PermissionStatus.granted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Permission microphone requise.')),
+          );
+        }
+        return;
+      }
+
       if (await _recorderController.checkPermission()) {
         HapticFeedback.mediumImpact();
         

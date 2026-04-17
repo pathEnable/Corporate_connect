@@ -47,6 +47,22 @@ class _TaskMessageWidgetState extends ConsumerState<TaskMessageWidget>
   }
 
   @override
+  void didUpdateWidget(covariant TaskMessageWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.metadata != oldWidget.metadata) {
+      final wasDone = _isDone;
+      setState(() {
+        _meta = Map<String, dynamic>.from(widget.metadata);
+      });
+      if (!wasDone && _isDone) {
+        _checkController.forward();
+      } else if (wasDone && !_isDone) {
+        _checkController.reverse();
+      }
+    }
+  }
+
+  @override
   void dispose() {
     _checkController.dispose();
     super.dispose();
