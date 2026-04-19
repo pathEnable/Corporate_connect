@@ -319,11 +319,7 @@ class _MessageBubbleState extends State<MessageBubble> {
         }
       }
 
-      final bool isLongMessage = widget.content.length > 400;
-      final String displayContent = (isLongMessage && !_isExpanded)
-          ? '${widget.content.substring(0, 400)}...'
-          : widget.content;
-
+      final theme = Theme.of(context);
       return Padding(
         padding: const EdgeInsets.only(right: 4.0, bottom: 4.0),
         child: _buildExpandableText(widget.content, textColor, theme),
