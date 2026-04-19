@@ -431,9 +431,14 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
     } else if (message['type'] == 'message_deleted') {
       final msgId = message['message_id']?.toString();
       if (msgId != null && !_isDisposed) {
-        final updated = state.messages.where((m) => m['id'].toString() != msgId).toList();
+        final updated = state.messages.map((m) {
+          if (m['id'].toString() == msgId) {
+             return {...m, 'content': '🚫 Ce message a été supprimé', 'message_type': 'deleted', 'is_encrypted': false};
+          }
+          return m;
+        }).toList();
         state = state.copyWith(messages: updated);
-        LocalDatabase.instance.deleteMessage(msgId);
+        LocalDatabase.instance.updateContent(msgId, '🚫 Ce message a été supprimé');
       }
     } else if (message['type'] == 'message_edited') {
       final msgId = message['message_id']?.toString();
@@ -488,9 +493,14 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
   /// Supprimer un message (optimiste + WebSocket)
   void deleteMessage(String messageId) {
     if (_userId == null) return;
-    final updated = state.messages.where((m) => m['id'].toString() != messageId).toList();
+    final updated = state.messages.map((m) {
+      if (m['id'].toString() == messageId) {
+         return {...m, 'content': '🚫 Ce message a été supprimé', 'message_type': 'deleted', 'is_encrypted': false};
+      }
+      return m;
+    }).toList();
     if (!_isDisposed) state = state.copyWith(messages: updated);
-    LocalDatabase.instance.deleteMessage(messageId);
+    LocalDatabase.instance.updateContent(messageId, '🚫 Ce message a été supprimé');
     _chatService.sendMessage('', type: 'delete_message', data: {'message_id': messageId});
   }
 

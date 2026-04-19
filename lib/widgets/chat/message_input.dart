@@ -161,7 +161,12 @@ class _MessageInputState extends ConsumerState<MessageInput> {
     }
     
     final extraData = widget.replyingTo != null 
-        ? {'reply_to_id': widget.replyingTo!['id'] ?? widget.replyingTo!['message_id']} 
+        ? {
+            'reply_to_id': widget.replyingTo!['id'] ?? widget.replyingTo!['message_id'],
+            'metadata_': {
+              'reply_to_content': widget.replyingTo!['content'],
+            }
+          } 
         : null;
 
     ref.read(chatProvider(widget.roomId).notifier).sendMessage(text, 'text', extraData: extraData);

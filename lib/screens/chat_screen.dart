@@ -136,7 +136,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         status: msg['status'] ?? 'sent',
                         isRead: msg['is_read'] == true || msg['is_read'] == 1,
                         isEncrypted: msg['is_encrypted'] == true,
-                        replyToContent: msg['reply_to_content'],
+                        replyToContent: msg['reply_to_content'] ?? msg['metadata_']?['reply_to_content'],
                         caption: msg['caption'],
                         localPath: msg['local_path'],
                         currentUserId: _userId,

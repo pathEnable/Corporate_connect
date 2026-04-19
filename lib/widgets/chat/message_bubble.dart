@@ -109,7 +109,9 @@ class _MessageBubbleState extends State<MessageBubble> {
                       child: Container(
                         key: _bubbleKey,
                         constraints: BoxConstraints(
-                          maxWidth: MediaQuery.of(context).size.width * 0.75,
+                          maxWidth: MediaQuery.of(context).size.width > 600 
+                              ? 450.0 
+                              : MediaQuery.of(context).size.width * 0.75,
                         ),
                         decoration: BoxDecoration(
                           color: bubbleColor,
@@ -127,14 +129,13 @@ class _MessageBubbleState extends State<MessageBubble> {
                             ),
                           ],
                         ),
-                        child: IntrinsicWidth(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (widget.replyToContent != null)
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (widget.replyToContent != null)
                                   Align(
                                     alignment: Alignment.centerLeft,
                                     child: Container(
@@ -216,8 +217,7 @@ class _MessageBubbleState extends State<MessageBubble> {
                                     ],
                                   ),
                                 ),
-                              ],
-                            ),
+                            ],
                           ),
                         ),
                       ),
@@ -257,7 +257,23 @@ class _MessageBubbleState extends State<MessageBubble> {
   }
 
   Widget _buildMainContent(BuildContext context, Color textColor, bool isDark) {
-    if (widget.type == 'image') {
+    if (widget.type == 'deleted') {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.block, size: 14, color: textColor.withAlpha(150)),
+          const SizedBox(width: 6),
+          Text(
+            widget.content,
+            style: TextStyle(
+              color: textColor.withAlpha(150),
+              fontSize: 14,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      );
+    } else if (widget.type == 'image') {
       return _ImageContent(url: widget.content, localPath: widget.localPath);
     } else if (widget.type == 'file') {
       return _FileContent(content: widget.content, isMe: widget.isMe, localPath: widget.localPath);

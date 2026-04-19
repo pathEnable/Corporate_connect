@@ -619,8 +619,8 @@ async def websocket_chat(
 
             try:
                 # Exécution dans un thread séparé ! (OPTIMISATION MAJEURE)
-                msg_reply_id = message_data.get("reply_to_id")
                 extra_data = message_data.get("data")
+                msg_reply_id = extra_data.get("reply_to_id") if extra_data and isinstance(extra_data, dict) else None
                 metadata_to_save = extra_data.get("metadata_") if extra_data and isinstance(extra_data, dict) else None
                 
                 msg_id, final_m_type, saved_meta = await run_in_threadpool(
