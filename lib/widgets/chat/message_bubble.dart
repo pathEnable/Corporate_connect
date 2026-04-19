@@ -129,13 +129,14 @@ class _MessageBubbleState extends State<MessageBubble> {
                             ),
                           ],
                         ),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (widget.replyToContent != null)
+                        child: IntrinsicWidth(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (widget.replyToContent != null)
                                   Align(
                                     alignment: Alignment.centerLeft,
                                     child: Container(
@@ -222,6 +223,7 @@ class _MessageBubbleState extends State<MessageBubble> {
                         ),
                       ),
                     ),
+                  ),
 
                     // Réactions style WhatsApp : pilule chevauchant le bas de la bulle
                     if (hasReactions)
