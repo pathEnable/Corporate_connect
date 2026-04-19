@@ -454,12 +454,14 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
         final decrypted = await _decryptBulk([message]);
         newContent = decrypted.first['content']?.toString() ?? newContent;
 
+        Map<String, dynamic> updatedMeta = {'edited': true};
         final updated = state.messages.map((m) {
           final currentId = m['id']?.toString();
           final currentMsgId = m['message_id']?.toString();
           if (currentId == msgId || currentMsgId == msgId) {
             final meta = Map<String, dynamic>.from((m['metadata_'] as Map?) ?? {});
             meta['edited'] = true;
+            updatedMeta = meta;
             return {...m, 'content': newContent, 'metadata_': meta};
           }
           return m;
@@ -467,7 +469,7 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
         state = state.copyWith(messages: updated);
         LocalDatabase.instance.updateMessage(msgId, {
           'content': newContent,
-          'metadata_': meta,
+          'metadata_': updatedMeta,
         });
       }
     }
