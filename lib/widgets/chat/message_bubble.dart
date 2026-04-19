@@ -62,6 +62,7 @@ class MessageBubble extends StatefulWidget {
 
 class _MessageBubbleState extends State<MessageBubble> {
   final GlobalKey _bubbleKey = GlobalKey();
+  bool _isExpanded = false;
 
   @override
   Widget build(BuildContext context) {
@@ -170,10 +171,7 @@ class _MessageBubbleState extends State<MessageBubble> {
                                     alignment: Alignment.centerLeft,
                                     child: Padding(
                                       padding: const EdgeInsets.only(top: 4.0),
-                                      child: Text(
-                                        widget.caption!,
-                                        style: TextStyle(color: textColor, fontSize: 14.5),
-                                      ),
+                                      child: _buildExpandableText(widget.caption!, textColor, theme, fontSize: 14.5),
                                     ),
                                   ),
 
@@ -321,18 +319,57 @@ class _MessageBubbleState extends State<MessageBubble> {
         }
       }
 
+      final bool isLongMessage = widget.content.length > 400;
+      final String displayContent = (isLongMessage && !_isExpanded)
+          ? '${widget.content.substring(0, 400)}...'
+          : widget.content;
+
       return Padding(
         padding: const EdgeInsets.only(right: 4.0, bottom: 4.0),
-        child: Text(
-          widget.content,
+        child: _buildExpandableText(widget.content, textColor, theme),
+      );
+    }
+  }
+
+  Widget _buildExpandableText(String text, Color textColor, ThemeData theme, {double fontSize = 15.5}) {
+    final bool isLong = text.length > 400;
+    final String displayContent = (isLong && !_isExpanded)
+        ? '${text.substring(0, 400)}...'
+        : text;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          displayContent,
           style: TextStyle(
             color: textColor,
-            fontSize: 15.5,
+            fontSize: fontSize,
             height: 1.3,
           ),
         ),
-      );
-    }
+        if (isLong)
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                _isExpanded = !_isExpanded;
+              });
+            },
+            child: Padding(
+              padding: const EdgeInsets.only(top: 4.0),
+              child: Text(
+                _isExpanded ? 'Voir moins' : 'Voir plus',
+                style: TextStyle(
+                  color: widget.isMe ? Colors.white70 : theme.colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
   }
 
   String _formatTime(String timestamp) {
