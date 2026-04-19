@@ -169,170 +169,146 @@ class _PollMessageWidgetState extends State<PollMessageWidget> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    // Couleurs WhatsApp-like
-    final bubbleColor = widget.isMe
-        ? (isDark ? const Color(0xFF005C4B) : const Color(0xFFE2F7CB))
-        : (isDark ? const Color(0xFF202C33) : Colors.white);
-    
+
     final textColor = widget.isMe 
         ? (isDark ? Colors.white : Colors.black87) 
         : (isDark ? Colors.white : Colors.black87);
 
     final highlightColor = widget.isMe 
-        ? (isDark ? const Color(0xFF00A884).withAlpha(60) : const Color(0xFF00A884).withAlpha(40))
-        : theme.colorScheme.primary.withAlpha(isDark ? 40 : 25);
+        ? (isDark ? const Color(0xFF00A884).withAlpha(40) : const Color(0xFF00A884).withAlpha(30))
+        : theme.colorScheme.primary.withAlpha(isDark ? 30 : 20);
 
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: bubbleColor,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(isDark ? 30 : 10),
-            blurRadius: 2,
-            offset: const Offset(0, 1),
-          )
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // En-tête minimalist
-          Row(
-            children: [
-              Icon(Icons.poll_rounded, color: theme.colorScheme.primary, size: 16),
-              const SizedBox(width: 6),
-              Text(
-                'Sondage',
-                style: TextStyle(
-                  color: theme.colorScheme.primary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // En-tête minimalist
+        Row(
+          children: [
+            Icon(Icons.poll_rounded, color: theme.colorScheme.primary, size: 16),
+            const SizedBox(width: 6),
+            Text(
+              'Sondage',
+              style: TextStyle(
+                color: theme.colorScheme.primary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          
-          // Question
-          Text(
-            _question,
-            style: TextStyle(
-              fontWeight: FontWeight.w600, 
-              fontSize: 15,
-              color: textColor,
             ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        
+        // Question
+        Text(
+          _question,
+          style: TextStyle(
+            fontWeight: FontWeight.w600, 
+            fontSize: 15,
+            color: textColor,
           ),
-          const SizedBox(height: 12),
-          
-          // Options
-          ..._options.asMap().entries.map((entry) {
-            final i = entry.key;
-            final option = entry.value;
-            final label = option['text']?.toString() ?? 'Option';
-            final count = _getVoteCount(i);
-            final pct = _totalVotes > 0 ? count / _totalVotes : 0.0;
-            final votersForOption = _votes.entries.where((e) => e.value == i).map((e) => e.key).toList();
+        ),
+        const SizedBox(height: 12),
+        
+        // Options
+        ..._options.asMap().entries.map((entry) {
+          final i = entry.key;
+          final option = entry.value;
+          final label = option['text']?.toString() ?? 'Option';
+          final count = _getVoteCount(i);
+          final pct = _totalVotes > 0 ? count / _totalVotes : 0.0;
+          final votersForOption = _votes.entries.where((e) => e.value == i).map((e) => e.key).toList();
 
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: GestureDetector(
-                onTap: () => _vote(i),
-                child: Container(
-                  height: 42,
-                  clipBehavior: Clip.antiAlias,
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.black.withAlpha(20) : Colors.black.withAlpha(5),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Stack(
-                    children: [
-                      // Jauge de progression fluide form fitting
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 600),
-                        curve: Curves.easeOutQuart,
-                        width: pct > 0 ? MediaQuery.of(context).size.width * 0.6 * pct : 0, 
-                        // Approximation largeur dispo, on peut utiliser FractionallySizedBox avec un alignement left
-                        color: highlightColor,
-                      ),
-                      Positioned.fill(
-                        child: FractionallySizedBox(
-                          alignment: Alignment.centerLeft,
-                          widthFactor: pct > 0 ? pct : 0.0,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: highlightColor,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: GestureDetector(
+              onTap: () => _vote(i),
+              child: Container(
+                height: 42,
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.black.withAlpha(20) : Colors.black.withAlpha(5),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Stack(
+                  children: [
+                    // Jauge de progression fluide
+                    Positioned.fill(
+                      child: FractionallySizedBox(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: pct > 0 ? pct : 0.0,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 600),
+                          curve: Curves.easeOutQuart,
+                          decoration: BoxDecoration(
+                            color: highlightColor,
+                            borderRadius: BorderRadius.circular(20),
                           ),
                         ),
                       ),
-                      // Contenu
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Row(
-                          children: [
-                            // Radio button discret
-                            Container(
-                              width: 16,
-                              height: 16,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: count > 0 ? theme.colorScheme.primary : textColor.withAlpha(100),
-                                  width: count > 0 ? 5 : 1.5, // Fills when selected
-                                ),
+                    ),
+                    // Contenu
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Row(
+                        children: [
+                          // Radio button discret
+                          Container(
+                            width: 16,
+                            height: 16,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: count > 0 ? theme.colorScheme.primary : textColor.withAlpha(100),
+                                width: count > 0 ? 5 : 1.5,
                               ),
                             ),
-                            const SizedBox(width: 12),
-                            // Label
-                            Expanded(
-                              child: Text(
-                                label,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w500,
-                                  color: textColor,
-                                  fontSize: 14,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(width: 12),
+                          // Label
+                          Expanded(
+                            child: Text(
+                              label,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w500,
+                                color: textColor,
+                                fontSize: 14,
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            // Avatars & Pourcentage
-                            if (count > 0) ...[
-                              _buildAvatarsStack(votersForOption, theme),
-                            ],
+                          ),
+                          // Avatars
+                          if (count > 0) ...[
+                            _buildAvatarsStack(votersForOption, theme),
                           ],
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
-            );
-          }),
-          
-          // Pied de sondage
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '$_totalVotes participant${_totalVotes > 1 ? 's' : ''}',
-                  style: TextStyle(
-                    fontSize: 11, 
-                    color: textColor.withAlpha(150),
-                  ),
+            ),
+          );
+        }),
+        
+        // Pied de sondage
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '$_totalVotes participant${_totalVotes > 1 ? 's' : ''}',
+                style: TextStyle(
+                  fontSize: 11, 
+                  color: textColor.withAlpha(150),
                 ),
               ),
-              // Optionnel : icône "voir les détails"
-              Icon(Icons.chevron_right_rounded, size: 14, color: textColor.withAlpha(100)),
-            ],
-          ),
-        ],
-      ),
+            ),
+            Icon(Icons.chevron_right_rounded, size: 14, color: textColor.withAlpha(100)),
+          ],
+        ),
+      ],
     );
   }
 }

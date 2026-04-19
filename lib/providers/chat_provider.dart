@@ -420,7 +420,9 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
       final metadata = message['metadata_'];
       if (msgId != null && metadata != null && !_isDisposed) {
         final updated = state.messages.map((m) {
-          if (m['id'].toString() == msgId) {
+          final currentId = m['id']?.toString();
+          final currentMsgId = m['message_id']?.toString();
+          if (currentId == msgId || currentMsgId == msgId) {
             return {...m, 'metadata_': metadata};
           }
           return m;

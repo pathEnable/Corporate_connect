@@ -60,6 +60,8 @@ dependencies:
   just_audio: ^0.10.5
   speech_to_text: ^7.3.0
   add_2_calendar: ^3.0.1
+  open_filex: ^4.7.0
+  gal: ^2.3.2
 
 dev_dependencies:
   flutter_test:

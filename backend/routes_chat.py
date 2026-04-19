@@ -664,6 +664,8 @@ async def websocket_chat(
                         if m_type == "image": notification_body = "📸 Image reçue"
                         elif m_type == "file": notification_body = "📄 Fichier reçu"
                         elif m_type == "audio": notification_body = "🎤 Message vocal"
+                        elif m_type == "meeting": notification_body = "📅 Nouvelle réunion planifiée"
+                        elif m_type == "poll": notification_body = "📊 Nouveau sondage"
 
                         for member in members:
                             m_u_id = str(member.profile_id)

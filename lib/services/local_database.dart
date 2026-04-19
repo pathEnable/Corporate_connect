@@ -320,27 +320,6 @@ class LocalDatabase {
     );
   }
 
-  Future<void> updateReactions(String id, dynamic reactions) async {
-    if (kIsWeb) return;
-    final db = await instance.database;
-    await db.update(
-      'messages',
-      {'reactions': jsonEncode(reactions)},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-  }
-
-  Future<void> updateMetadata(String id, dynamic metadata) async {
-    if (kIsWeb) return;
-    final db = await instance.database;
-    await db.update(
-      'messages',
-      {'metadata_': jsonEncode(metadata)},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-  }
 
   Future<void> deleteMessage(String id) async {
     if (kIsWeb) return;
@@ -352,14 +331,21 @@ class LocalDatabase {
     await updateMessage(id, {'content': content});
   }
 
+  Future<void> updateMetadata(String id, Map<String, dynamic> metadata) async {
+    await updateMessage(id, {'metadata_': metadata});
+  }
+
+  Future<void> updateReactions(String id, Map<String, dynamic> reactions) async {
+    await updateMessage(id, {'reactions': reactions});
+  }
+
   Future<void> updateMessage(String id, Map<String, dynamic> data) async {
     if (kIsWeb) return;
     final db = await instance.database;
     
-    // Convertir les types complexes en JSON
     final Map<String, dynamic> values = {};
     data.forEach((key, value) {
-      if (key == 'metadata_' || key == 'reactions') {
+      if ((key == 'metadata_' || key == 'reactions') && value is! String) {
         values[key] = jsonEncode(value);
       } else {
         values[key] = value;
@@ -371,8 +357,8 @@ class LocalDatabase {
     await db.update(
       'messages',
       values,
-      where: 'id = ?',
-      whereArgs: [id],
+      where: 'id = ? OR message_id = ?', // Check both local and server IDs
+      whereArgs: [id, id],
     );
   }
 

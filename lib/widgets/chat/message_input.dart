@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -11,8 +12,11 @@ import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:http/http.dart' as http;
 import '../../providers/chat_provider.dart';
 import '../../services/media_service.dart';
+import '../../services/auth_service.dart';
+import '../../services/api_config.dart';
 import '../../screens/media_preview_screen.dart';
 
 class MessageInput extends ConsumerStatefulWidget {
@@ -850,6 +854,17 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   }
 
   void _showScheduleModal() {
+    final content = _controller.text.trim();
+    if (content.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Rédigez d\'abord un message à programmer.'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+      return;
+    }
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -858,13 +873,57 @@ class _MessageInputState extends ConsumerState<MessageInput> {
         padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
         child: _ScheduleModal(
           roomId: widget.roomId, 
-          onSchedule: (DateTime scheduledDate) {
-            // Logique de planification à exécuter
-            final content = _controller.text.trim();
-            if (content.isEmpty) return;
+          onSchedule: (DateTime scheduledDate) async {
+            // Appeler l'API REST de programmation (pas le WebSocket !)
+            final messageContent = _controller.text.trim();
+            if (messageContent.isEmpty) return;
             _controller.clear();
-            ref.read(chatProvider(widget.roomId).notifier)
-              .sendMessage(content, 'text', extraData: {'scheduled_for': scheduledDate.toIso8601String()});
+            
+            try {
+              final token = await AuthService().getToken();
+              final response = await http.post(
+                Uri.parse('${ApiConfig.baseUrl}/rooms/${widget.roomId}/messages/schedule'),
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer $token',
+                },
+                body: jsonEncode({
+                  'content': messageContent,
+                  'message_type': 'text',
+                  'scheduled_for': scheduledDate.toUtc().toIso8601String(),
+                }),
+              );
+              
+              if (!context.mounted) return;
+              if (response.statusCode == 200 || response.statusCode == 201) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('📅 Message programmé pour le ${scheduledDate.day}/${scheduledDate.month} à ${scheduledDate.hour}:${scheduledDate.minute.toString().padLeft(2, '0')}'),
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    backgroundColor: Colors.indigo,
+                  ),
+                );
+              } else {
+                final body = jsonDecode(response.body);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('❌ ${body['detail'] ?? 'Erreur lors de la programmation'}'),
+                    behavior: SnackBarBehavior.floating,
+                    backgroundColor: Colors.redAccent,
+                  ),
+                );
+              }
+            } catch (e) {
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('❌ Erreur réseau : $e'),
+                  behavior: SnackBarBehavior.floating,
+                  backgroundColor: Colors.redAccent,
+                ),
+              );
+            }
           }
         ),
       ),
@@ -1090,8 +1149,8 @@ class _CreatePollModalState extends ConsumerState<_CreatePollModal> {
     final options = _optionsControllers.map((c) => c.text.trim()).where((t) => t.isNotEmpty).toList();
     if (question.isEmpty || options.length < 2) return;
     
-    // UUIDs pour les options
-    final optionsData = options.map((opt) => {'id': DateTime.now().microsecondsSinceEpoch.toString() + opt.hashCode.toString() , 'text': opt, 'votes': []}).toList();
+    // Structure des options
+    final optionsData = options.map((opt) => {'text': opt}).toList();
 
     ref.read(chatProvider(widget.roomId).notifier).sendMessage(
       question,
@@ -1100,6 +1159,7 @@ class _CreatePollModalState extends ConsumerState<_CreatePollModal> {
         'metadata_': {
           'question': question,
           'options': optionsData,
+          'votes': {}, // Initialiser comme un objet pour le backend
           'total_votes': 0,
         }
       }

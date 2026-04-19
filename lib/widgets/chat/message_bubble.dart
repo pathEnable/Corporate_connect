@@ -4,6 +4,10 @@ import 'package:flutter/services.dart';
 
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'audio_player_widget.dart';
 import '../../services/media_service.dart';
 import '../../screens/image_viewer_screen.dart';
@@ -276,7 +280,7 @@ class _MessageBubbleState extends State<MessageBubble> {
     } else if (widget.type == 'image') {
       return _ImageContent(url: widget.content, localPath: widget.localPath);
     } else if (widget.type == 'file') {
-      return _FileContent(content: widget.content, isMe: widget.isMe, localPath: widget.localPath);
+      return _FileContent(content: widget.content, isMe: widget.isMe, localPath: widget.localPath, metadata: widget.metadata);
     } else if (widget.type == 'audio') {
       return AudioPlayerWidget(url: widget.content, isMe: widget.isMe, localPath: widget.localPath);
     } else if (widget.type == 'poll' && widget.metadata != null && widget.roomId != null && widget.messageId != null) {
@@ -315,7 +319,7 @@ class _MessageBubbleState extends State<MessageBubble> {
            return _ImageContent(url: widget.content, localPath: widget.localPath);
         }
         if (lowerContent.contains('.pdf') || lowerContent.contains('.doc') || lowerContent.contains('.docx') || lowerContent.contains('.xls') || lowerContent.contains('.xlsx')) {
-           return _FileContent(content: widget.content, isMe: widget.isMe, localPath: widget.localPath);
+           return _FileContent(content: widget.content, isMe: widget.isMe, localPath: widget.localPath, metadata: widget.metadata);
         }
       }
 
@@ -582,11 +586,12 @@ class _FileContent extends StatelessWidget {
   final String content;
   final bool isMe;
   final String? localPath;
-  const _FileContent({required this.content, required this.isMe, this.localPath});
+  final Map<String, dynamic>? metadata;
+  const _FileContent({required this.content, required this.isMe, this.localPath, this.metadata});
 
   @override
   Widget build(BuildContext context) {
-    final filename = content.split('/').last;
+    final filename = metadata?['filename'] ?? content.split('/').last;
     final extension = filename.split('.').last.toLowerCase();
     
     IconData icon = Icons.insert_drive_file;
@@ -611,20 +616,33 @@ class _FileContent extends StatelessWidget {
       onTap: () async {
         try {
           if (localPath != null && await File(localPath!).exists()) {
-            final uri = Uri.file(localPath!);
-            if (await canLaunchUrl(uri)) {
-              await launchUrl(uri, mode: LaunchMode.externalApplication);
-              return;
-            }
+            await OpenFilex.open(localPath!);
+            return;
           }
           
           final url = await MediaService().getDownloadUrl(content);
-          final uri = Uri.parse(url);
-          if (await canLaunchUrl(uri)) {
-            await launchUrl(uri, mode: LaunchMode.externalApplication);
+
+          if (kIsWeb) {
+            final uri = Uri.parse(url);
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            }
+            return;
           }
+
+          final dir = await getApplicationDocumentsDirectory();
+          final savePath = '${dir.path}/$filename';
+          
+          if (!context.mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Téléchargement de $filename en cours...'), duration: const Duration(seconds: 1)));
+          
+          await Dio().download(url, savePath);
+          await OpenFilex.open(savePath);
         } catch (e) {
           debugPrint("Error launching file: $e");
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur d\'ouverture : $e')));
+          }
         }
       },
       borderRadius: BorderRadius.circular(12),

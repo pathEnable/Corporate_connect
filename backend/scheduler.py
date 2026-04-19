@@ -94,6 +94,8 @@ async def _flush_pending_messages(manager):
                             notif_body = "📊 Nouveau sondage"
                         elif msg.message_type == "task":
                             notif_body = "✅ Nouvelle tâche assignée"
+                        elif msg.message_type == "meeting":
+                            notif_body = "📅 Nouvelle réunion planifiée"
                         
                         send_push_notification(
                             token=p.fcm_token,
