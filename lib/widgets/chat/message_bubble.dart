@@ -333,6 +333,11 @@ class _MessageBubbleState extends State<MessageBubble> {
         ? '${text.substring(0, 400)}...'
         : text;
 
+    final isDark = theme.brightness == Brightness.dark;
+    final linkColor = widget.isMe
+        ? (isDark ? Colors.white70 : Colors.black87.withAlpha(160))
+        : theme.colorScheme.primary;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -357,7 +362,7 @@ class _MessageBubbleState extends State<MessageBubble> {
               child: Text(
                 _isExpanded ? 'Voir moins' : 'Voir plus',
                 style: TextStyle(
-                  color: widget.isMe ? Colors.white70 : theme.colorScheme.primary,
+                  color: linkColor,
                   fontWeight: FontWeight.bold,
                   fontSize: 13,
                 ),
