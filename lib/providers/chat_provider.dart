@@ -432,20 +432,32 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
       final msgId = message['message_id']?.toString();
       if (msgId != null && !_isDisposed) {
         final updated = state.messages.map((m) {
-          if (m['id'].toString() == msgId) {
+          final currentId = m['id']?.toString();
+          final currentMsgId = m['message_id']?.toString();
+          if (currentId == msgId || currentMsgId == msgId) {
              return {...m, 'content': '🚫 Ce message a été supprimé', 'message_type': 'deleted', 'is_encrypted': false};
           }
           return m;
         }).toList();
         state = state.copyWith(messages: updated);
-        LocalDatabase.instance.updateContent(msgId, '🚫 Ce message a été supprimé');
+        LocalDatabase.instance.updateMessage(msgId, {
+          'content': '🚫 Ce message a été supprimé',
+          'message_type': 'deleted',
+        });
       }
     } else if (message['type'] == 'message_edited') {
       final msgId = message['message_id']?.toString();
-      final newContent = message['content']?.toString();
-      if (msgId != null && newContent != null && !_isDisposed) {
+      String newContent = message['content']?.toString() ?? "";
+      
+      if (msgId != null && !_isDisposed) {
+        // Déchiffrer si nécessaire
+        final decrypted = await _decryptBulk([message]);
+        newContent = decrypted.first['content']?.toString() ?? newContent;
+
         final updated = state.messages.map((m) {
-          if (m['id'].toString() == msgId) {
+          final currentId = m['id']?.toString();
+          final currentMsgId = m['message_id']?.toString();
+          if (currentId == msgId || currentMsgId == msgId) {
             final meta = Map<String, dynamic>.from((m['metadata_'] as Map?) ?? {});
             meta['edited'] = true;
             return {...m, 'content': newContent, 'metadata_': meta};
@@ -453,7 +465,10 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
           return m;
         }).toList();
         state = state.copyWith(messages: updated);
-        LocalDatabase.instance.updateContent(msgId, newContent);
+        LocalDatabase.instance.updateMessage(msgId, {
+          'content': newContent,
+          'metadata_': meta,
+        });
       }
     }
   }
@@ -494,13 +509,18 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
   void deleteMessage(String messageId) {
     if (_userId == null) return;
     final updated = state.messages.map((m) {
-      if (m['id'].toString() == messageId) {
+      final currentId = m['id']?.toString();
+      final currentMsgId = m['message_id']?.toString();
+      if (currentId == messageId || currentMsgId == messageId) {
          return {...m, 'content': '🚫 Ce message a été supprimé', 'message_type': 'deleted', 'is_encrypted': false};
       }
       return m;
     }).toList();
     if (!_isDisposed) state = state.copyWith(messages: updated);
-    LocalDatabase.instance.updateContent(messageId, '🚫 Ce message a été supprimé');
+    LocalDatabase.instance.updateMessage(messageId, {
+      'content': '🚫 Ce message a été supprimé',
+      'message_type': 'deleted',
+    });
     _chatService.sendMessage('', type: 'delete_message', data: {'message_id': messageId});
   }
 
@@ -510,7 +530,9 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
 
     // Mise à jour optimiste
     final updated = state.messages.map((m) {
-      if (m['id'].toString() == messageId) {
+      final currentId = m['id']?.toString();
+      final currentMsgId = m['message_id']?.toString();
+      if (currentId == messageId || currentMsgId == messageId) {
         final meta = Map<String, dynamic>.from((m['metadata_'] as Map?) ?? {});
         meta['edited'] = true;
         return {...m, 'content': newContent, 'metadata_': meta};
@@ -521,6 +543,7 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
 
     // Chiffrer si E2EE actif
     String contentToSend = newContent;
+    bool wasEncrypted = false;
     if (state.memberKeys.isNotEmpty) {
       final recipientId = state.memberKeys.keys.firstWhere(
         (id) => id != _userId, orElse: () => "",
@@ -528,6 +551,7 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
       if (recipientId.isNotEmpty && state.memberKeys[recipientId] != null) {
         try {
           contentToSend = await _encryptionService.encrypt(newContent, state.memberKeys[recipientId]!);
+          wasEncrypted = true;
         } catch (_) {}
       }
     }
@@ -535,6 +559,7 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
     _chatService.sendMessage('', type: 'edit_message', data: {
       'message_id': messageId,
       'content': contentToSend,
+      'is_encrypted': wasEncrypted,
     });
   }
 

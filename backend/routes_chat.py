@@ -561,8 +561,9 @@ async def websocket_chat(
                 extra_data = message_data.get("data", {})
                 target_msg_id = extra_data.get("message_id")
                 new_content = extra_data.get("content", "")
+                is_encrypted = extra_data.get("is_encrypted", False)
                 if target_msg_id and new_content:
-                    def edit_msg_in_db(m_id, u_id, content):
+                    def edit_msg_in_db(m_id, u_id, content, enc):
                         db_session = next(get_db())
                         try:
                             msg = db_session.query(Message).filter(
@@ -574,13 +575,14 @@ async def websocket_chat(
                             meta = msg.metadata_ or {}
                             meta["edited"] = True
                             meta["edited_at"] = datetime.utcnow().isoformat()
+                            meta["is_encrypted"] = enc
                             msg.metadata_ = meta
                             db_session.commit()
                             return True
                         finally:
                             db_session.close()
 
-                    edited = await run_in_threadpool(edit_msg_in_db, target_msg_id, user_id, new_content)
+                    edited = await run_in_threadpool(edit_msg_in_db, target_msg_id, user_id, new_content, is_encrypted)
                     if edited:
                         await manager.broadcast_to_room(room_id, {
                             "type": "message_edited",
@@ -588,6 +590,7 @@ async def websocket_chat(
                             "room_id": room_id,
                             "sender_id": user_id,
                             "content": new_content,
+                            "is_encrypted": is_encrypted,
                         })
                 continue
 

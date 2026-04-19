@@ -349,11 +349,28 @@ class LocalDatabase {
   }
 
   Future<void> updateContent(String id, String content) async {
+    await updateMessage(id, {'content': content});
+  }
+
+  Future<void> updateMessage(String id, Map<String, dynamic> data) async {
     if (kIsWeb) return;
     final db = await instance.database;
+    
+    // Convertir les types complexes en JSON
+    final Map<String, dynamic> values = {};
+    data.forEach((key, value) {
+      if (key == 'metadata_' || key == 'reactions') {
+        values[key] = jsonEncode(value);
+      } else {
+        values[key] = value;
+      }
+    });
+
+    if (values.isEmpty) return;
+
     await db.update(
       'messages',
-      {'content': content},
+      values,
       where: 'id = ?',
       whereArgs: [id],
     );
