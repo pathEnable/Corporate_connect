@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../widgets/authenticated_image.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import '../../screens/chat_screen.dart';
 import '../../services/media_service.dart';
 import '../ui_helpers.dart';
@@ -80,7 +79,7 @@ class HomeRoomTile extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          room['last_message'] ?? 'Aucun message',
+                          _formatMessageSummary(room['last_message']),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -106,7 +105,7 @@ class HomeRoomTile extends StatelessWidget {
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                        ).animate().scale(curve: Curves.easeOutBack),
+                        ),
                     ],
                   ),
                 ],
@@ -130,6 +129,29 @@ class HomeRoomTile extends StatelessWidget {
     } catch (_) {
       return '';
     }
+  }
+
+  String _formatMessageSummary(String? message) {
+    if (message == null || message.isEmpty) return 'Aucun message';
+    
+    final lowerMessage = message.toLowerCase();
+    final isMediaUrl = lowerMessage.contains('firebasestorage.googleapis.com') || 
+                       lowerMessage.contains('res.cloudinary.com');
+    
+    if (isMediaUrl) {
+      if (lowerMessage.contains('.m4a') || lowerMessage.contains('.mp3') || lowerMessage.contains('.wav')) {
+        return '🎵 Message vocal';
+      }
+      if (lowerMessage.contains('.jpg') || lowerMessage.contains('.jpeg') || lowerMessage.contains('.png') || lowerMessage.contains('.webp')) {
+        return '📷 Image';
+      }
+      if (lowerMessage.contains('.pdf') || lowerMessage.contains('.doc') || lowerMessage.contains('.docx') || lowerMessage.contains('.xls') || lowerMessage.contains('.xlsx')) {
+        return '📁 Document';
+      }
+      return '📎 Fichier';
+    }
+    
+    return message;
   }
 }
 

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../widgets/authenticated_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+
 
 
 import '../providers/home_provider.dart';
@@ -168,6 +168,6 @@ class StatusTabScreen extends ConsumerWidget {
               style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
             ),
             ),
-    ).animate().fadeIn().slideX(begin: 0.1);
+    );
   }
 }

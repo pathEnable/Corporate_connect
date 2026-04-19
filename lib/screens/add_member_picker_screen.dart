@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:flutter_animate/flutter_animate.dart';
+
 import '../services/auth_service.dart';
 import '../services/api_config.dart';
 import '../widgets/premium_background.dart';
@@ -112,14 +112,14 @@ class _AddMemberPickerScreenState extends State<AddMemberPickerScreen> {
                     letterSpacing: 0.5,
                   )
                 ),
-              ).animate().fadeIn().scale(),
+              ),
           ],
         ),
         body: Column(
           children: [
             // Liste des sélectionnés (Horizontal)
             if (_selectedContacts.isNotEmpty)
-              _buildSelectedList(theme).animate().fadeIn(),
+              _buildSelectedList(theme),
     
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
@@ -144,10 +144,7 @@ class _AddMemberPickerScreenState extends State<AddMemberPickerScreen> {
                           itemBuilder: (context, index) {
                             final contact = _contacts[index];
                             final isSelected = _selectedContacts.any((c) => c['id'] == contact['id']);
-                            return _buildContactTile(contact, isSelected, theme)
-                                .animate(delay: (index * 30).ms)
-                                .fadeIn()
-                                .slideX(begin: 0.05);
+                            return _buildContactTile(contact, isSelected, theme);
                           },
                         ),
             ),
@@ -204,7 +201,7 @@ class _AddMemberPickerScreenState extends State<AddMemberPickerScreen> {
                 ),
               ],
             ),
-          ).animate().scale();
+          );
         },
       ),
     );

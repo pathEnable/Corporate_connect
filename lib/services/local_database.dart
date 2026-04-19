@@ -320,15 +320,55 @@ class LocalDatabase {
     );
   }
 
+  Future<void> updateReactions(String id, dynamic reactions) async {
+    if (kIsWeb) return;
+    final db = await instance.database;
+    await db.update(
+      'messages',
+      {'reactions': jsonEncode(reactions)},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> updateMetadata(String id, dynamic metadata) async {
+    if (kIsWeb) return;
+    final db = await instance.database;
+    await db.update(
+      'messages',
+      {'metadata_': jsonEncode(metadata)},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> deleteMessage(String id) async {
+    if (kIsWeb) return;
+    final db = await instance.database;
+    await db.delete('messages', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> updateContent(String id, String content) async {
+    if (kIsWeb) return;
+    final db = await instance.database;
+    await db.update(
+      'messages',
+      {'content': content},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   Future<List<Map<String, dynamic>>> getMessages(String roomId) async {
     if (kIsWeb) return [];
     final db = await instance.database;
     final results = await db.query(
       'messages',
-      where: 'room_id = ?',
-      whereArgs: [roomId],
+      where: 'room_id = ? AND message_type != ?',
+      whereArgs: [roomId, 'reaction'],
       orderBy: 'created_at ASC',
     );
+
 
     return results.map((row) {
       final msg = Map<String, dynamic>.from(row);

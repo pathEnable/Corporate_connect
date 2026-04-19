@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:flutter_animate/flutter_animate.dart';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/auth_service.dart';
@@ -262,7 +262,7 @@ class _NewGroupScreenState extends ConsumerState<NewGroupScreen> {
                     letterSpacing: 0.5,
                   ),
                 ),
-              ).animate().fadeIn().scale(),
+              ),
           ],
         ),
         body: Column(
@@ -323,12 +323,12 @@ class _NewGroupScreenState extends ConsumerState<NewGroupScreen> {
                     ),
                   ],
                 ),
-              ).animate().fadeIn().slideY(begin: 0.1),
+              ),
             ),
 
             // Membres sélectionnés
             if (_selectedContacts.isNotEmpty)
-              _buildSelectedList(theme).animate().fadeIn(),
+              _buildSelectedList(theme),
 
             // Barre de recherche
             Padding(
@@ -386,10 +386,7 @@ class _NewGroupScreenState extends ConsumerState<NewGroupScreen> {
                             final contact = _filteredContacts[index];
                             final isSelected = _selectedContacts
                                 .any((c) => c['id'] == contact['id']);
-                            return _buildContactTile(contact, isSelected, theme)
-                                .animate(delay: (index * 20).ms)
-                                .fadeIn()
-                                .slideX(begin: 0.05);
+                            return _buildContactTile(contact, isSelected, theme);
                           },
                         ),
             ),
@@ -467,7 +464,7 @@ class _NewGroupScreenState extends ConsumerState<NewGroupScreen> {
                 ),
               ],
             ),
-          ).animate().scale();
+          );
         },
       ),
     );

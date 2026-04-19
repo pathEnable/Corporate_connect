@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+
 
 import '../widgets/premium_background.dart';
 import '../providers/connectivity_provider.dart';
@@ -89,7 +89,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   HapticFeedback.lightImpact();
                   Navigator.push(context, FadeSlideRoute(page: const NewGroupScreen()));
                 },
-              ).animate().scale(delay: 400.ms, curve: Curves.easeOutBack)
+              )
             : null,
         ),
       ),
@@ -124,7 +124,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ),
       ),
-    ).animate().slideY(begin: 1, end: 0, duration: 600.ms, curve: Curves.easeOutQuart);
+    );
   }
 
   Widget _buildNavItem(int index, IconData icon, String label) {
@@ -162,7 +162,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
                 ),
-              ).animate().fadeIn().scale(begin: const Offset(0.8, 0.8)),
+              ),
           ],
         ),
       ),

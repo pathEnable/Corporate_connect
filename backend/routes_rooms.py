@@ -231,10 +231,12 @@ def get_messages(
     messages = (
         db.query(Message)
         .filter(Message.room_id == room_id)
+        .filter(Message.message_type != 'reaction')
         .order_by(Message.created_at.desc())
         .limit(limit)
         .all()
     )
+
 
     return [
         MessageResponse(
@@ -244,6 +246,8 @@ def get_messages(
             message_type=msg.message_type,
             reply_to_id=msg.reply_to_id,
             is_read=msg.is_read,
+            reactions=msg.metadata_.get("reactions") if msg.metadata_ else None,
+            metadata_=msg.metadata_,
             created_at=msg.created_at.isoformat() if msg.created_at else "",
         )
         for msg in reversed(messages)

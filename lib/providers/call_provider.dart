@@ -21,8 +21,8 @@ class CallNotifier extends Notifier<CallState> {
 
   Timer? _durationTimer;
   Timer? _timeoutTimer;
-  // ✅ FIX BUG 5 : Timer cancellable pour éviter le double reset
   Timer? _resetTimer;
+  Timer? _connectingTimeout; // Sécurité pour éviter de rester bloqué en 'connecting'
 
   static const Duration _callTimeout = Duration(seconds: 40);
 
@@ -165,49 +165,53 @@ class CallNotifier extends Notifier<CallState> {
       return false;
     }
 
-    // Arrêter la sonnerie
-    await _ringtoneService.stop();
-
-    // Demander les permissions
-    final granted = await _requestPermissions(state.isVideo);
-    if (!granted) {
-      state = state.copyWith(
-        errorMessage: 'Permissions refusées',
-        phase: CallPhase.ended,
-      );
-      _scheduleReset();
-      return false;
-    }
-
-    state = state.copyWith(phase: CallPhase.connecting);
-
-    // Appeler le backend pour accepter
-    final result = await _signalingService.answerCall(
-      callId: state.callId!,
-      channelName: state.channelName ?? '',
-    );
-
-    if (result == null) {
-      state = state.copyWith(
-        phase: CallPhase.ended,
-        errorMessage: 'Erreur de connexion',
-      );
-      _scheduleReset();
-      return false;
-    }
-
-    // Mettre à jour les infos Agora
-    state = state.copyWith(
-      agoraToken: result['agora_token'],
-      appId: result['app_id'],
-      channelName: result['channel_name'],
-    );
-
-    // Initialiser Agora et rejoindre le canal
     try {
+      // Arrêter la sonnerie
+      await _ringtoneService.stop();
+
+      // Demander les permissions
+      final granted = await _requestPermissions(state.isVideo);
+      if (!granted) {
+        state = state.copyWith(
+          errorMessage: 'Permissions refusées',
+          phase: CallPhase.ended,
+        );
+        _scheduleReset();
+        return false;
+      }
+
+      state = state.copyWith(phase: CallPhase.connecting);
+      _startConnectingTimeout(); // Démarrer la sécurité
+
+      // Appeler le backend pour accepter
+      debugPrint('📞 Acceptation de l\'appel via API...');
+      final result = await _signalingService.answerCall(
+        callId: state.callId!,
+        channelName: state.channelName ?? '',
+      );
+
+      if (result == null) {
+        throw Exception('Le serveur n\'a pas répondu à l\'acceptation');
+      }
+
+      // Mettre à jour les infos Agora
+      state = state.copyWith(
+        agoraToken: result['agora_token'],
+        appId: result['app_id'],
+        channelName: result['channel_name'],
+      );
+
+      // Initialiser Agora et rejoindre le canal
+      debugPrint('📞 Initialisation Agora...');
       await _initAgoraAndJoin();
+      
+      _connectingTimeout?.cancel(); // Annuler car succès
+      return true;
     } catch (e) {
-      debugPrint('❌ Erreur init Agora (receiver): $e');
+      debugPrint('❌ Erreur critique lors de l\'acceptation: $e');
+      _connectingTimeout?.cancel();
+      
+      // ✅ FIX GHOST STATE : Garantir qu'on sort de l'état 'connecting'
       state = state.copyWith(
         phase: CallPhase.ended,
         errorMessage: 'Erreur: ${e.toString().replaceAll('Exception: ', '')}',
@@ -215,8 +219,6 @@ class CallNotifier extends Notifier<CallState> {
       _scheduleReset();
       return false;
     }
-
-    return true;
   }
 
   /// Le destinataire refuse l'appel.
@@ -260,16 +262,19 @@ class CallNotifier extends Notifier<CallState> {
 
   /// L'autre participant a refusé (reçu par l'appelant).
   void onCallRejected() {
-    if (state.phase != CallPhase.outgoingRinging) return;
+    if (state.phase == CallPhase.idle) return;
 
-    debugPrint('📞 Appel refusé par le destinataire');
-    _ringtoneService.stop();
-    _timeoutTimer?.cancel();
-    _endAndCleanup(phase: CallPhase.ended, error: 'Appel refusé');
+    debugPrint('📞 L\'appel a été refusé');
+    _endAndCleanup(
+      phase: CallPhase.ended,
+      error: 'Appel refusé',
+    );
   }
 
-  /// L'autre participant a raccroché (reçu par n'importe qui).
+  /// L'autre participant a raccroché (reçu par WS).
   void onCallEnded() {
+    if (state.phase == CallPhase.idle) return;
+
     debugPrint('📞 L\'autre participant a raccroché');
     _ringtoneService.stop();
     _ringtoneService.playEndCallTone();
@@ -278,9 +283,9 @@ class CallNotifier extends Notifier<CallState> {
 
   /// L'appelant a annulé (reçu par le destinataire).
   void onCallCancelled() {
-    // ✅ FIX BUG 9 : Aussi gérer 'connecting' — l'appelant peut annuler
-    // pendant que le destinataire est en train d'accepter.
-    if (state.phase != CallPhase.incomingRinging && state.phase != CallPhase.connecting) return;
+    // ✅ FIX : On accepte l'annulation même si on est déjà connecté ou en cours de connexion
+    // pour éviter les états fantômes si l'appelant annule juste au moment du décrochage.
+    if (state.phase == CallPhase.idle) return;
 
     debugPrint('📞 L\'appelant a annulé');
     _ringtoneService.stop();
@@ -433,6 +438,8 @@ class CallNotifier extends Notifier<CallState> {
   Future<void> _endAndCleanup({required CallPhase phase, String? error}) async {
     _timeoutTimer?.cancel();
     _durationTimer?.cancel();
+    _connectingTimeout?.cancel();
+    _ringtoneService.stop();
 
     // ✅ FIX BUG 6 : Enregistrer l'appel dans l'historique si une connexion a eu lieu
     if (state.connectedAt != null && state.roomId != null) {
@@ -465,11 +472,24 @@ class CallNotifier extends Notifier<CallState> {
     }
   }
 
+  /// Déclenche un timeout de sécurité pour la phase de connexion.
+  void _startConnectingTimeout() {
+    _connectingTimeout?.cancel();
+    _connectingTimeout = Timer(const Duration(seconds: 15), () {
+      if (state.phase == CallPhase.connecting) {
+        debugPrint('⏳ Timeout de connexion atteint (15s) — Réinitialisation forcée');
+        _endAndCleanup(
+          phase: CallPhase.ended,
+          error: 'Délai de connexion dépassé. Vérifiez votre connexion internet.',
+        );
+      }
+    });
+  }
+
   /// Réinitialise l'état après un délai (pour afficher un feedback visuel).
   void _scheduleReset() {
-    // ✅ FIX BUG 5 : Timer cancellable — évite le double reset si deux fins
-    // d'appel arrivent quasi-simultanément (ex: WS call_ended + onUserOffline Agora).
     _resetTimer?.cancel();
+    _connectingTimeout?.cancel();
     _resetTimer = Timer(const Duration(seconds: 2), () {
       if (state.phase == CallPhase.ended) {
         state = CallState.initial;
@@ -481,6 +501,7 @@ class CallNotifier extends Notifier<CallState> {
     _timeoutTimer?.cancel();
     _durationTimer?.cancel();
     _resetTimer?.cancel();
+    _connectingTimeout?.cancel();
     _ringtoneService.stop();
   }
 

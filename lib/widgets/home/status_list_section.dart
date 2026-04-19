@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../widgets/authenticated_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+
 
 
 import '../../models/status_model.dart';
@@ -63,7 +63,7 @@ class StatusListSection extends ConsumerWidget {
             firstStatus: userStatuses.first, 
             allStatuses: flatSortedStatuses,
             isViewed: isViewed,
-          ).animate().fadeIn(delay: (index * 50).ms).slideX(begin: 0.2);
+          );
         },
       ),
     );

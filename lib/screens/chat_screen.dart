@@ -36,6 +36,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   String? _userId;
   List<Map<String, dynamic>> _members = [];
   Map<String, dynamic>? _replyingTo;
+  Map<String, dynamic>? _editingMessage;
 
   @override
   void initState() {
@@ -85,16 +86,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Optimisation : On n'écoute que les propriétés nécessaires pour éviter des rebuilds inutiles
     final messages = ref.watch(chatProvider(widget.roomId).select((s) => s.messages));
     final isLoading = ref.watch(chatProvider(widget.roomId).select((s) => s.isLoading));
     final typingUsers = ref.watch(chatProvider(widget.roomId).select((s) => s.typingUsers));
 
-    // Auto-scroll on new messages
     ref.listen<ChatState>(chatProvider(widget.roomId), (previous, next) {
       final messagesChanged = previous?.messages.length != next.messages.length;
       final loadingFinished = (previous?.isLoading ?? true) && !next.isLoading;
-      
       if (messagesChanged || loadingFinished) {
         _scrollToBottom();
       }
@@ -129,9 +127,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     itemBuilder: (context, index) {
                       final msg = messages[index];
                       final msgId = msg['message_id']?.toString() ?? msg['id']?.toString() ?? '';
+                      final isMe = msg['sender_id'].toString() == _userId;
                       return MessageBubble(
                         content: msg['content'] ?? '',
-                        isMe: msg['sender_id'].toString() == _userId,
+                        isMe: isMe,
                         timestamp: msg['timestamp'] ?? msg['created_at'] ?? '',
                         type: msg['message_type'] ?? 'text',
                         status: msg['status'] ?? 'sent',
@@ -140,7 +139,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         replyToContent: msg['reply_to_content'],
                         caption: msg['caption'],
                         localPath: msg['local_path'],
-                        // Réactions
                         currentUserId: _userId,
                         reactions: msg['reactions'] != null
                             ? Map<String, dynamic>.from(msg['reactions'] as Map)
@@ -151,6 +149,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 .toggleReaction(msgId, emoji)
                             : null,
                         onReply: () => setState(() => _replyingTo = msg),
+                        onEdit: () => setState(() {
+                          _editingMessage = {...msg, 'id': msgId};
+                          _replyingTo = null;
+                        }),
+                        onDelete: () => ref
+                            .read(chatProvider(widget.roomId).notifier)
+                            .deleteMessage(msgId),
                         messageId: msgId,
                         roomId: widget.roomId,
                         metadata: msg['metadata_'] != null
@@ -174,6 +179,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             replyingTo: _replyingTo,
             onCancelReply: () => setState(() => _replyingTo = null),
             members: _members,
+            editingMessage: _editingMessage,
+            onCancelEdit: () => setState(() => _editingMessage = null),
           ),
         ],
       ),

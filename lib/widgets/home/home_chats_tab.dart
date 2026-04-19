@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import '../../providers/home_provider.dart';
 import '../ui_helpers.dart';
 import 'room_tile.dart';
@@ -35,10 +34,7 @@ class HomeChatsTab extends ConsumerWidget {
                     separatorBuilder: (context, index) => Divider(height: 1, indent: 83, color: theme.dividerColor.withAlpha(30)),
                     itemBuilder: (context, index) {
                       final room = state.rooms[index];
-                      return HomeRoomTile(room: room)
-                          .animate(delay: (index * 50).ms)
-                          .fadeIn(duration: 400.ms, curve: Curves.easeOut)
-                          .slideX(begin: 0.1, end: 0);
+                      return HomeRoomTile(room: room);
                     },
                   ),
                 ),

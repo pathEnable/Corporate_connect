@@ -2,7 +2,7 @@ import 'dart:convert';
 import '../widgets/authenticated_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+
 import 'package:http/http.dart' as http;
 import '../services/auth_service.dart';
 import '../services/room_service.dart';
@@ -369,7 +369,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                   );
                 },
               ),
-            ).animate().fadeIn(delay: 100.ms),
+            ),
 
           const SizedBox(height: 4),
 
@@ -484,7 +484,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                               size: 20,
                             ),
                             onTap: () => _startChat(contact),
-                          ).animate(delay: (index * 30).ms).fadeIn().slideX(begin: 0.05);
+                          );
                         },
                       ),
           ),

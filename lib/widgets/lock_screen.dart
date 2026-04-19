@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+
 import '../services/biometric_service.dart';
 
 /// Écran de verrouillage biométrique affiché par-dessus l'application.
@@ -78,10 +78,7 @@ class _LockScreenState extends State<LockScreen> {
                   size: 48,
                   color: theme.colorScheme.primary,
                 ),
-              ).animate().scale(
-                    duration: 600.ms,
-                    curve: Curves.elasticOut,
-                  ),
+              ),
               const SizedBox(height: 32),
               Text(
                 'Corporate Connect',
@@ -110,7 +107,7 @@ class _LockScreenState extends State<LockScreen> {
                       fontSize: 13,
                     ),
                   ),
-                ).animate().fadeIn().shakeX(amount: 4),
+                ),
               const Spacer(flex: 2),
               // Bouton de déverrouillage
               Padding(

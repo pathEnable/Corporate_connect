@@ -78,6 +78,7 @@ class MessageResponse(BaseModel):
     reply_to_id: Optional[UUID] = None
     is_read: bool = False
     created_at: str
+    reactions: Optional[Dict[str, Any]] = None  # Nouveau : réactions emojis
     metadata_: Optional[Dict[str, Any]] = None  # Nouveau : sondages/tâches
     scheduled_for: Optional[datetime] = None     # Nouveau : programmation
     is_sent: bool = True                         # Nouveau : statut d'envoi

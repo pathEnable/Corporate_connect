@@ -164,12 +164,11 @@ class _GlobalCallListenerState extends ConsumerState<GlobalCallListener> {
           );
     }
 
-    // Accepter l'appel et naviguer
-    ref.read(callProvider.notifier).acceptCall().then((success) {
-      if (success) {
-        _navigateToCallScreen();
-      }
-    });
+    // Naviguer immédiatement vers l'écran d'appel
+    _navigateToCallScreen();
+    
+    // Lancer la connexion Agora en arrière-plan
+    ref.read(callProvider.notifier).acceptCall();
   }
 
   /// L'utilisateur a refusé via CallKit.
@@ -246,12 +245,9 @@ class _IncomingCallScreen extends ConsumerWidget {
     final callState = ref.watch(callProvider);
 
     // Si l'appel n'est plus en sonnerie entrante, fermer l'overlay
+    // On ne ferme plus l'overlay ici via un pop automatique pour éviter les conflits de navigation.
+    // C'est le pushAndRemoveUntil qui s'en chargera.
     if (callState.phase != CallPhase.incomingRinging) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-      });
       return const SizedBox.shrink();
     }
 
@@ -392,17 +388,15 @@ class _IncomingCallScreen extends ConsumerWidget {
                         label: 'Accepter',
                         isPulse: true, // Faire pulser le bouton d'acceptation
                         onTap: () async {
-                          final success = await ref
-                              .read(callProvider.notifier)
-                              .acceptCall();
-                          if (success && context.mounted) {
-                            // Remplacer l'overlay par le CallScreen
-                            navigatorKey.currentState?.pushAndRemoveUntil(
-                              MaterialPageRoute(
-                                  builder: (_) => const CallScreen()),
-                              (route) => route.isFirst,
-                            );
-                          }
+                          // 1. Naviguer IMMÉDIATEMENT vers l'écran d'appel
+                          navigatorKey.currentState?.pushAndRemoveUntil(
+                            MaterialPageRoute(
+                                builder: (_) => const CallScreen()),
+                            (route) => route.isFirst,
+                          );
+
+                          // 2. Lancer la connexion en arrière-plan
+                          await ref.read(callProvider.notifier).acceptCall();
                         },
                       ),
                     ],

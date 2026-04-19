@@ -141,6 +141,9 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
       _connectWebSocket();
       _fetchOtherUserPresence();
       _presenceTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchOtherUserPresence());
+      
+      // Marquer la conversation comme lue dès l'ouverture
+      markRoomAsRead();
     }
 
     try { ref.read(homeProvider.notifier).markRoomAsRead(roomId); } catch (_) {}
@@ -278,8 +281,34 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
     });
   }
 
+  void markRoomAsRead() {
+    _chatService.markAsRead(roomId);
+    
+    // Mettre à jour localement les messages non lus de l'autre
+    if (!_isDisposed) {
+      bool changed = false;
+      final updated = state.messages.map((m) {
+        if (m['sender_id'] != _userId && (m['is_read'] == false || m['is_read'] == 0)) {
+          changed = true;
+          return {...m, 'is_read': true};
+        }
+        return m;
+      }).toList();
+      
+      if (changed) {
+        state = state.copyWith(messages: updated);
+      }
+    }
+  }
+
   Future<void> _handleIncomingMessage(Map<String, dynamic> message) async {
+    // Ignorer les messages de type 'reaction' (ils sont gérés par reaction_update)
+    if (message['message_type'] == 'reaction' || message['type'] == 'reaction') {
+      return;
+    }
+
     if (message['type'] == 'new_message' || message['type'] == 'image' || message['type'] == 'file' || message['type'] == 'audio') {
+
       
       // Déchiffrer le message entrant (singulier)
       final decrypted = await _decryptBulk([message]);
@@ -313,6 +342,11 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
       }
       if (!_isDisposed) {
         state = state.copyWith(messages: newMessages);
+      }
+
+      // Marquer comme lu si on reçoit le message de quelqu'un d'autre
+      if (finalMsg['sender_id'] != _userId) {
+        markRoomAsRead();
       }
 
       // 3. Téléchargement auto en arrière-plan pour les médias
@@ -354,9 +388,28 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
       final msgId = message['message_id']?.toString();
       final reactions = message['reactions'];
       if (msgId != null && reactions != null && !_isDisposed) {
+        // Mettre à jour en mémoire
         final updated = state.messages.map((m) {
-          if (m['id'].toString() == msgId) {
+          final currentId = m['id']?.toString();
+          final currentMsgId = m['message_id']?.toString();
+          if (currentId == msgId || currentMsgId == msgId) {
             return {...m, 'reactions': reactions};
+          }
+          return m;
+        }).toList();
+        state = state.copyWith(messages: updated);
+        
+        // Persister localement
+        LocalDatabase.instance.updateReactions(msgId, reactions);
+      }
+    } else if (message['type'] == 'message_read') {
+      final readerId = message['reader_id'];
+      if (readerId != _userId && !_isDisposed) {
+        // L'autre utilisateur a lu la conversation
+        // On marque TOUS nos messages envoyés comme lus
+        final updated = state.messages.map((m) {
+          if (m['sender_id'] == _userId) {
+            return {...m, 'is_read': true};
           }
           return m;
         }).toList();
@@ -373,6 +426,29 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
           return m;
         }).toList();
         state = state.copyWith(messages: updated);
+        LocalDatabase.instance.updateMetadata(msgId, metadata);
+      }
+    } else if (message['type'] == 'message_deleted') {
+      final msgId = message['message_id']?.toString();
+      if (msgId != null && !_isDisposed) {
+        final updated = state.messages.where((m) => m['id'].toString() != msgId).toList();
+        state = state.copyWith(messages: updated);
+        LocalDatabase.instance.deleteMessage(msgId);
+      }
+    } else if (message['type'] == 'message_edited') {
+      final msgId = message['message_id']?.toString();
+      final newContent = message['content']?.toString();
+      if (msgId != null && newContent != null && !_isDisposed) {
+        final updated = state.messages.map((m) {
+          if (m['id'].toString() == msgId) {
+            final meta = Map<String, dynamic>.from((m['metadata_'] as Map?) ?? {});
+            meta['edited'] = true;
+            return {...m, 'content': newContent, 'metadata_': meta};
+          }
+          return m;
+        }).toList();
+        state = state.copyWith(messages: updated);
+        LocalDatabase.instance.updateContent(msgId, newContent);
       }
     }
   }
@@ -403,10 +479,53 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
 
     // 2. Envoyer via WebSocket pour persistance serveur
     _chatService.sendMessage(
-      emoji,
+      '', // Content vide pour éviter d'être traité comme un nouveau message
       type: 'reaction',
       data: {'message_id': messageId, 'emoji': emoji},
     );
+  }
+
+  /// Supprimer un message (optimiste + WebSocket)
+  void deleteMessage(String messageId) {
+    if (_userId == null) return;
+    final updated = state.messages.where((m) => m['id'].toString() != messageId).toList();
+    if (!_isDisposed) state = state.copyWith(messages: updated);
+    LocalDatabase.instance.deleteMessage(messageId);
+    _chatService.sendMessage('', type: 'delete_message', data: {'message_id': messageId});
+  }
+
+  /// Modifier un message (optimiste + WebSocket)
+  void editMessage(String messageId, String newContent) async {
+    if (_userId == null) return;
+
+    // Mise à jour optimiste
+    final updated = state.messages.map((m) {
+      if (m['id'].toString() == messageId) {
+        final meta = Map<String, dynamic>.from((m['metadata_'] as Map?) ?? {});
+        meta['edited'] = true;
+        return {...m, 'content': newContent, 'metadata_': meta};
+      }
+      return m;
+    }).toList();
+    if (!_isDisposed) state = state.copyWith(messages: updated);
+
+    // Chiffrer si E2EE actif
+    String contentToSend = newContent;
+    if (state.memberKeys.isNotEmpty) {
+      final recipientId = state.memberKeys.keys.firstWhere(
+        (id) => id != _userId, orElse: () => "",
+      );
+      if (recipientId.isNotEmpty && state.memberKeys[recipientId] != null) {
+        try {
+          contentToSend = await _encryptionService.encrypt(newContent, state.memberKeys[recipientId]!);
+        } catch (_) {}
+      }
+    }
+
+    _chatService.sendMessage('', type: 'edit_message', data: {
+      'message_id': messageId,
+      'content': contentToSend,
+    });
   }
 
   void sendMessage(String content, String type, {Map<String, dynamic>? extraData}) async {

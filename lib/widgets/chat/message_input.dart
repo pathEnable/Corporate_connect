@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:audio_waveforms/audio_waveforms.dart';
@@ -20,7 +19,9 @@ class MessageInput extends ConsumerStatefulWidget {
   final String roomId;
   final Map<String, dynamic>? replyingTo;
   final VoidCallback onCancelReply;
-  final List<Map<String, dynamic>> members; // Pour les mentions @
+  final List<Map<String, dynamic>> members;
+  final Map<String, dynamic>? editingMessage;
+  final VoidCallback? onCancelEdit;
 
   const MessageInput({
     super.key,
@@ -28,6 +29,8 @@ class MessageInput extends ConsumerStatefulWidget {
     this.replyingTo,
     required this.onCancelReply,
     this.members = const [],
+    this.editingMessage,
+    this.onCancelEdit,
   });
 
   @override
@@ -40,13 +43,13 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   final MediaService _mediaService = MediaService();
   late final RecorderController _recorderController;
   final stt.SpeechToText _speech = stt.SpeechToText();
+  final FocusNode _focusNode = FocusNode();
 
   bool _isTyping = false;
   bool _isUploading = false;
   bool _isRecording = false;
   bool _isRecordingLocked = false;
   bool _isListening = false;
-  String _transcription = '';
   
   double _panDx = 0.0;
   double _panDy = 0.0;
@@ -64,6 +67,9 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   void initState() {
     super.initState();
     _controller.addListener(_onTextChanged);
+    _focusNode.addListener(() {
+      if (mounted) setState(() {});
+    });
     _recorderController = RecorderController();
   }
 
@@ -142,6 +148,17 @@ class _MessageInputState extends ConsumerState<MessageInput> {
     if (text.isEmpty) return;
     
     HapticFeedback.mediumImpact();
+
+    // Mode édition : modifier le message existant
+    if (widget.editingMessage != null) {
+      final msgId = widget.editingMessage!['id']?.toString() ?? '';
+      if (msgId.isNotEmpty) {
+        ref.read(chatProvider(widget.roomId).notifier).editMessage(msgId, text);
+      }
+      _controller.clear();
+      widget.onCancelEdit?.call();
+      return;
+    }
     
     final extraData = widget.replyingTo != null 
         ? {'reply_to_id': widget.replyingTo!['id'] ?? widget.replyingTo!['message_id']} 
@@ -155,6 +172,7 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   @override
   void dispose() {
     _controller.dispose();
+    _focusNode.dispose();
     _typingDebounce?.cancel();
     _recordTimer?.cancel();
     _recorderController.dispose();
@@ -164,49 +182,55 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Container(
       decoration: BoxDecoration(
-        color: theme.brightness == Brightness.dark ? const Color(0xFF040301) : Colors.white,
-        border: Border(
-          top: BorderSide(
-            color: theme.colorScheme.primary.withValues(alpha: 0.15),
-            width: 0.5,
+        color: theme.brightness == Brightness.dark ? const Color(0xFF121212) : Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(isDark ? 50 : 15),
+            blurRadius: 4,
+            offset: const Offset(0, -1),
           ),
-        ),
+        ],
       ),
-          padding: EdgeInsets.only(
-            left: 12, 
-            right: 12, 
-            top: 10, 
-            bottom: MediaQuery.of(context).padding.bottom + 10
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+      padding: EdgeInsets.only(
+        left: 8, 
+        right: 8, 
+        top: 8, 
+        bottom: MediaQuery.of(context).padding.bottom + 10
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_mentionSuggestions.isNotEmpty)
+            _buildMentionSuggestions(theme),
+          if (widget.editingMessage != null) _buildEditHeader(theme),
+          if (widget.replyingTo != null && widget.editingMessage == null) _buildReplyHeader(theme),
+          if (_isUploading) _buildUploadingBar(theme),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              if (_mentionSuggestions.isNotEmpty)
-                _buildMentionSuggestions(theme),
-              if (widget.replyingTo != null) _buildReplyHeader(theme),
-              if (_isUploading) _buildUploadingBar(theme),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  if (!_isRecording)
-                    _buildIconButton(
-                      icon: Icons.add_circle_outline_rounded,
-                      color: theme.colorScheme.primary,
-                      onPressed: _showAttachmentMenu,
-                    ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: _isRecording ? _buildRecordingUI(theme) : _buildInputUI(theme),
-                  ),
-                  const SizedBox(width: 8),
-                  _buildActionCircle(theme),
-                ],
+              if (!_isRecording)
+                _buildIconButton(
+                  icon: Icons.add_rounded,
+                  color: theme.colorScheme.primary.withAlpha(200),
+                  onPressed: _showAttachmentMenu,
+                ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 250),
+                  child: _isRecording ? _buildRecordingUI(theme) : _buildInputUI(theme),
+                ),
               ),
+              const SizedBox(width: 8),
+              _buildActionCircle(theme),
             ],
           ),
+        ],
+      ),
     );
   }
 
@@ -246,19 +270,22 @@ class _MessageInputState extends ConsumerState<MessageInput> {
           );
         },
       ),
-    ).animate().fadeIn().slideY(begin: 0.2);
+    );
   }
 
   Widget _buildReplyHeader(ThemeData theme) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 8, left: 4, right: 4),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: theme.colorScheme.primary.withValues(alpha: 0.05),
+        color: theme.colorScheme.primary.withAlpha(10),
+        borderRadius: BorderRadius.circular(12),
         border: Border(left: BorderSide(color: theme.colorScheme.primary, width: 3)),
       ),
       child: Row(
         children: [
+          Icon(Icons.reply_rounded, size: 16, color: theme.colorScheme.primary),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -282,7 +309,65 @@ class _MessageInputState extends ConsumerState<MessageInput> {
           ),
         ],
       ),
-    ).animate().fadeIn().slideY(begin: 0.2);
+    );
+  }
+
+  Widget _buildEditHeader(ThemeData theme) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8, left: 4, right: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.blue.withAlpha(10),
+        borderRadius: BorderRadius.circular(12),
+        border: const Border(left: BorderSide(color: Colors.blue, width: 3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.edit_rounded, size: 16, color: Colors.blue),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Modifier le message",
+                  style: TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  widget.editingMessage!['content'] ?? "",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close_rounded, size: 18),
+            onPressed: () {
+              _controller.clear();
+              widget.onCancelEdit?.call();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant MessageInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Pré-remplir le champ de texte lors du passage en mode édition
+    if (widget.editingMessage != null && oldWidget.editingMessage == null) {
+      final content = widget.editingMessage!['content']?.toString() ?? '';
+      _controller.text = content;
+      _controller.selection = TextSelection.collapsed(offset: content.length);
+      _focusNode.requestFocus();
+    }
+    // Vider le champ quand on quitte le mode édition
+    if (widget.editingMessage == null && oldWidget.editingMessage != null) {
+      _controller.clear();
+    }
   }
 
   Widget _buildUploadingBar(ThemeData theme) {
@@ -301,105 +386,126 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   }
 
   Widget _buildInputUI(ThemeData theme) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 48),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.onSurface.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: theme.colorScheme.onSurface.withValues(alpha: 0.1)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: TextField(
-        controller: _controller,
-        maxLines: 5,
-        minLines: 1,
-        style: const TextStyle(fontSize: 15),
-        decoration: const InputDecoration(
-          hintText: 'Écrire un message...',
-          hintStyle: TextStyle(fontSize: 15, color: Colors.grey),
-          border: InputBorder.none,
-          contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+    final isDark = theme.brightness == Brightness.dark;
+    
+    return TextField(
+      key: const ValueKey('input_ui'),
+      controller: _controller,
+      focusNode: _focusNode,
+      maxLines: 6,
+      minLines: 1,
+      style: const TextStyle(fontSize: 16),
+      textInputAction: TextInputAction.newline,
+      decoration: InputDecoration(
+        hintText: 'Message',
+        hintStyle: TextStyle(
+          fontSize: 16, 
+          color: isDark ? Colors.grey[400] : Colors.grey[600]
         ),
-        onSubmitted: (_) => _handleSend(),
+        filled: true,
+        fillColor: isDark ? Colors.white.withAlpha(25) : Colors.black.withAlpha(15),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(20),
+          borderSide: BorderSide(color: isDark ? Colors.white10 : Colors.black12),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(20),
+          borderSide: BorderSide(color: isDark ? Colors.white10 : Colors.black12),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(20),
+          borderSide: BorderSide(color: theme.colorScheme.primary.withAlpha(100), width: 1.5),
+        ),
+        isDense: true,
       ),
     );
   }
 
   Widget _buildRecordingUI(ThemeData theme) {
-    return Container(
-      height: 48,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.primary.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
-            onPressed: () => _stopRecording(cancel: true),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                AudioWaveforms(
-                  size: const Size(double.infinity, 24),
-                  recorderController: _recorderController,
-                  enableGesture: false,
-                  waveStyle: WaveStyle(
-                    waveColor: theme.colorScheme.primary,
-                    extendWaveform: true,
-                    showMiddleLine: false,
-                    waveThickness: 3.0,
-                    spacing: 4.0,
-                  ),
-                ),
-                if (_transcription.isNotEmpty)
-                  Text(
-                    _transcription,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                    ),
-                  ),
-                if (_transcription.isEmpty && !_isRecordingLocked)
-                  Text(
-                    "⬅️ Annuler  |  ⬆️ Verrouiller",
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(_formatDuration(_recordDuration), 
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.red)),
-          if (_isRecordingLocked) ...[
-            const SizedBox(width: 8),
+    if (_isRecordingLocked) {
+      // UX "Verrouillé" (comme WhatsApp)
+      return Container(
+        key: const ValueKey('recording_locked_ui'),
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Row(
+          children: [
             IconButton(
-              icon: Icon(Icons.send_rounded, color: theme.colorScheme.primary),
-              onPressed: () => _stopRecording(cancel: false),
-            )
-          ]
-        ],
-      ),
-    );
+              icon: const Icon(Icons.delete_rounded, color: Colors.red, size: 22),
+              onPressed: () => _stopRecording(cancel: true),
+            ),
+            Text(
+              _formatDuration(_recordDuration), 
+              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: AudioWaveforms(
+                size: const Size(double.infinity, 24),
+                recorderController: _recorderController,
+                enableGesture: false,
+                waveStyle: WaveStyle(
+                  waveColor: theme.colorScheme.primary,
+                  extendWaveform: true,
+                  showMiddleLine: false,
+                  waveThickness: 2.0,
+                  spacing: 4.0,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              margin: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary,
+                shape: BoxShape.circle,
+              ),
+              child: IconButton(
+                icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                onPressed: () => _stopRecording(cancel: false),
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                padding: EdgeInsets.zero,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      // UX "En maintien" (comme WhatsApp)
+      return Container(
+        key: const ValueKey('recording_hold_ui'),
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        alignment: Alignment.centerLeft,
+        child: Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _formatDuration(_recordDuration), 
+              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
+            ),
+            const Spacer(),
+            const Icon(Icons.chevron_left_rounded, size: 20, color: Colors.grey),
+            const SizedBox(width: 4),
+            const Text(
+              "Glissez pour annuler",
+              style: TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+            const SizedBox(width: 16), // Espace pour ne pas coller au gros bouton micro
+          ],
+        ),
+      );
+    }
   }
 
   Widget _buildActionCircle(ThemeData theme) {
@@ -424,9 +530,7 @@ class _MessageInputState extends ConsumerState<MessageInput> {
         
         // Swipe up to lock
         if (_panDy < -50) {
-          setState(() {
-            _isRecordingLocked = true;
-          });
+          setState(() => _isRecordingLocked = true);
           HapticFeedback.heavyImpact();
         }
         
@@ -437,7 +541,7 @@ class _MessageInputState extends ConsumerState<MessageInput> {
       },
       onLongPressEnd: (_) {
         if (isRec && !_isRecordingLocked) {
-          _stopRecording(cancel: false); // Envoie l'audio à la fin du press
+          _stopRecording(cancel: false);
         }
         _panDx = 0.0;
         _panDy = 0.0;
@@ -445,23 +549,67 @@ class _MessageInputState extends ConsumerState<MessageInput> {
       onTap: () {
         if (canSend) {
           _handleSend();
+        } else {
+          ScaffoldMessenger.of(context).clearSnackBars();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Maintenez appuyé pour enregistrer un message vocal.', style: TextStyle(color: Colors.white)),
+              backgroundColor: theme.colorScheme.secondary.withValues(alpha: 0.9),
+              duration: const Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          );
+          HapticFeedback.lightImpact();
         }
       },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          color: theme.colorScheme.primary,
-          shape: BoxShape.circle,
-        ),
-        child: Center(
-          child: Icon(
-            (canSend || isRec) ? Icons.send_rounded : Icons.mic_none_rounded,
-            color: Colors.black,
-            size: 22,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          // Le cadenas qui apparaît au-dessus du micro (comme WhatsApp)
+          if (isRec && !_isRecordingLocked)
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                shape: BoxShape.circle,
+                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)],
+              ),
+              child: const Icon(Icons.lock_rounded, size: 24, color: Colors.grey),
+            ),
+            
+          // Le bouton d'action principal
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: (isRec && !_isRecordingLocked) ? 70 : 48, // Beaucoup plus gros
+            height: (isRec && !_isRecordingLocked) ? 70 : 48,
+            decoration: BoxDecoration(
+              color: isRec ? theme.colorScheme.primary : theme.colorScheme.primary, // Reste de la couleur du thème
+              shape: BoxShape.circle,
+              boxShadow: isRec ? [
+                BoxShadow(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                  blurRadius: 15,
+                  spreadRadius: 4,
+                )
+              ] : null,
+            ),
+            child: Center(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 150),
+                transitionBuilder: (child, anim) => ScaleTransition(scale: anim, child: child),
+                child: Icon(
+                  (canSend) ? Icons.send_rounded : Icons.mic_rounded,
+                  key: ValueKey(canSend ? 'send' : 'mic'),
+                  color: Colors.white,
+                  size: (isRec && !_isRecordingLocked) ? 32 : 22,
+                ),
+              ),
+            ),
+
           ),
-        ),
+        ],
       ),
     );
   }
@@ -562,7 +710,7 @@ class _MessageInputState extends ConsumerState<MessageInput> {
             setState(() => _isListening = true);
             _speech.listen(
               onResult: (result) {
-                if (mounted) setState(() => _transcription = result.recognizedWords);
+                // Transcription désactivée pour l'instant
               },
               localeId: 'fr_FR',
             );
@@ -577,7 +725,6 @@ class _MessageInputState extends ConsumerState<MessageInput> {
           setState(() {
             _isRecording = true;
             _isRecordingLocked = false;
-            _transcription = '';
             _panDx = 0.0;
             _panDy = 0.0;
           });
@@ -608,16 +755,15 @@ class _MessageInputState extends ConsumerState<MessageInput> {
         HapticFeedback.lightImpact();
         final bytes = await File(path).readAsBytes();
         
+        /* 
         String transcriptionFinal = _transcription;
         if (transcriptionFinal.isNotEmpty) {
-          // Send text message as the transcription
-          // In a real app, you might want to send it as metadata on the audio message
-          // but sending it as a text message immediately before or after is a good UX fallback.
           ref.read(chatProvider(widget.roomId).notifier).sendMessage(
             "Transcription: $transcriptionFinal", 
             'text'
           );
         }
+        */
 
         _uploadAndSend(bytes, 'audio_record.m4a', 'audio');
       } else {
@@ -626,7 +772,7 @@ class _MessageInputState extends ConsumerState<MessageInput> {
       
       if (mounted) {
         setState(() {
-          _transcription = '';
+          // Reset recording state
         });
       }
     } catch (_) {}

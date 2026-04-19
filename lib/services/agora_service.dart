@@ -48,6 +48,7 @@ class AgoraService {
     await _engine!.initialize(RtcEngineContext(
       appId: appId,
       channelProfile: ChannelProfileType.channelProfileCommunication,
+      logConfig: const LogConfig(level: LogLevel.logLevelWarn),
     ));
 
     _isInitialized = true;
@@ -67,8 +68,16 @@ class AgoraService {
       throw Exception('Agora engine non initialisé. Appeler initEngine() d\'abord.');
     }
 
+    bool actuallyEnableVideo = enableVideo;
     if (enableVideo) {
-      await _engine!.enableVideo();
+      try {
+        await _engine!.enableVideo();
+      } catch (e) {
+        debugPrint('⚠️ Échec activation vidéo (permissions ?): $e. Repli vers audio seul.');
+        actuallyEnableVideo = false;
+        await _engine!.disableVideo();
+        await _engine!.enableAudio();
+      }
     } else {
       await _engine!.disableVideo();
       await _engine!.enableAudio();
@@ -77,16 +86,21 @@ class AgoraService {
     // Routage audio : haut-parleur pour vidéo, écouteur pour appel vocal (Mobile uniquement)
     if (!kIsWeb) {
       try {
-        await _engine!.setEnableSpeakerphone(forceSpeaker || enableVideo);
-        debugPrint('🔊 Routage audio : ${(forceSpeaker || enableVideo) ? "haut-parleur" : "écouteur"}');
+        await _engine!.setEnableSpeakerphone(forceSpeaker || actuallyEnableVideo);
+        debugPrint('🔊 Routage audio : ${(forceSpeaker || actuallyEnableVideo) ? "haut-parleur" : "écouteur"}');
       } catch (e) {
         debugPrint('⚠️ Erreur lors du réglage du haut-parleur: $e');
       }
     } else {
       debugPrint('🔊 Routage audio ignoré sur Web');
     }
-    if (enableVideo) {
-      await _engine!.startPreview();
+
+    if (actuallyEnableVideo) {
+      try {
+        await _engine!.startPreview();
+      } catch (e) {
+        debugPrint('⚠️ Échec startPreview: $e');
+      }
     }
 
     await _engine!.joinChannel(
@@ -95,15 +109,15 @@ class AgoraService {
       uid: uid,
       options: ChannelMediaOptions(
         autoSubscribeAudio: true,
-        autoSubscribeVideo: enableVideo,
+        autoSubscribeVideo: actuallyEnableVideo,
         publishMicrophoneTrack: true,
-        publishCameraTrack: enableVideo,
+        publishCameraTrack: actuallyEnableVideo,
         clientRoleType: ClientRoleType.clientRoleBroadcaster,
       ),
     );
 
     _isInChannel = true;
-    debugPrint('🎙️ Rejoint canal: $channelName (video: $enableVideo)');
+    debugPrint('🎙️ Rejoint canal: $channelName (video effectif: $actuallyEnableVideo)');
   }
 
   /// Quitte le canal (sans détruire le moteur).

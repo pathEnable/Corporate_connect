@@ -99,7 +99,12 @@ class PushNotificationService {
       }
     } catch (e) {
       debugPrint("Firebase initialization info: $e");
-      debugPrint("💡 Note: Sur Web, assurez-vous d'avoir configuré Firebase avec 'flutterfire configure'.");
+      if (kIsWeb) {
+        debugPrint("💡 Note: Sur Web, Firebase requiert 'DefaultFirebaseOptions'. "
+            "L'initialisation a été ignorée pour éviter de bloquer l'application. "
+            "Lancez 'flutterfire configure' pour corriger.");
+        return; // Éviter de continuer l'init si Firebase n'a pas pu démarrer sur Web
+      }
     }
     
     if (kIsWeb) return; // On arrête l'init FCM/Notifications ici pour le Web

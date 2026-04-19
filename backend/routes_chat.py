@@ -482,6 +482,115 @@ async def websocket_chat(
                 )
                 continue
 
+            # Gestion des réactions (Toggle emoji)
+            if msg_type == "reaction":
+                extra_data = message_data.get("data", {})
+                target_msg_id = extra_data.get("message_id")
+                emoji = extra_data.get("emoji")
+                
+                if target_msg_id and emoji:
+                    def update_reaction_in_db(m_id, u_id, emj):
+                        db_session = next(get_db())
+                        try:
+                            msg = db_session.query(Message).filter(Message.id == m_id).first()
+                            if not msg: return None
+                            
+                            meta = msg.metadata_ or {}
+                            reactions = meta.get("reactions", {})
+                            users = reactions.get(emj, [])
+                            
+                            u_id_str = str(u_id)
+                            if u_id_str in users:
+                                users.remove(u_id_str)
+                            else:
+                                users.append(u_id_str)
+                            
+                            reactions[emj] = users
+                            meta["reactions"] = reactions
+                            msg.metadata_ = meta
+                            db_session.commit()
+                            return reactions
+                        finally:
+                            db_session.close()
+
+                    new_reactions = await run_in_threadpool(update_reaction_in_db, target_msg_id, user_id, emoji)
+                    
+                    if new_reactions is not None:
+                        await manager.broadcast_to_room(
+                            room_id,
+                            {
+                                "type": "reaction_update",
+                                "message_id": target_msg_id,
+                                "reactions": new_reactions,
+                                "room_id": room_id
+                            }
+                        )
+                continue
+
+            # Suppression d'un message (pour tous)
+            if msg_type == "delete_message":
+                extra_data = message_data.get("data", {})
+                target_msg_id = extra_data.get("message_id")
+                if target_msg_id:
+                    def delete_msg_in_db(m_id, u_id):
+                        db_session = next(get_db())
+                        try:
+                            msg = db_session.query(Message).filter(
+                                Message.id == m_id, Message.sender_id == u_id
+                            ).first()
+                            if not msg:
+                                return False
+                            db_session.delete(msg)
+                            db_session.commit()
+                            return True
+                        finally:
+                            db_session.close()
+
+                    deleted = await run_in_threadpool(delete_msg_in_db, target_msg_id, user_id)
+                    if deleted:
+                        await manager.broadcast_to_room(room_id, {
+                            "type": "message_deleted",
+                            "message_id": target_msg_id,
+                            "room_id": room_id,
+                            "sender_id": user_id,
+                        })
+                continue
+
+            # Modification d'un message
+            if msg_type == "edit_message":
+                extra_data = message_data.get("data", {})
+                target_msg_id = extra_data.get("message_id")
+                new_content = extra_data.get("content", "")
+                if target_msg_id and new_content:
+                    def edit_msg_in_db(m_id, u_id, content):
+                        db_session = next(get_db())
+                        try:
+                            msg = db_session.query(Message).filter(
+                                Message.id == m_id, Message.sender_id == u_id
+                            ).first()
+                            if not msg:
+                                return False
+                            msg.content = content
+                            meta = msg.metadata_ or {}
+                            meta["edited"] = True
+                            meta["edited_at"] = datetime.utcnow().isoformat()
+                            msg.metadata_ = meta
+                            db_session.commit()
+                            return True
+                        finally:
+                            db_session.close()
+
+                    edited = await run_in_threadpool(edit_msg_in_db, target_msg_id, user_id, new_content)
+                    if edited:
+                        await manager.broadcast_to_room(room_id, {
+                            "type": "message_edited",
+                            "message_id": target_msg_id,
+                            "room_id": room_id,
+                            "sender_id": user_id,
+                            "content": new_content,
+                        })
+                continue
+
             # Le serveur ne fait plus aucun déchiffrement/chiffrement (E2EE pur). 
             # Le contenu reçu est déjà chiffré par l'expéditeur (ou est une URL média).
             stored_content = message_data.get("content", "")
@@ -523,6 +632,7 @@ async def websocket_chat(
                     "type": "new_message",
                     "message_id": str(msg_id),
                     "room_id": room_id,
+                    "reactions": saved_meta.get("reactions") if saved_meta else None,
                     "metadata_": saved_meta,
                     "sender_id": user_id,
                     "content": stored_content, # Transmis tel quel (chiffré E2EE)

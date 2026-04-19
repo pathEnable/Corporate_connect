@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+
 import '../services/local_database.dart';
 import '../services/media_service.dart';
 import '../providers/profile_provider.dart';
@@ -78,7 +78,7 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen>
           slivers: [
             _buildSliverAppBar(theme),
             SliverToBoxAdapter(
-              child: _buildTabHeader(theme).animate().fadeIn(delay: 200.ms),
+              child: _buildTabHeader(theme),
             ),
             SliverFillRemaining(
               child: TabBarView(
@@ -157,7 +157,7 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen>
                       color: Colors.black,
                     ),
                   ),
-                ).animate().scale(curve: Curves.easeOutBack, duration: 600.ms),
+                ),
                 const SizedBox(height: 60),
               ],
             ),
@@ -304,10 +304,8 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen>
                     style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
                   ),
                 ),
-              ).animate().fadeIn().slideX(),
-            ...members.asMap().entries.map((entry) {
-              final index = entry.key;
-              final member = entry.value;
+              ),
+            ...members.map((member) {
               final bool isAdmin = member['is_admin_member'] == true;
               final bool isMe = member['id'] == currentUserId;
 
@@ -341,7 +339,7 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen>
                       )
                     : null,
                 trailing: isMe ? null : const Icon(Icons.chevron_right_rounded, size: 18, color: Colors.grey),
-              ).animate(delay: (index * 40).ms).fadeIn().slideX();
+              );
             }),
           ],
         ),
@@ -520,7 +518,7 @@ class _MediaTabState extends State<_MediaTab> {
             },
           );
         },
-      ).animate().fadeIn();
+      );
     }
 
     // ─── Onglet Vocal : liste simple ──────────────────────────────────────
@@ -542,7 +540,7 @@ class _MediaTabState extends State<_MediaTab> {
               overflow: TextOverflow.ellipsis,
             ),
             subtitle: Text(msg['created_at'].toString().split('T')[0]),
-          ).animate(delay: (index * 30).ms).fadeIn().slideY();
+          );
         },
       );
     }
@@ -590,9 +588,7 @@ class _MediaTabState extends State<_MediaTab> {
               ),
             ),
             // ─ Fichiers du groupe ─
-            ...files.asMap().entries.map((e) {
-              final index = e.key;
-              final msg = e.value;
+            ...files.map((msg) {
               final url = msg['content'].toString();
               final fileName = url.split('/').last.split('?').first;
               final icon = _fileIcon(url);
@@ -623,7 +619,7 @@ class _MediaTabState extends State<_MediaTab> {
                       fontSize: 11, color: theme.colorScheme.onSurface.withAlpha(120)),
                 ),
                 trailing: Icon(Icons.download_rounded, color: theme.colorScheme.primary, size: 20),
-              ).animate(delay: ((gi * 5 + index) * 30).ms).fadeIn().slideX(begin: 0.05);
+              );
             }),
           ],
         );
