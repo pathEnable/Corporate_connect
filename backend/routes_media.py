@@ -3,6 +3,7 @@ import shutil
 import uuid
 import cloudinary
 import cloudinary.uploader
+import cloudinary.utils
 import httpx
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
@@ -61,11 +62,18 @@ async def proxy_cloudinary(
     
     async with httpx.AsyncClient() as client:
         try:
-            # On récupère le fichier depuis Cloudinary
-            # Le serveur backend ayant accès à internet, il peut télécharger le fichier
-            response = await client.get(url, follow_redirects=True)
+            # Récupérer les identifiants Cloudinary pour l'authentification Basic
+            config = cloudinary.config()
+            auth = None
+            if config.api_key and config.api_secret:
+                auth = (config.api_key, config.api_secret)
+                print(f"[Proxy] Utilisation de l'authentification pour Cloudinary: {config.cloud_name}")
+
+            # On récupère le fichier depuis Cloudinary avec auth si disponible
+            response = await client.get(url, auth=auth, follow_redirects=True)
             
             if response.status_code != 200:
+                print(f"[Proxy] Erreur Cloudinary ({response.status_code}): {response.text[:100]}")
                 raise HTTPException(status_code=response.status_code, detail="Impossible de récupérer le fichier depuis Cloudinary")
             
             # On renvoie le flux au client mobile
@@ -78,6 +86,7 @@ async def proxy_cloudinary(
                 }
             )
         except Exception as e:
+            print(f"[Proxy] Erreur exceptionnelle: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Erreur proxy: {str(e)}")
 
 @router.get("/download/{filename}")
