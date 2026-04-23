@@ -17,7 +17,10 @@ class ChatState {
     required this.memberKeys,
     this.otherUserOnline = false,
     this.otherUserStatus,
+    this.downloadProgress = const {},
   });
+
+  final Map<String, double> downloadProgress; // messageId -> progression (0.0 to 1.0)
 
   ChatState copyWith({
     List<Map<String, dynamic>>? messages,
@@ -28,6 +31,7 @@ class ChatState {
     Map<String, String>? memberKeys,
     bool? otherUserOnline,
     String? otherUserStatus,
+    Map<String, double>? downloadProgress,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
@@ -38,6 +42,7 @@ class ChatState {
       memberKeys: memberKeys ?? this.memberKeys,
       otherUserOnline: otherUserOnline ?? this.otherUserOnline,
       otherUserStatus: otherUserStatus ?? this.otherUserStatus,
+      downloadProgress: downloadProgress ?? this.downloadProgress,
     );
   }
 }

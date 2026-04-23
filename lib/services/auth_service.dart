@@ -15,6 +15,9 @@ class AuthService {
 
   /// Cache en mémoire pour un accès synchrone (utilisé par AuthenticatedImage)
   static String? _cachedToken;
+  
+  /// Future partagé pour éviter les rafraîchissements multiples simultanés
+  static Future<bool>? _refreshFuture;
 
   /// Récupérer le token en cache de manière synchrone
   static String? get cachedToken => _cachedToken;
@@ -169,11 +172,23 @@ class AuthService {
     }
   }
 
-  /// Récupérer le token depuis le stockage sécurisé
+  /// Récupérer le token depuis le stockage sécurisé avec rafraîchissement automatique si expiré
   Future<String?> getToken() async {
-    if (_cachedToken != null) return _cachedToken;
-    _cachedToken = await _secureStorage.read(key: 'access_token');
-    return _cachedToken;
+    String? token = _cachedToken;
+    token ??= await _secureStorage.read(key: 'access_token');
+
+    if (token != null && _isTokenExpired(token)) {
+      debugPrint("🔄 Token expiré détecté dans getToken, tentative de rafraîchissement...");
+      final success = await refreshToken();
+      if (success) {
+        return _cachedToken; // refreshToken() met à jour _cachedToken via _saveToken
+      }
+      debugPrint("⚠️ Échec du rafraîchissement automatique dans getToken");
+      return null; // Ne pas renvoyer un token expiré
+    }
+
+    _cachedToken = token;
+    return token;
   }
 
   /// Récupérer le refresh token depuis le stockage sécurisé
@@ -181,8 +196,19 @@ class AuthService {
     return await _secureStorage.read(key: 'refresh_token');
   }
 
-  /// Tenter un rafraîchissement du token
+  /// Tenter un rafraîchissement du token (sécurisé contre les appels concurrents)
   Future<bool> refreshToken() async {
+    if (_refreshFuture != null) return _refreshFuture!;
+
+    _refreshFuture = _performRefresh();
+    try {
+      return await _refreshFuture!;
+    } finally {
+      _refreshFuture = null;
+    }
+  }
+
+  Future<bool> _performRefresh() async {
     final rt = await getRefreshToken();
     if (rt == null) return false;
 

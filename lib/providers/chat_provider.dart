@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -33,6 +34,11 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
   Timer? _typingClearTimer;
   Timer? _presenceTimer;
   bool _isDisposed = false;
+  bool _isConnecting = false;
+  StreamSubscription? _wsSubscription;
+  Timer? _reconnectTimer;
+  int _reconnectAttempts = 0;
+  static const int _maxReconnectDelay = 60; // secondes
 
   ChatNotifier();
 
@@ -56,6 +62,8 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
 
     ref.onDispose(() {
       _isDisposed = true;
+      _reconnectTimer?.cancel();
+      _wsSubscription?.cancel();
       _chatService.disconnect();
       _presenceTimer?.cancel();
       _typingClearTimer?.cancel();
@@ -218,18 +226,42 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
     List<Map<String, dynamic>> fromApi,
     List<Map<String, dynamic>> fromCache,
   ) {
-    // Index des messages API par ID pour une recherche O(1)
-    final apiIds = fromApi.map((m) => m['id'].toString()).toSet();
+    // Indexer le cache local par ID pour une recherche rapide
+    final cacheMap = {for (var m in fromCache) m['id'].toString(): m};
     
-    // Conserver les messages locaux qui sont EN COURS (pending/failed) et pas encore dans l'API
+    // 1. Transformer fromApi pour inclure les données locales (comme local_path)
+    final enrichedApi = fromApi.map((apiMsg) {
+      final id = apiMsg['id'].toString();
+      if (cacheMap.containsKey(id)) {
+        final localMsg = cacheMap[id]!;
+        final localPath = localMsg['local_path'] ?? (localMsg['metadata_'] != null ? localMsg['metadata_']['local_path'] : null);
+        
+        if (localPath != null) {
+          final enriched = Map<String, dynamic>.from(apiMsg);
+          enriched['local_path'] = localPath;
+          
+          // Injecter aussi dans metadata pour plus de robustesse
+          final metadata = Map<String, dynamic>.from(enriched['metadata_'] ?? {});
+          metadata['local_path'] = localPath;
+          enriched['metadata_'] = metadata;
+          
+          return enriched;
+        }
+      }
+      return apiMsg;
+    }).toList();
+
+    final apiIds = enrichedApi.map((m) => m['id'].toString()).toSet();
+    
+    // 2. Conserver les messages locaux qui sont EN COURS (pending/failed) et pas encore dans l'API
     final pendingOrFailed = fromCache.where((m) {
       final status = m['status']?.toString() ?? 'sent';
       final id = m['id'].toString();
       return (status == 'pending' || status == 'failed') && !apiIds.contains(id);
     }).toList();
     
-    // Fusionner : messages API + messages locaux non confirmés
-    final merged = [...fromApi, ...pendingOrFailed];
+    // 3. Fusionner : messages API enrichis + messages locaux non confirmés
+    final merged = [...enrichedApi, ...pendingOrFailed];
     merged.sort((a, b) {
       final aTime = a['created_at']?.toString() ?? '';
       final bTime = b['created_at']?.toString() ?? '';
@@ -261,22 +293,74 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
   }
 
   void _connectWebSocket() async {
-    if (_userId == null || _isDisposed) return;
-    await _chatService.connect(roomId, _userId!);
-    if (!_isDisposed) {
+    if (_userId == null || _isDisposed || _isConnecting) return;
+    
+    _isConnecting = true;
+    
+    // ═══ ÉTAPE CRITIQUE : Annuler toute souscription et timer précédents ═══
+    // Ceci empêche les anciens onDone/onError de programmer des reconnexions parasites.
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    await _wsSubscription?.cancel();
+    _wsSubscription = null;
+    
+    try {
+      await _chatService.connect(roomId, _userId!);
+      if (_isDisposed) {
+        _isConnecting = false;
+        return;
+      }
+      
+      // Connexion réussie : réinitialiser le compteur de backoff
+      _reconnectAttempts = 0;
       state = state.copyWith(isConnected: true);
-    }
 
-    _chatService.messageStream.listen((message) async {
-      _handleIncomingMessage(message);
-    }, onDone: () {
+      _wsSubscription = _chatService.messageStream.listen((message) async {
+        _handleIncomingMessage(message);
+      }, onDone: () {
+        if (!_isDisposed) {
+          state = state.copyWith(isConnected: false);
+          _isConnecting = false;
+          _scheduleReconnect();
+        }
+      }, onError: (err) {
+        debugPrint("❌ Chat WS Erreur: $err");
+        if (!_isDisposed) {
+          state = state.copyWith(isConnected: false);
+          _isConnecting = false;
+          _scheduleReconnect();
+        }
+      });
+      
+      _isConnecting = false;
+    } catch (e) {
+      debugPrint("❌ Chat WS Exception: $e");
+      _isConnecting = false;
       if (!_isDisposed) {
-        state = state.copyWith(isConnected: false);
-        Future.delayed(const Duration(seconds: 3), () {
-          if (!_isDisposed) {
-            _connectWebSocket();
-          }
-        });
+        _scheduleReconnect();
+      }
+    }
+  }
+
+  /// Programme une reconnexion avec backoff exponentiel + jitter
+  void _scheduleReconnect() {
+    if (_isDisposed) return;
+    
+    // Annuler tout timer existant pour éviter les doublons
+    _reconnectTimer?.cancel();
+    
+    // Backoff exponentiel : 3s, 6s, 12s, 24s, 48s, plafonné à 60s
+    final baseDelay = min(3 * pow(2, _reconnectAttempts).toInt(), _maxReconnectDelay);
+    // Jitter : ±30% pour éviter la synchronisation entre clients
+    final jitter = (baseDelay * 0.3 * (Random().nextDouble() * 2 - 1)).toInt();
+    final delay = max(3, baseDelay + jitter);
+    
+    _reconnectAttempts++;
+    debugPrint("⏳ Chat WS reconnexion dans ${delay}s (tentative #$_reconnectAttempts)");
+    
+    _reconnectTimer = Timer(Duration(seconds: delay), () {
+      if (!_isDisposed) {
+        _connectWebSocket();
       }
     });
   }
@@ -309,15 +393,10 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
 
     if (message['type'] == 'new_message' || message['type'] == 'image' || message['type'] == 'file' || message['type'] == 'audio') {
 
-      
       // Déchiffrer le message entrant (singulier)
       final decrypted = await _decryptBulk([message]);
-      final finalMsg = decrypted.first;
+      final finalMsg = Map<String, dynamic>.from(decrypted.first);
 
-      try {
-        await LocalDatabase.instance.saveMessage(finalMsg);
-      } catch (_) {}
-      
       final newMessages = List<Map<String, dynamic>>.from(state.messages);
       final index = newMessages.indexWhere((m) {
         // Logique de remplacement pour les messages "pending"
@@ -328,6 +407,19 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
       });
 
       if (index != -1) {
+        // RÉCUPÉRATION DU CHEMIN LOCAL : Très important pour le style WhatsApp
+        // On récupère le chemin local du message temporaire avant qu'il ne soit écrasé
+        final oldMsg = newMessages[index];
+        final oldLocalPath = oldMsg['local_path'] ?? (oldMsg['metadata_'] != null ? oldMsg['metadata_']['local_path'] : null);
+        
+        if (oldLocalPath != null) {
+          finalMsg['local_path'] = oldLocalPath;
+          // Assurer aussi dans metadata pour la compatibilité
+          final metadata = Map<String, dynamic>.from(finalMsg['metadata_'] ?? {});
+          metadata['local_path'] = oldLocalPath;
+          finalMsg['metadata_'] = metadata;
+        }
+
         // Mettre à jour aussi la DB : remplacer le message pending par le vrai
         try {
           await LocalDatabase.instance.updateMessageStatus(
@@ -335,11 +427,17 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
             'sent',
             newId: finalMsg['id'].toString(),
           );
+          // On sauve le message final (qui contient maintenant le local_path)
+          await LocalDatabase.instance.saveMessage(finalMsg);
         } catch (_) {}
         newMessages[index] = finalMsg;
       } else {
+        try {
+          await LocalDatabase.instance.saveMessage(finalMsg);
+        } catch (_) {}
         newMessages.add(finalMsg);
       }
+
       if (!_isDisposed) {
         state = state.copyWith(messages: newMessages);
       }
@@ -567,7 +665,7 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
     });
   }
 
-  void sendMessage(String content, String type, {Map<String, dynamic>? extraData}) async {
+  void sendMessage(String content, String type, {Map<String, dynamic>? extraData, String? localPath}) async {
     String contentToSend = content;
     bool wasEncrypted = false;
 
@@ -596,6 +694,12 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
       }
     }
 
+    // Préparer les métadonnées : si extraData est fourni sans la clé 'metadata_',
+    // on l'enveloppe automatiquement pour respecter la structure attendue par l'app et le backend.
+    final Map<String, dynamic>? finalExtraData = (extraData != null && !extraData.containsKey('metadata_'))
+        ? {'metadata_': extraData}
+        : extraData;
+
     final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
     final tempMsg = {
       'id': tempId,
@@ -606,15 +710,16 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
       'status': 'pending',
       'is_encrypted': wasEncrypted,
       'created_at': DateTime.now().toIso8601String(),
-      if (extraData != null && extraData.containsKey('metadata_'))
-        'metadata_': extraData['metadata_'],
+      'local_path': localPath,
+      if (finalExtraData != null && finalExtraData.containsKey('metadata_'))
+        'metadata_': finalExtraData['metadata_'],
     };
 
     if (!_isDisposed) {
       state = state.copyWith(messages: [...state.messages, tempMsg]);
     }
     
-    _chatService.sendMessage(contentToSend, type: type, data: extraData);
+    _chatService.sendMessage(contentToSend, type: type, data: finalExtraData);
 
     // Timeout : marquer comme échoué après 10 secondes si pas confirmé
     Future.delayed(const Duration(seconds: 10), () {
@@ -661,31 +766,72 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
     _chatService.sendTyping(isTyping: isTyping);
   }
 
+  /// Télécharge un média en arrière-plan avec suivi de progression
   Future<void> _downloadMediaInBackground(Map<String, dynamic> message) async {
     if (kIsWeb) return;
     
+    final messageId = message['id'].toString();
     final url = ApiConfig.getMediaUrl(message['content']);
-    final fileName = message['content'].split('/').last;
     
-    final localPath = await _mediaService.saveToGallery(
-      url, 
-      fileName, 
-      message['message_type']
-    );
-
-    if (localPath != null && !_isDisposed) {
-      // Mettre à jour la DB
-      await LocalDatabase.instance.saveMessage({...message, 'local_path': localPath});
-      
-      // Mettre à jour l'état UI
-      final newMessages = state.messages.map((m) {
-        if (m['id'].toString() == message['id'].toString()) {
-          return {...m, 'local_path': localPath};
-        }
-        return m;
-      }).toList();
-      
-      state = state.copyWith(messages: newMessages);
+    // Récupérer le nom de fichier original s'il existe
+    String fileName = message['content'].split('/').last;
+    if (message.containsKey('metadata_') && message['metadata_'] is Map) {
+      final meta = message['metadata_'] as Map;
+      if (meta.containsKey('filename')) {
+        fileName = meta['filename'];
+      }
     }
+    
+    try {
+      final localPath = await _mediaService.saveToGallery(
+        url, 
+        fileName, 
+        message['message_type'],
+        onReceiveProgress: (received, total) {
+          if (total > 0 && !_isDisposed) {
+            final progress = received / total;
+            state = state.copyWith(
+              downloadProgress: {
+                ...state.downloadProgress,
+                messageId: progress,
+              },
+            );
+          }
+        },
+      );
+
+      if (localPath != null && !_isDisposed) {
+        // Mettre à jour la DB locale
+        await LocalDatabase.instance.saveMessage({...message, 'local_path': localPath});
+
+        // Mettre à jour l'état UI
+        final updatedMessages = state.messages.map((msg) {
+          if (msg['id'].toString() == messageId) {
+            return {...msg, 'local_path': localPath};
+          }
+          return msg;
+        }).toList();
+
+        final newProgress = Map<String, double>.from(state.downloadProgress);
+        newProgress.remove(messageId);
+
+        state = state.copyWith(
+          messages: updatedMessages,
+          downloadProgress: newProgress,
+        );
+      }
+    } catch (e) {
+      debugPrint("❌ Erreur téléchargement arrière-plan : $e");
+      if (!_isDisposed) {
+        final newProgress = Map<String, double>.from(state.downloadProgress);
+        newProgress.remove(messageId);
+        state = state.copyWith(downloadProgress: newProgress);
+      }
+    }
+  }
+
+  /// Déclencher manuellement le téléchargement (ex: pour les documents)
+  Future<void> downloadMedia(Map<String, dynamic> message) async {
+    await _downloadMediaInBackground(message);
   }
 }

@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../providers/chat_provider.dart';
 import '../../widgets/authenticated_image.dart';
 import 'package:flutter/services.dart';
-
-import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
 import 'package:open_filex/open_filex.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 import 'audio_player_widget.dart';
 import '../../services/media_service.dart';
 import '../../screens/image_viewer_screen.dart';
@@ -280,7 +277,19 @@ class _MessageBubbleState extends State<MessageBubble> {
     } else if (widget.type == 'image') {
       return _ImageContent(url: widget.content, localPath: widget.localPath);
     } else if (widget.type == 'file') {
-      return _FileContent(content: widget.content, isMe: widget.isMe, localPath: widget.localPath, metadata: widget.metadata);
+      return _FileContent(
+        message: {
+          'id': widget.messageId,
+          'content': widget.content,
+          'room_id': widget.roomId,
+          'metadata_': widget.metadata,
+          'local_path': widget.localPath,
+          'message_type': 'file',
+        },
+        isMe: widget.isMe, 
+        textColor: textColor,
+        isDark: isDark,
+      );
     } else if (widget.type == 'audio') {
       return AudioPlayerWidget(url: widget.content, isMe: widget.isMe, localPath: widget.localPath);
     } else if (widget.type == 'poll' && widget.metadata != null && widget.roomId != null && widget.messageId != null) {
@@ -319,7 +328,19 @@ class _MessageBubbleState extends State<MessageBubble> {
            return _ImageContent(url: widget.content, localPath: widget.localPath);
         }
         if (lowerContent.contains('.pdf') || lowerContent.contains('.doc') || lowerContent.contains('.docx') || lowerContent.contains('.xls') || lowerContent.contains('.xlsx')) {
-           return _FileContent(content: widget.content, isMe: widget.isMe, localPath: widget.localPath, metadata: widget.metadata);
+           return _FileContent(
+             message: {
+               'id': widget.messageId,
+               'content': widget.content,
+               'room_id': widget.roomId,
+               'metadata_': widget.metadata,
+               'local_path': widget.localPath,
+               'message_type': 'file',
+             },
+             isMe: widget.isMe, 
+             textColor: textColor,
+             isDark: isDark,
+           );
         }
       }
 
@@ -582,18 +603,39 @@ class _ImageContent extends StatelessWidget {
   }
 }
 
-class _FileContent extends StatelessWidget {
-  final String content;
+class _FileContent extends ConsumerWidget {
+  final Map<String, dynamic> message;
   final bool isMe;
-  final String? localPath;
-  final Map<String, dynamic>? metadata;
-  const _FileContent({required this.content, required this.isMe, this.localPath, this.metadata});
+  final Color textColor;
+  final bool isDark;
+
+  const _FileContent({
+    required this.message, 
+    required this.isMe, 
+    required this.textColor,
+    required this.isDark,
+  });
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '${bytes}B';
+    if (bytes < 1048576) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / 1048576).toStringAsFixed(1)} MB';
+  }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final content = message['content'] as String;
+    final metadata = message['metadata_'] as Map<String, dynamic>?;
+    final localPath = (message['local_path'] as String?) ?? (metadata?['local_path'] as String?);
     final filename = metadata?['filename'] ?? content.split('/').last;
+    final fileSize = metadata?['file_size'] as int?;
     final extension = filename.split('.').last.toLowerCase();
     
+    final roomId = message['room_id'];
+    final progress = roomId != null 
+        ? ref.watch(chatProvider(roomId).select((s) => s.downloadProgress[message['id'].toString()]))
+        : null;
+
     IconData icon = Icons.insert_drive_file;
     Color iconColor = Colors.blue;
 
@@ -612,76 +654,94 @@ class _FileContent extends StatelessWidget {
     }
 
     final theme = Theme.of(context);
+    final isDownloading = progress != null;
+
     return InkWell(
       onTap: () async {
-        try {
-          if (localPath != null && await File(localPath!).exists()) {
-            await OpenFilex.open(localPath!);
-            return;
-          }
-          
-          final url = await MediaService().getDownloadUrl(content);
-
-          if (kIsWeb) {
-            final uri = Uri.parse(url);
-            if (await canLaunchUrl(uri)) {
-              await launchUrl(uri, mode: LaunchMode.externalApplication);
+        if (localPath != null && await File(localPath).exists()) {
+          try {
+            await OpenFilex.open(localPath);
+          } catch (e) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text("Impossible d'ouvrir le fichier : $e")),
+              );
             }
-            return;
           }
-
-          final dir = await getApplicationDocumentsDirectory();
-          final savePath = '${dir.path}/$filename';
-          
-          if (!context.mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Téléchargement de $filename en cours...'), duration: const Duration(seconds: 1)));
-          
-          await Dio().download(url, savePath);
-          await OpenFilex.open(savePath);
-        } catch (e) {
-          debugPrint("Error launching file: $e");
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur d\'ouverture : $e')));
-          }
+        } else {
+          // Si le chemin local est invalide ou le fichier n'existe plus, on télécharge
+          ref.read(chatProvider(message['room_id']).notifier).downloadMedia(message);
         }
       },
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.all(12),
+        constraints: const BoxConstraints(maxWidth: 250),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: isMe ? Colors.white.withAlpha(25) : theme.colorScheme.onSurface.withAlpha(10),
+          color: isMe ? Colors.black.withAlpha(20) : Colors.black.withAlpha(10),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: iconColor.withAlpha(50),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, color: iconColor, size: 24),
+            // Icône ou Progression
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: iconColor.withAlpha(40),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: iconColor, size: 28),
+                ),
+                if (isDownloading)
+                  SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: CircularProgressIndicator(
+                      value: progress,
+                      strokeWidth: 2,
+                      color: iconColor,
+                    ),
+                  ),
+                if (!isDownloading && localPath == null)
+                  Positioned(
+                    bottom: 0,
+                    right: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surface,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.arrow_downward, size: 12, color: iconColor),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(width: 12),
+            // Infos fichier
             Flexible(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     filename,
                     style: TextStyle(
-                      color: isMe ? Colors.white : Theme.of(context).colorScheme.onSurface,
-                      fontWeight: FontWeight.bold,
+                      color: textColor,
+                      fontWeight: FontWeight.w600,
                       fontSize: 14,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
                   Text(
-                    extension.toUpperCase(),
+                    fileSize != null ? _formatBytes(fileSize) : extension.toUpperCase(),
                     style: TextStyle(
-                      color: isMe ? Colors.white70 : Colors.grey[600],
-                      fontSize: 10,
+                      color: textColor.withAlpha(150),
+                      fontSize: 11,
                     ),
                   ),
                 ],

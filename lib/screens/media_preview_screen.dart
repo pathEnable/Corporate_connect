@@ -122,8 +122,10 @@ class _MediaPreviewScreenState extends ConsumerState<MediaPreviewScreen> {
         );
 
         // Send Message with Caption
+        // Send Message with Caption
         final extraData = <String, dynamic>{
           'filename': media.filename,
+          'file_size': media.bytes.length,
         };
         if (media.caption.isNotEmpty) {
           extraData['caption'] = media.caption;
@@ -132,6 +134,7 @@ class _MediaPreviewScreenState extends ConsumerState<MediaPreviewScreen> {
         notifier.sendMessage(
           result['url'], 
           media.type, 
+          localPath: media.file?.path,
           extraData: extraData,
         );
       }

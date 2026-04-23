@@ -83,7 +83,12 @@ class MediaService {
   }
 
   /// Télécharge un média et l'enregistre dans la galerie publique
-  Future<String?> saveToGallery(String url, String fileName, String type) async {
+  Future<String?> saveToGallery(
+    String url, 
+    String fileName, 
+    String type, {
+    void Function(int received, int total)? onReceiveProgress,
+  }) async {
     if (kIsWeb) return null;
 
     try {
@@ -131,6 +136,7 @@ class MediaService {
         url,
         savePath,
         options: options,
+        onReceiveProgress: onReceiveProgress,
       );
 
       return savePath;

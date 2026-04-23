@@ -374,6 +374,7 @@ async def websocket_chat(
     
     # Validation du token
     if not token:
+        print(f"❌ WS Chat refusé: Token manquant (room={room_id}, user={user_id})")
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
         
@@ -381,6 +382,7 @@ async def websocket_chat(
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         token_user_id = payload.get("sub")
         if token_user_id != user_id:
+            print(f"❌ WS Chat refusé: Discordance ID ({token_user_id} != {user_id}) pour room {room_id}")
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
     except Exception as e:
@@ -401,6 +403,7 @@ async def websocket_chat(
 
     is_member = await run_in_threadpool(check_membership, room_id, user_id)
     if not is_member:
+        print(f"❌ WS Chat refusé: L'utilisateur {user_id} n'est pas membre du salon {room_id}")
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
     # -------------------------------------------------------------------

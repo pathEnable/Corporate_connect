@@ -763,18 +763,7 @@ class _MessageInputState extends ConsumerState<MessageInput> {
       if (!cancel && path != null) {
         HapticFeedback.lightImpact();
         final bytes = await File(path).readAsBytes();
-        
-        /* 
-        String transcriptionFinal = _transcription;
-        if (transcriptionFinal.isNotEmpty) {
-          ref.read(chatProvider(widget.roomId).notifier).sendMessage(
-            "Transcription: $transcriptionFinal", 
-            'text'
-          );
-        }
-        */
-
-        _uploadAndSend(bytes, 'audio_record.m4a', 'audio');
+        _uploadAndSend(bytes, 'audio_record.m4a', 'audio', localPath: path);
       } else {
         HapticFeedback.heavyImpact();
       }
@@ -787,14 +776,22 @@ class _MessageInputState extends ConsumerState<MessageInput> {
     } catch (_) {}
   }
 
-  Future<void> _uploadAndSend(Uint8List bytes, String filename, String type) async {
+  Future<void> _uploadAndSend(Uint8List bytes, String filename, String type, {String? localPath}) async {
     if (mounted) setState(() { _isUploading = true; _uploadProgress = 0.0; });
     try {
       final result = await _mediaService.uploadFile(bytes, filename: filename, onProgress: (sent, total) {
           if (total > 0 && mounted) setState(() => _uploadProgress = sent / total);
         },
       );
-      ref.read(chatProvider(widget.roomId).notifier).sendMessage(result['url'], type);
+      ref.read(chatProvider(widget.roomId).notifier).sendMessage(
+        result['url'], 
+        type,
+        localPath: localPath,
+        extraData: {
+          'filename': filename,
+          'file_size': bytes.length,
+        },
+      );
     } catch (_) {}
     if (mounted) setState(() { _isUploading = false; });
   }
@@ -804,7 +801,13 @@ class _MessageInputState extends ConsumerState<MessageInput> {
     if (images.isNotEmpty) {
       final List<SelectedMedia> selected = [];
       for (var img in images) {
-        selected.add(SelectedMedia(bytes: await img.readAsBytes(), filename: img.name, type: 'image', file: File(img.path)));
+        final bytes = await img.readAsBytes();
+        selected.add(SelectedMedia(
+          bytes: bytes, 
+          filename: img.name, 
+          type: 'image',
+          file: File(img.path),
+        ));
       }
       _navigateToPreview(selected);
     }
@@ -813,14 +816,28 @@ class _MessageInputState extends ConsumerState<MessageInput> {
   Future<void> _takePhoto() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.camera);
     if (image != null) {
-      _navigateToPreview([SelectedMedia(bytes: await image.readAsBytes(), filename: image.name, type: 'image', file: File(image.path))]);
+      _navigateToPreview([
+        SelectedMedia(
+          bytes: await image.readAsBytes(), 
+          filename: image.name, 
+          type: 'image', 
+          file: File(image.path),
+        )
+      ]);
     }
   }
 
   Future<void> _pickFile() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(withData: true, allowMultiple: true);
     if (result != null) {
-      final List<SelectedMedia> selected = result.files.where((f) => f.bytes != null).map((f) => SelectedMedia(bytes: f.bytes!, filename: f.name, type: 'file')).toList();
+      final List<SelectedMedia> selected = result.files
+        .where((f) => f.bytes != null)
+        .map((f) => SelectedMedia(
+          bytes: f.bytes!, 
+          filename: f.name, 
+          type: 'file',
+          file: f.path != null ? File(f.path!) : null,
+        )).toList();
       if (selected.isNotEmpty) _navigateToPreview(selected);
     }
   }
