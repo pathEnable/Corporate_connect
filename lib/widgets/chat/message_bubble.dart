@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/chat_provider.dart';
 import '../../widgets/authenticated_image.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'package:open_filex/open_filex.dart';
 import 'audio_player_widget.dart';
@@ -563,7 +564,7 @@ class _ImageContent extends StatelessWidget {
               tag: imageUrl,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: (localPath != null && File(localPath!).existsSync())
+                child: (!kIsWeb && localPath != null && File(localPath!).existsSync())
                     ? Image.file(
                         File(localPath!),
                         fit: BoxFit.cover,
@@ -658,7 +659,7 @@ class _FileContent extends ConsumerWidget {
 
     return InkWell(
       onTap: () async {
-        if (localPath != null && await File(localPath).exists()) {
+        if (!kIsWeb && localPath != null && await File(localPath).exists()) {
           try {
             await OpenFilex.open(localPath);
           } catch (e) {
@@ -706,7 +707,7 @@ class _FileContent extends ConsumerWidget {
                       color: iconColor,
                     ),
                   ),
-                if (!isDownloading && localPath == null)
+                if (!isDownloading && localPath == null && !isMe)
                   Positioned(
                     bottom: 0,
                     right: 0,

@@ -1,7 +1,7 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import '../providers/chat_provider.dart';
@@ -61,7 +61,7 @@ class _MediaPreviewScreenState extends ConsumerState<MediaPreviewScreen> {
           bytes: bytes,
           filename: img.name,
           type: 'image',
-          file: File(img.path),
+          file: kIsWeb ? null : File(img.path),
         ));
       }
       setState(() => _mediaList.addAll(news));
@@ -134,7 +134,7 @@ class _MediaPreviewScreenState extends ConsumerState<MediaPreviewScreen> {
         notifier.sendMessage(
           result['url'], 
           media.type, 
-          localPath: media.file?.path,
+          localPath: kIsWeb ? null : media.file?.path,
           extraData: extraData,
         );
       }

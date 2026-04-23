@@ -94,8 +94,8 @@ class MediaService {
     try {
       // 1. Demander les permissions
       if (Platform.isAndroid) {
-        if (await Permission.manageExternalStorage.isDenied) {
-           await Permission.manageExternalStorage.request();
+        if (await Permission.storage.isDenied) {
+           await Permission.storage.request();
         }
         // Pour Android 13+
         await [Permission.photos, Permission.videos, Permission.audio].request();
@@ -128,16 +128,57 @@ class MediaService {
 
       // 3. Téléchargement via Dio
       final isCloudinary = url.contains('cloudinary.com');
-      final options = isCloudinary 
-          ? Options() 
-          : Options(headers: {'Authorization': 'Bearer ${await _authService.getToken()}'});
+      debugPrint("📥 saveToGallery: URL=$url | isCloudinary=$isCloudinary");
+      
+      Future<void> makeDownload(String downloadUrl, bool useAuth) async {
+        final options = useAuth 
+            ? Options(headers: {'Authorization': 'Bearer ${await _authService.getToken()}'})
+            : Options();
 
-      await _dio.download(
-        url,
-        savePath,
-        options: options,
-        onReceiveProgress: onReceiveProgress,
-      );
+        await _dio.download(
+          downloadUrl,
+          savePath,
+          options: options,
+          onReceiveProgress: onReceiveProgress,
+        );
+      }
+
+      try {
+        await makeDownload(url, !isCloudinary);
+      } catch (e) {
+        // Fallback pour Cloudinary (401)
+        if (isCloudinary && e is DioException && e.response?.statusCode == 401) {
+          debugPrint("🔄 401 sur Cloudinary, tentative via proxy backend...");
+          
+          // Nouveau format de proxy : /media/proxy?url=...
+          final proxyUrl = '${ApiConfig.baseUrl}/media/proxy?url=${Uri.encodeComponent(url)}';
+          debugPrint("📡 Test proxy: $proxyUrl");
+          
+          try {
+            await makeDownload(proxyUrl, true);
+            debugPrint("✅ Téléchargement réussi via proxy backend");
+            return savePath;
+          } catch (proxyError) {
+            debugPrint("❌ Échec du proxy backend: $proxyError");
+          }
+        }
+
+        // Gestion classique du 401 Backend
+        if (!isCloudinary && e is DioException && e.response?.statusCode == 401) {
+          debugPrint("🔄 401 détecté lors du téléchargement backend, rafraîchissement du token...");
+          final refreshed = await _authService.refreshToken();
+          if (refreshed) {
+            debugPrint("✅ Token rafraîchi, nouvelle tentative...");
+            await makeDownload(url, true);
+          } else {
+            debugPrint("❌ Échec du rafraîchissement du token");
+            rethrow;
+          }
+        } else {
+          debugPrint("❌ Erreur téléchargement (isCloudinary=$isCloudinary): $e");
+          rethrow;
+        }
+      }
 
       return savePath;
     } catch (e) {

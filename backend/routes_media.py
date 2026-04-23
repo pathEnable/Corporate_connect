@@ -3,8 +3,9 @@ import shutil
 import uuid
 import cloudinary
 import cloudinary.uploader
+import httpx
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Profile
@@ -49,17 +50,42 @@ async def upload_file(
         "size": file_size
     }
 
-
-from fastapi import Query
-from auth import oauth2_scheme, SECRET_KEY, ALGORITHM
-from jose import jwt, JWTError
+@router.get("/proxy")
+async def proxy_cloudinary(
+    url: str = Query(...),
+    current_user: Profile = Depends(get_current_user),
+):
+    """Proxy pour télécharger des fichiers Cloudinary privés via le backend."""
+    if "cloudinary.com" not in url:
+        raise HTTPException(status_code=400, detail="Seules les URLs Cloudinary sont autorisées.")
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            # On récupère le fichier depuis Cloudinary
+            # Le serveur backend ayant accès à internet, il peut télécharger le fichier
+            response = await client.get(url, follow_redirects=True)
+            
+            if response.status_code != 200:
+                raise HTTPException(status_code=response.status_code, detail="Impossible de récupérer le fichier depuis Cloudinary")
+            
+            # On renvoie le flux au client mobile
+            return StreamingResponse(
+                response.aiter_bytes(),
+                media_type=response.headers.get("content-type", "application/octet-stream"),
+                headers={
+                    "Content-Disposition": response.headers.get("Content-Disposition", "attachment"),
+                    "Cache-Control": "public, max-age=86400"
+                }
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Erreur proxy: {str(e)}")
 
 @router.get("/download/{filename}")
 async def download_file(
     filename: str,
     current_user: Profile = Depends(get_current_user),
 ):
-    """Téléchargement sécurisé via JWT (Header)."""
+    """Téléchargement sécurisé pour les fichiers locaux via JWT (Header)."""
     
     # Chercher d'abord dans images, puis docs
     img_path = os.path.join(IMAGES_DIR, filename)

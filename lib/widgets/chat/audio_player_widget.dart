@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart' as ja;
 import '../../theme/app_theme.dart';
 import '../../services/media_service.dart';
@@ -69,7 +70,7 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
 
   Future<void> _initAudio() async {
     try {
-      if (widget.localPath != null && File(widget.localPath!).existsSync()) {
+      if (!kIsWeb && widget.localPath != null && File(widget.localPath!).existsSync()) {
         await _audioPlayer.setFilePath(widget.localPath!);
       } else {
         final fullUrl = await MediaService().getDownloadUrl(widget.url);

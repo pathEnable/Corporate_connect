@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -806,7 +807,7 @@ class _MessageInputState extends ConsumerState<MessageInput> {
           bytes: bytes, 
           filename: img.name, 
           type: 'image',
-          file: File(img.path),
+          file: kIsWeb ? null : File(img.path),
         ));
       }
       _navigateToPreview(selected);
@@ -821,7 +822,7 @@ class _MessageInputState extends ConsumerState<MessageInput> {
           bytes: await image.readAsBytes(), 
           filename: image.name, 
           type: 'image', 
-          file: File(image.path),
+          file: kIsWeb ? null : File(image.path),
         )
       ]);
     }
@@ -836,7 +837,7 @@ class _MessageInputState extends ConsumerState<MessageInput> {
           bytes: f.bytes!, 
           filename: f.name, 
           type: 'file',
-          file: f.path != null ? File(f.path!) : null,
+          file: (kIsWeb || f.path == null) ? null : File(f.path!),
         )).toList();
       if (selected.isNotEmpty) _navigateToPreview(selected);
     }

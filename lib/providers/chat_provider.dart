@@ -783,6 +783,7 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
     }
     
     try {
+      debugPrint("📥 Téléchargement média: $url (type: ${message['message_type']})");
       final localPath = await _mediaService.saveToGallery(
         url, 
         fileName, 
@@ -801,8 +802,8 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
       );
 
       if (localPath != null && !_isDisposed) {
-        // Mettre à jour la DB locale
-        await LocalDatabase.instance.saveMessage({...message, 'local_path': localPath});
+        // Mettre à jour UNIQUEMENT le local_path (évite le crash NOT NULL sur sender_id)
+        await LocalDatabase.instance.updateLocalPath(messageId, localPath);
 
         // Mettre à jour l'état UI
         final updatedMessages = state.messages.map((msg) {

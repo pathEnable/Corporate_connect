@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/home_provider.dart';
@@ -15,6 +16,7 @@ class StoryCreatorScreen extends ConsumerStatefulWidget {
 class _StoryCreatorScreenState extends ConsumerState<StoryCreatorScreen> {
   final TextEditingController _textController = TextEditingController();
   File? _imageFile;
+  Uint8List? _imageBytes;
   final ImagePicker _picker = ImagePicker();
   bool _isUploading = false;
   
@@ -39,8 +41,12 @@ class _StoryCreatorScreenState extends ConsumerState<StoryCreatorScreen> {
   Future<void> _pickImage() async {
     final XFile? pickedFile = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
     if (pickedFile != null) {
+      final bytes = await pickedFile.readAsBytes();
       setState(() {
-        _imageFile = File(pickedFile.path);
+        _imageBytes = bytes;
+        if (!kIsWeb) {
+          _imageFile = File(pickedFile.path);
+        }
       });
     }
   }
@@ -52,8 +58,11 @@ class _StoryCreatorScreenState extends ConsumerState<StoryCreatorScreen> {
 
     try {
       String? mediaUrl;
-      if (_imageFile != null) {
-        mediaUrl = _imageFile!.path; 
+      if (_imageBytes != null) {
+        // En mode web, on passe les bytes au notifier au lieu d'un chemin local
+        // (Le homeProvider.notifier devra être capable de gérer les bytes ou on les upload ici)
+        // Mais pour l'instant, on suit la logique existante.
+        mediaUrl = kIsWeb ? 'web_upload' : _imageFile?.path; 
       }
 
       await ref.read(homeProvider.notifier).createStatus(
@@ -86,9 +95,9 @@ class _StoryCreatorScreenState extends ConsumerState<StoryCreatorScreen> {
         fit: StackFit.expand,
         children: [
           // 1. Background Content (Image or Gradient)
-          if (_imageFile != null)
+          if (_imageBytes != null)
             Positioned.fill(
-              child: Image.file(_imageFile!, fit: BoxFit.cover),
+              child: Image.memory(_imageBytes!, fit: BoxFit.cover),
             )
           else
             Positioned.fill(
@@ -179,8 +188,8 @@ class _StoryCreatorScreenState extends ConsumerState<StoryCreatorScreen> {
                       ),
                     const SizedBox(width: 12),
                     _buildCircularButton(
-                      icon: _imageFile != null ? Icons.image_not_supported_rounded : Icons.image_rounded,
-                      onTap: _imageFile != null ? () => setState(() => _imageFile = null) : _pickImage,
+                      icon: _imageBytes != null ? Icons.image_not_supported_rounded : Icons.image_rounded,
+                      onTap: _imageBytes != null ? () => setState(() { _imageFile = null; _imageBytes = null; }) : _pickImage,
                       color: Colors.black38,
                     ),
                   ],
