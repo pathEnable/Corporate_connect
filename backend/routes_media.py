@@ -6,7 +6,7 @@ import cloudinary.uploader
 import cloudinary.utils
 import httpx
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query
-from fastapi.responses import FileResponse, StreamingResponse, RedirectResponse
+from fastapi.responses import FileResponse, StreamingResponse, RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Profile
@@ -23,8 +23,13 @@ for d in [IMAGES_DIR, DOCS_DIR]:
     if not os.path.exists(d):
         os.makedirs(d)
 
-# Configurer Cloudinary (récupère automatiquement CLOUDINARY_URL depuis l'environnement)
-cloudinary.config(secure=True)
+# Configurer Cloudinary
+cloudinary.config(
+    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.getenv("CLOUDINARY_API_KEY"),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+    secure=True
+)
 
 @router.post("/upload")
 async def upload_file(
@@ -88,7 +93,9 @@ async def proxy_cloudinary(
         
         # Le public_id commence après le type de livraison (et saute la version si présente)
         start_idx = upload_idx + 1
+        version = None
         if start_idx < len(path_parts) and path_parts[start_idx].startswith('v') and path_parts[start_idx][1:].isdigit():
+            version = path_parts[start_idx][1:]
             start_idx += 1
         
         # On récupère le public_id avec son extension
@@ -105,23 +112,13 @@ async def proxy_cloudinary(
         # s'ils ne sont pas téléchargés en tant qu'attachement.
         is_pdf = public_id.lower().endswith('.pdf')
         
-        signed_url, _ = cloudinary.utils.cloudinary_url(
-            public_id,
-            resource_type=resource_type,
-            type=delivery_type,
-            sign_url=True,
-            secure=True,
-            attachment=True if is_pdf else None
-        )
-        
         # Tentative de téléchargement depuis le backend
         async with httpx.AsyncClient() as client:
-            config = cloudinary.config()
-            auth = (config.api_key, config.api_secret) if config.api_key else None
             
             # 1. On tente l'URL d'origine
             print(f"[Proxy] Tentative URL d'origine: {url}")
-            response = await client.get(url, auth=auth, follow_redirects=True)
+            # On n'envoie pas auth car Basic Auth n'est pas supporté pour la livraison
+            response = await client.get(url, follow_redirects=True)
             
             # 2. Si échec (401/404), on tente de générer une URL signée avec le bon resource_type
             if response.status_code != 200:
@@ -140,7 +137,7 @@ async def proxy_cloudinary(
                         sign_url=True,
                         secure=True,
                         attachment=True if is_pdf else None,
-                        version=None # Cloudinary calculera la signature sans la version si elle n'est pas fixe
+                        version=version
                     )
                     
                     print(f"[Proxy] Tentative avec URL signée ({r_type}): {signed_url}")
