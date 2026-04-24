@@ -67,8 +67,17 @@ async def proxy_cloudinary(
         uri = urlsplit(url)
         path_parts = [p for p in uri.path.split('/') if p]
         
-        # On cherche 'upload' pour se repérer
-        if 'upload' not in path_parts:
+        # On cherche le type de livraison (upload, authenticated, private)
+        delivery_type = "upload"
+        upload_idx = -1
+        
+        for t in ['upload', 'authenticated', 'private']:
+            if t in path_parts:
+                upload_idx = path_parts.index(t)
+                delivery_type = t
+                break
+
+        if upload_idx == -1:
             # Fallback sur un proxy direct si l'URL est atypique
             async with httpx.AsyncClient() as client:
                 config = cloudinary.config()
@@ -76,10 +85,9 @@ async def proxy_cloudinary(
                 response = await client.get(url, auth=auth, follow_redirects=True)
                 return StreamingResponse(response.aiter_bytes(), media_type=response.headers.get("content-type"))
 
-        upload_idx = path_parts.index('upload')
         resource_type = path_parts[upload_idx - 1]
         
-        # Le public_id commence après 'upload' (et saute la version si présente)
+        # Le public_id commence après le type de livraison (et saute la version si présente)
         start_idx = upload_idx + 1
         if start_idx < len(path_parts) and path_parts[start_idx].startswith('v') and path_parts[start_idx][1:].isdigit():
             start_idx += 1
@@ -90,16 +98,16 @@ async def proxy_cloudinary(
         public_id = os.path.splitext(public_id_with_ext)[0] if resource_type != 'raw' else public_id_with_ext
 
         # Générer une URL signée (valable par défaut quelques minutes)
-        # On utilise 'authenticated' car c'est ce qui bloque le 401
+        # On utilise le même type que l'URL d'origine (upload, authenticated, etc.)
         signed_url, _ = cloudinary.utils.cloudinary_url(
             public_id,
             resource_type=resource_type,
-            type="authenticated",
+            type=delivery_type,
             sign_url=True,
             secure=True
         )
         
-        print(f"[Proxy] Redirection vers URL signée: {signed_url}")
+        print(f"[Proxy] Redirection vers URL signée (type={delivery_type}): {signed_url}")
         return RedirectResponse(url=signed_url)
 
     except Exception as e:
