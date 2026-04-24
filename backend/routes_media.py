@@ -114,38 +114,57 @@ async def proxy_cloudinary(
             attachment=True if is_pdf else None
         )
         
-        # Au lieu de rediriger (ce qui pose des problèmes de signature/sécurité avec les PDF),
-        # on télécharge le fichier depuis le backend et on le streame au client.
-        # Cela garantit que l'accès est autorisé via les credentials API du backend.
+        # Tentative de téléchargement depuis le backend
         async with httpx.AsyncClient() as client:
             config = cloudinary.config()
             auth = (config.api_key, config.api_secret) if config.api_key else None
             
-            # On utilise l'URL d'origine qui est déjà complète
+            # 1. On tente l'URL d'origine
+            print(f"[Proxy] Tentative URL d'origine: {url}")
             response = await client.get(url, auth=auth, follow_redirects=True)
             
+            # 2. Si échec (401/404), on tente de générer une URL signée avec le bon resource_type
             if response.status_code != 200:
-                print(f"[Proxy] Erreur Cloudinary: {response.status_code} pour {url}")
-                # Si l'URL directe échoue, on tente avec l'URL signée que nous avons générée
-                signed_url, _ = cloudinary.utils.cloudinary_url(
-                    public_id,
-                    resource_type=resource_type,
-                    type=delivery_type,
-                    sign_url=True,
-                    secure=True,
-                    attachment=True if is_pdf else None
-                )
-                response = await client.get(signed_url)
+                print(f"[Proxy] Échec URL d'origine ({response.status_code}), tentative URL signée...")
+                
+                # On essaie d'abord le resource_type détecté, puis 'raw' si c'est un PDF
+                types_to_try = [resource_type]
+                if is_pdf and resource_type != 'raw':
+                    types_to_try.append('raw')
+                
+                for r_type in types_to_try:
+                    signed_url, _ = cloudinary.utils.cloudinary_url(
+                        public_id,
+                        resource_type=r_type,
+                        type=delivery_type,
+                        sign_url=True,
+                        secure=True,
+                        attachment=True if is_pdf else None,
+                        version=None # Cloudinary calculera la signature sans la version si elle n'est pas fixe
+                    )
+                    
+                    print(f"[Proxy] Tentative avec URL signée ({r_type}): {signed_url}")
+                    response = await client.get(signed_url)
+                    if response.status_code == 200:
+                        break
 
-            return StreamingResponse(
-                response.aiter_bytes(), 
-                status_code=response.status_code,
-                media_type=response.headers.get("content-type")
-            )
+            # 3. Retourner le flux de données
+            if response.status_code == 200:
+                return StreamingResponse(
+                    response.aiter_bytes(), 
+                    status_code=200,
+                    media_type=response.headers.get("content-type")
+                )
+            else:
+                print(f"[Proxy] Échec final pour {url}: {response.status_code}")
+                return JSONResponse(
+                    status_code=response.status_code, 
+                    content={"detail": f"Cloudinary a retourné une erreur {response.status_code}"}
+                )
 
     except Exception as e:
         print(f"[Proxy] Erreur critique: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(status_code=500, content={"detail": str(e)})
 
 @router.get("/download/{filename}")
 async def download_file(
