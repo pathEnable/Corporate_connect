@@ -135,28 +135,34 @@ async def proxy_cloudinary(
                 if is_pdf and resource_type != 'raw':
                     types_to_try.append('raw')
                 
-                for r_type in types_to_try:
-                    # Pour 'image', on doit séparer le public_id de l'extension
-                    curr_public_id = public_id
-                    curr_format = None
-                    if r_type == 'image' and '.' in public_id:
-                        curr_public_id, curr_format = public_id.rsplit('.', 1)
-                    
-                    signed_url, _ = cloudinary.utils.cloudinary_url(
-                        curr_public_id,
-                        format=curr_format,
-                        resource_type=r_type,
-                        type=delivery_type,
-                        sign_url=True,
-                        secure=True,
-                        attachment=True if is_pdf else None,
-                        version=version
-                    )
-                    
-                    print(f"[Proxy] Tentative avec URL signée ({r_type}): {signed_url}")
-                    response = await client.get(signed_url)
-                    if response.status_code == 200:
-                        break
+                # On tente une approche plus robuste: private_download_url
+                # Cette méthode génère un lien de téléchargement via l'API d'administration
+                try:
+                    # On essaie d'abord avec le resource_type détecté, puis 'raw'
+                    for r_type in types_to_try:
+                        print(f"[Proxy] Tentative private_download_url ({r_type})...")
+                        
+                        # Note: private_download_url n'est pas dans cloudinary.utils directement dans toutes les versions, 
+                        # mais on peut utiliser le uploader ou générer le lien de signature manuellement.
+                        # Le plus simple est d'utiliser le uploader.private_download_url si dispo, 
+                        # ou de faire une requête signée à l'API de téléchargement.
+                        
+                        # Génération d'un lien de téléchargement privé via l'uploader
+                        download_url = cloudinary.utils.private_download_url(
+                            public_id,
+                            format=None if r_type == 'raw' else (public_id.split('.')[-1] if '.' in public_id else None),
+                            resource_type=r_type,
+                            attachment=True
+                        )
+                        
+                        print(f"[Proxy] Download URL générée: {download_url}")
+                        response = await client.get(download_url)
+                        if response.status_code == 200:
+                            break
+                            
+                except Exception as inner_e:
+                    print(f"[Proxy] Erreur avec private_download_url: {str(inner_e)}")
+                    # Si private_download_url échoue ou n'existe pas, on reste sur l'échec précédent
 
             # 3. Retourner le flux de données
             if response.status_code == 200:
