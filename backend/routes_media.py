@@ -55,7 +55,6 @@ async def upload_file(
 @router.get("/proxy")
 async def proxy_cloudinary(
     url: str = Query(...),
-    current_user: Profile = Depends(get_current_user),
 ):
     """Proxy pour télécharger des fichiers Cloudinary en générant une URL signée temporaire."""
     if "cloudinary.com" not in url:
