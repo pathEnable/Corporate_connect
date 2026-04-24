@@ -136,21 +136,23 @@ async def proxy_cloudinary(
                     types_to_try.append('raw')
                 
                 # On tente une approche plus robuste: private_download_url
-                # Cette méthode génère un lien de téléchargement via l'API d'administration
                 try:
-                    # On essaie d'abord avec le resource_type détecté, puis 'raw'
+                    # Séparer public_id et format pour les images
+                    base_id = public_id
+                    fmt = None
+                    if '.' in public_id:
+                        base_id, fmt = public_id.rsplit('.', 1)
+
                     for r_type in types_to_try:
                         print(f"[Proxy] Tentative private_download_url ({r_type})...")
                         
-                        # Note: private_download_url n'est pas dans cloudinary.utils directement dans toutes les versions, 
-                        # mais on peut utiliser le uploader ou générer le lien de signature manuellement.
-                        # Le plus simple est d'utiliser le uploader.private_download_url si dispo, 
-                        # ou de faire une requête signée à l'API de téléchargement.
-                        
-                        # Génération d'un lien de téléchargement privé via l'uploader
+                        # Pour 'image', on sépare. Pour 'raw', on garde tout dans le public_id.
+                        curr_id = base_id if r_type == 'image' else public_id
+                        curr_fmt = fmt if r_type == 'image' else None
+
                         download_url = cloudinary.utils.private_download_url(
-                            public_id,
-                            format=None if r_type == 'raw' else (public_id.split('.')[-1] if '.' in public_id else None),
+                            curr_id,
+                            format=curr_fmt,
                             resource_type=r_type,
                             attachment=True
                         )
@@ -162,7 +164,6 @@ async def proxy_cloudinary(
                             
                 except Exception as inner_e:
                     print(f"[Proxy] Erreur avec private_download_url: {str(inner_e)}")
-                    # Si private_download_url échoue ou n'existe pas, on reste sur l'échec précédent
 
             # 3. Retourner le flux de données
             if response.status_code == 200:
