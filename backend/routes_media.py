@@ -118,67 +118,55 @@ async def proxy_cloudinary(
         # s'ils ne sont pas téléchargés en tant qu'attachement.
         is_pdf = public_id.lower().endswith('.pdf')
         
-        # Tentative de téléchargement depuis le backend
-        async with httpx.AsyncClient() as client:
+        # On définit les types à tester
+        types_to_try = [resource_type]
+        if is_pdf and resource_type != 'raw':
+            types_to_try.append('raw')
+
+        # Approche ultime : utiliser uploader.explicit pour obtenir les infos réelles de l'asset
+        # Cela évite de devoir "deviner" si c'est un 'image' ou 'raw' et de calculer la signature nous-mêmes.
+        try:
+            print(f"[Proxy] Requête explicit pour {public_id_with_ext} (type={delivery_type})...")
             
-            # 1. On tente l'URL d'origine
-            print(f"[Proxy] Tentative URL d'origine: {url}")
-            # On n'envoie pas auth car Basic Auth n'est pas supporté pour la livraison
-            response = await client.get(url, follow_redirects=True)
-            
-            # 2. Si échec (401/404), on tente de générer une URL signée avec le bon resource_type
-            if response.status_code != 200:
-                print(f"[Proxy] Échec URL d'origine ({response.status_code}), tentative URL signée...")
-                
-                # On essaie d'abord le resource_type détecté, puis 'raw' si c'est un PDF
-                types_to_try = [resource_type]
-                if is_pdf and resource_type != 'raw':
-                    types_to_try.append('raw')
-                
-                # On tente une approche plus robuste: private_download_url
+            # On tente d'abord avec le type détecté (généralement 'image' pour les PDF uploadés)
+            res = None
+            for r_type in types_to_try:
                 try:
-                    # Séparer public_id et format pour les images
-                    base_id = public_id
-                    fmt = None
-                    if '.' in public_id:
-                        base_id, fmt = public_id.rsplit('.', 1)
-
-                    for r_type in types_to_try:
-                        print(f"[Proxy] Tentative private_download_url ({r_type})...")
-                        
-                        # Pour 'image', on sépare. Pour 'raw', on garde tout dans le public_id.
-                        curr_id = base_id if r_type == 'image' else public_id
-                        curr_fmt = fmt if r_type == 'image' else None
-
-                        download_url = cloudinary.utils.private_download_url(
-                            curr_id,
-                            format=curr_fmt,
-                            resource_type=r_type,
-                            attachment=True,
-                            version=version
+                    res = cloudinary.uploader.explicit(
+                        public_id_with_ext,
+                        type=delivery_type,
+                        resource_type=r_type
+                    )
+                    if res and 'secure_url' in res:
+                        break
+                except:
+                    continue
+            
+            if res and 'secure_url' in res:
+                download_url = res['secure_url']
+                # On ajoute fl_attachment pour les PDF pour forcer le téléchargement
+                if is_pdf and '?' not in download_url:
+                    # Cloudinary supporte l'ajout de paramètres de transformation dans l'URL signée
+                    # mais il est plus sûr d'utiliser l'URL telle quelle si elle est déjà signée.
+                    pass
+                
+                print(f"[Proxy] URL récupérée via API: {download_url}")
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(download_url, follow_redirects=True)
+                    if response.status_code == 200:
+                        return StreamingResponse(
+                            response.aiter_bytes(), 
+                            status_code=200,
+                            media_type=response.headers.get("content-type")
                         )
-                        
-                        print(f"[Proxy] Download URL générée: {download_url}")
-                        response = await client.get(download_url)
-                        if response.status_code == 200:
-                            break
-                            
-                except Exception as inner_e:
-                    print(f"[Proxy] Erreur avec private_download_url: {str(inner_e)}")
+        except Exception as api_e:
+            print(f"[Proxy] Erreur API explicit: {str(api_e)}")
 
-            # 3. Retourner le flux de données
-            if response.status_code == 200:
-                return StreamingResponse(
-                    response.aiter_bytes(), 
-                    status_code=200,
-                    media_type=response.headers.get("content-type")
-                )
-            else:
-                print(f"[Proxy] Échec final pour {url}: {response.status_code}")
-                return JSONResponse(
-                    status_code=response.status_code, 
-                    content={"detail": f"Cloudinary a retourné une erreur {response.status_code}"}
-                )
+        # Fallback final si tout échoue
+        return JSONResponse(
+            status_code=404, 
+            content={"detail": "Impossible de récupérer le fichier depuis Cloudinary"}
+        )
 
     except Exception as e:
         print(f"[Proxy] Erreur critique: {str(e)}")
