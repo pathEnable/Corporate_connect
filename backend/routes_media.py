@@ -115,20 +115,38 @@ async def proxy_cloudinary(
             attachment=True if is_pdf else None
         )
         
-        print(f"[Proxy] Redirection vers URL signée (type={delivery_type}, pdf={is_pdf}): {signed_url}")
-        return RedirectResponse(url=signed_url)
+        # Au lieu de rediriger (ce qui pose des problèmes de signature/sécurité avec les PDF),
+        # on télécharge le fichier depuis le backend et on le streame au client.
+        # Cela garantit que l'accès est autorisé via les credentials API du backend.
+        async with httpx.AsyncClient() as client:
+            config = cloudinary.config()
+            auth = (config.api_key, config.api_secret) if config.api_key else None
+            
+            # On utilise l'URL d'origine qui est déjà complète
+            response = await client.get(url, auth=auth, follow_redirects=True)
+            
+            if response.status_code != 200:
+                print(f"[Proxy] Erreur Cloudinary: {response.status_code} pour {url}")
+                # Si l'URL directe échoue, on tente avec l'URL signée que nous avons générée
+                signed_url, _ = cloudinary.utils.cloudinary_url(
+                    public_id,
+                    resource_type=resource_type,
+                    type=delivery_type,
+                    sign_url=True,
+                    secure=True,
+                    attachment=True if is_pdf else None
+                )
+                response = await client.get(signed_url)
+
+            return StreamingResponse(
+                response.aiter_bytes(), 
+                status_code=response.status_code,
+                media_type=response.headers.get("content-type")
+            )
 
     except Exception as e:
-        print(f"[Proxy] Erreur: {str(e)}")
-        # Ultime fallback : proxy direct sans signature (ce qu'on faisait avant)
-        try:
-            async with httpx.AsyncClient() as client:
-                config = cloudinary.config()
-                auth = (config.api_key, config.api_secret) if config.api_key else None
-                resp = await client.get(url, auth=auth, follow_redirects=True)
-                return StreamingResponse(resp.aiter_bytes(), media_type=resp.headers.get("content-type"))
-        except:
-            raise HTTPException(status_code=500, detail=f"Erreur proxy finale: {str(e)}")
+        print(f"[Proxy] Erreur critique: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/download/{filename}")
 async def download_file(
