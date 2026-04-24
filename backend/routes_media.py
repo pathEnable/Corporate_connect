@@ -24,12 +24,18 @@ for d in [IMAGES_DIR, DOCS_DIR]:
         os.makedirs(d)
 
 # Configurer Cloudinary
-cloudinary.config(
-    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
-    api_key=os.getenv("CLOUDINARY_API_KEY"),
-    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
-    secure=True
-)
+cloudinary_url = os.getenv("CLOUDINARY_URL")
+if cloudinary_url:
+    # Si l'URL complète est présente, Cloudinary la parse automatiquement
+    cloudinary.config(secure=True)
+else:
+    # Sinon on utilise les variables individuelles
+    cloudinary.config(
+        cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+        api_key=os.getenv("CLOUDINARY_API_KEY"),
+        api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+        secure=True
+    )
 
 @router.post("/upload")
 async def upload_file(
