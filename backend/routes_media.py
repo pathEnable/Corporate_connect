@@ -94,8 +94,11 @@ async def proxy_cloudinary(
         
         # On récupère le public_id avec son extension
         public_id_with_ext = "/".join(path_parts[start_idx:])
-        # Pour Cloudinary, le public_id ne doit généralement pas avoir l'extension sauf pour resource_type='raw'
-        public_id = os.path.splitext(public_id_with_ext)[0] if resource_type != 'raw' else public_id_with_ext
+        
+        # Pour Cloudinary, on doit conserver l'extension pour les PDF même s'ils sont 'image', 
+        # sinon Cloudinary ne sait pas comment les délivrer et renvoie 401.
+        # Le plus sûr est de garder le public_id tel qu'il est dans l'URL d'origine.
+        public_id = public_id_with_ext
 
         # Générer une URL signée (valable par défaut quelques minutes)
         # On utilise le même type que l'URL d'origine (upload, authenticated, etc.)
