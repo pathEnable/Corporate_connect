@@ -154,6 +154,7 @@ async def proxy_cloudinary(
                             type=delivery_type,
                             format=curr_fmt,
                             version=version,
+                            flags="attachment",
                             sign_url=True
                         )
                         
