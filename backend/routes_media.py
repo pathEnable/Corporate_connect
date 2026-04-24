@@ -136,8 +136,15 @@ async def proxy_cloudinary(
                     types_to_try.append('raw')
                 
                 for r_type in types_to_try:
+                    # Pour 'image', on doit séparer le public_id de l'extension
+                    curr_public_id = public_id
+                    curr_format = None
+                    if r_type == 'image' and '.' in public_id:
+                        curr_public_id, curr_format = public_id.rsplit('.', 1)
+                    
                     signed_url, _ = cloudinary.utils.cloudinary_url(
-                        public_id,
+                        curr_public_id,
+                        format=curr_format,
                         resource_type=r_type,
                         type=delivery_type,
                         sign_url=True,
