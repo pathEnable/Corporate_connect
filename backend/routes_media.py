@@ -154,7 +154,8 @@ async def proxy_cloudinary(
                             curr_id,
                             format=curr_fmt,
                             resource_type=r_type,
-                            attachment=True
+                            attachment=True,
+                            version=version
                         )
                         
                         print(f"[Proxy] Download URL générée: {download_url}")
