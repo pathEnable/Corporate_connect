@@ -45,10 +45,19 @@ async def upload_file(
     """Télécharger un fichier directement sur Cloudinary."""
     
     try:
-        # L'argument resource_type="auto" détecte automatiquement s'il s'agit d'une image, audio, ou document
+        # Les nouveaux comptes Cloudinary bloquent par défaut la livraison des PDF publics (type='upload').
+        # Pour pouvoir les lire/télécharger, il faut les uploader avec type="private"
+        # et générer une URL signée via notre proxy.
+        is_pdf = file.filename.lower().endswith('.pdf')
+        delivery_type = "private" if is_pdf else "upload"
+        
+        # On force le resource_type à 'raw' pour les documents/PDF afin d'éviter les soucis de conversion d'image
+        r_type = "raw" if is_pdf else "auto"
+
         response = cloudinary.uploader.upload(
             file.file, 
-            resource_type="auto", 
+            resource_type=r_type, 
+            type=delivery_type,
             folder="corporate_connect_uploads"
         )
         file_url = response.get("secure_url")
@@ -128,42 +137,45 @@ async def proxy_cloudinary(
             print(f"[Proxy] Tentative URL d'origine: {url}")
             response = await client.get(url, follow_redirects=True)
             
-            # 2. Si échec (401/404), cela signifie souvent que le compte a "Strict Deliveries" activé pour les PDF.
-            # Il faut donc signer l'URL de livraison.
+            # 2. Si échec (401/404), on va générer l'URL d'accès sécurisée
             if response.status_code != 200:
-                print(f"[Proxy] Échec URL d'origine ({response.status_code}), tentative avec signature...")
+                print(f"[Proxy] Échec URL d'origine ({response.status_code}).")
                 
-                # IMPORTANT: Pour Cloudinary, si un PDF est stocké comme 'image', 
-                # son vrai public_id en base de données N'A PAS l'extension .pdf.
-                # L'extension est considérée comme le "format".
+                # IMPORTANT: Les nouveaux comptes bloquent les PDF en type="upload".
+                # Nous avons changé l'upload pour utiliser type="private" et resource_type="raw".
+                # Pour les fichiers "private", la SEULE façon de les récupérer est private_download_url.
+                
                 base_id = public_id_with_ext
                 fmt = None
                 if '.' in public_id_with_ext:
                     base_id, fmt = public_id_with_ext.rsplit('.', 1)
 
-                for r_type in types_to_try:
-                    try:
-                        # Si 'image', le public_id n'a pas l'extension, et on passe format="pdf"
-                        # Si 'raw', le public_id a l'extension, et on passe format=None
-                        curr_id = base_id if r_type == 'image' else public_id_with_ext
-                        curr_fmt = fmt if r_type == 'image' else None
-
+                try:
+                    if delivery_type in ["private", "authenticated"]:
+                        # Pour les nouveaux fichiers (private/raw)
+                        signed_url = cloudinary.utils.private_download_url(
+                            public_id_with_ext if resource_type == 'raw' else base_id,
+                            format=None if resource_type == 'raw' else fmt,
+                            resource_type=resource_type,
+                            attachment=True
+                        )
+                        print(f"[Proxy] Tentative private_download_url: {signed_url}")
+                    else:
+                        # Pour les anciens fichiers (upload/image)
                         signed_url, _ = cloudinary.utils.cloudinary_url(
-                            curr_id,
-                            resource_type=r_type,
+                            base_id if resource_type == 'image' else public_id_with_ext,
+                            resource_type=resource_type,
                             type=delivery_type,
-                            format=curr_fmt,
+                            format=fmt if resource_type == 'image' else None,
                             version=version,
                             flags="attachment",
                             sign_url=True
                         )
+                        print(f"[Proxy] Tentative URL signée: {signed_url}")
                         
-                        print(f"[Proxy] Tentative URL signée ({r_type}): {signed_url}")
-                        response = await client.get(signed_url, follow_redirects=True)
-                        if response.status_code == 200:
-                            break
-                    except Exception as sign_e:
-                        print(f"[Proxy] Erreur génération signature ({r_type}): {str(sign_e)}")
+                    response = await client.get(signed_url, follow_redirects=True)
+                except Exception as sign_e:
+                    print(f"[Proxy] Erreur génération URL sécurisée: {str(sign_e)}")
 
             # 3. Retourner le flux de données
             if response.status_code == 200:
