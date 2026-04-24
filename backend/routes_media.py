@@ -102,15 +102,20 @@ async def proxy_cloudinary(
 
         # Générer une URL signée (valable par défaut quelques minutes)
         # On utilise le même type que l'URL d'origine (upload, authenticated, etc.)
+        # IMPORTANT: Cloudinary bloque souvent les PDF (401) pour des raisons de sécurité 
+        # s'ils ne sont pas téléchargés en tant qu'attachement.
+        is_pdf = public_id.lower().endswith('.pdf')
+        
         signed_url, _ = cloudinary.utils.cloudinary_url(
             public_id,
             resource_type=resource_type,
             type=delivery_type,
             sign_url=True,
-            secure=True
+            secure=True,
+            attachment=True if is_pdf else None
         )
         
-        print(f"[Proxy] Redirection vers URL signée (type={delivery_type}): {signed_url}")
+        print(f"[Proxy] Redirection vers URL signée (type={delivery_type}, pdf={is_pdf}): {signed_url}")
         return RedirectResponse(url=signed_url)
 
     except Exception as e:
