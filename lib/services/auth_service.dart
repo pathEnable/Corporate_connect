@@ -1,11 +1,13 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'push_notification_service.dart';
 import 'global_presence_service.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter/material.dart';
 import 'api_config.dart';
+import '../main.dart';
+import '../screens/login_screen.dart';
 
 class AuthService {
   /// Stockage sécurisé (Keystore Android / Keychain iOS)
@@ -15,9 +17,6 @@ class AuthService {
 
   /// Cache en mémoire pour un accès synchrone (utilisé par AuthenticatedImage)
   static String? _cachedToken;
-  
-  /// Future partagé pour éviter les rafraîchissements multiples simultanés
-  static Future<bool>? _refreshFuture;
 
   /// Récupérer le token en cache de manière synchrone
   static String? get cachedToken => _cachedToken;
@@ -36,7 +35,7 @@ class AuthService {
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      await _saveToken(data['access_token'], data['refresh_token'], data['user_id'], data['full_name']);
+      await _saveToken(data['access_token'], null, data['user_id'], data['full_name']);
       return data;
     } else {
       final error = jsonDecode(response.body);
@@ -66,7 +65,7 @@ class AuthService {
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      await _saveToken(data['access_token'], data['refresh_token'], data['user_id'], data['full_name']);
+      await _saveToken(data['access_token'], null, data['user_id'], data['full_name']);
       return data;
     } else {
       final error = jsonDecode(response.body);
@@ -97,7 +96,7 @@ class AuthService {
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      await _saveToken(data['access_token'], data['refresh_token'], data['user_id'], data['full_name']);
+      await _saveToken(data['access_token'], null, data['user_id'], data['full_name']);
       return data;
     } else {
       throw Exception('Code OTP invalide');
@@ -108,11 +107,10 @@ class AuthService {
   //  STOCKAGE SÉCURISÉ DES TOKENS
   // ═══════════════════════════════════════════════════════════
 
-  /// Sauvegarder les tokens dans le Keystore sécurisé (pas SharedPreferences)
-  Future<void> _saveToken(String token, String refreshToken, String userId, String fullName, {bool registerFcm = true}) async {
-    // Tokens sensibles → Keystore chiffré
+  /// Sauvegarder le token dans le Keystore sécurisé
+  Future<void> _saveToken(String token, String? refreshToken, String userId, String fullName, {bool registerFcm = true}) async {
+    // Token sensible → Keystore chiffré
     await _secureStorage.write(key: 'access_token', value: token);
-    await _secureStorage.write(key: 'refresh_token', value: refreshToken);
     
     // Mettre à jour le cache en mémoire
     _cachedToken = token;
@@ -135,99 +133,19 @@ class AuthService {
     }
   }
 
-  /// Vérifier si l'utilisateur est connecté ET si le token est encore valide
+  /// Vérifier si l'utilisateur est connecté
   Future<bool> isLoggedIn() async {
     final token = await getToken();
-    if (token == null) return false;
-
-    // Vérifier l'expiration locale du JWT (sans appel réseau)
-    if (_isTokenExpired(token)) {
-      // Tenter un refresh silencieux
-      final refreshed = await refreshToken();
-      return refreshed;
-    }
-    return true;
+    return token != null;
   }
 
-  /// Décoder le JWT localement pour vérifier l'expiration
-  bool _isTokenExpired(String token) {
-    try {
-      final parts = token.split('.');
-      if (parts.length != 3) return true;
-
-      // Décoder le payload (base64url)
-      final payload = parts[1];
-      final normalized = base64Url.normalize(payload);
-      final decoded = utf8.decode(base64Url.decode(normalized));
-      final data = jsonDecode(decoded) as Map<String, dynamic>;
-
-      final exp = data['exp'] as int?;
-      if (exp == null) return true;
-
-      final expiryDate = DateTime.fromMillisecondsSinceEpoch(exp * 1000);
-      // Ajouter une marge de 30 secondes pour éviter les races conditions
-      return expiryDate.isBefore(DateTime.now().add(const Duration(seconds: 30)));
-    } catch (_) {
-      return true; // En cas de doute, considérer comme expiré
-    }
-  }
-
-  /// Récupérer le token depuis le stockage sécurisé avec rafraîchissement automatique si expiré
+  /// Récupérer le token depuis le stockage sécurisé
   Future<String?> getToken() async {
     String? token = _cachedToken;
     token ??= await _secureStorage.read(key: 'access_token');
-
-    if (token != null && _isTokenExpired(token)) {
-      debugPrint("🔄 Token expiré détecté dans getToken, tentative de rafraîchissement...");
-      final success = await refreshToken();
-      if (success) {
-        return _cachedToken; // refreshToken() met à jour _cachedToken via _saveToken
-      }
-      debugPrint("⚠️ Échec du rafraîchissement automatique dans getToken");
-      return null; // Ne pas renvoyer un token expiré
-    }
-
+    
     _cachedToken = token;
     return token;
-  }
-
-  /// Récupérer le refresh token depuis le stockage sécurisé
-  Future<String?> getRefreshToken() async {
-    return await _secureStorage.read(key: 'refresh_token');
-  }
-
-  /// Tenter un rafraîchissement du token (sécurisé contre les appels concurrents)
-  Future<bool> refreshToken() async {
-    if (_refreshFuture != null) return _refreshFuture!;
-
-    _refreshFuture = _performRefresh();
-    try {
-      return await _refreshFuture!;
-    } finally {
-      _refreshFuture = null;
-    }
-  }
-
-  Future<bool> _performRefresh() async {
-    final rt = await getRefreshToken();
-    if (rt == null) return false;
-
-    try {
-      final response = await http.post(
-        Uri.parse('${ApiConfig.baseUrl}/auth/refresh'),
-        headers: ApiConfig.defaultHeaders,
-        body: jsonEncode({'refresh_token': rt}),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        await _saveToken(data['access_token'], data['refresh_token'], data['user_id'], data['full_name'], registerFcm: false);
-        return true;
-      }
-    } catch (e) {
-      debugPrint("⚠️ Erreur refresh token: $e");
-    }
-    return false;
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -239,26 +157,12 @@ class AuthService {
     // 1. Fermer le WebSocket global AVANT de supprimer les tokens
     GlobalPresenceService.instance.disconnect();
 
-    // 2. Révoquer le Refresh Token côté backend (empêche la réutilisation)
-    try {
-      final rt = await getRefreshToken();
-      if (rt != null) {
-        await http.post(
-          Uri.parse('${ApiConfig.baseUrl}/auth/logout'),
-          headers: ApiConfig.defaultHeaders,
-          body: jsonEncode({'refresh_token': rt}),
-        );
-      }
-    } catch (e) {
-      debugPrint("⚠️ Révocation backend échouée (non bloquant): $e");
-    }
-
-    // 3. Supprimer les tokens sécurisés et vider le cache
+    // 2. Supprimer les tokens sécurisés et vider le cache
     await _secureStorage.delete(key: 'access_token');
-    await _secureStorage.delete(key: 'refresh_token');
+    await _secureStorage.delete(key: 'refresh_token'); // On nettoie l'ancien résidu
     _cachedToken = null;
 
-    // 4. Supprimer UNIQUEMENT les données de session (pas les préférences utilisateur !)
+    // 3. Supprimer UNIQUEMENT les données de session (pas les préférences utilisateur !)
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('user_id');
     await prefs.remove('full_name');
@@ -302,7 +206,7 @@ class AuthService {
     }
   }
 
-  /// Helper pour les requêtes authentifiées avec auto-refresh
+  /// Helper pour les requêtes authentifiées avec éjection sur 401
   Future<http.Response> authenticatedRequest({
     required String url,
     required String method,
@@ -326,15 +230,28 @@ class AuthService {
 
     var response = await makeRequest();
 
-    // Si 401, on tente de rafraîchir le token
+    // Si 401, le token a été révoqué par le serveur (token_version incrémenté)
     if (response.statusCode == 401) {
-      final refreshed = await refreshToken();
-      if (refreshed) {
-        token = await getToken();
-        response = await makeRequest();
-      }
+      debugPrint("⚠️ 401 Unauthorized détecté : Éjection forcée de l'utilisateur.");
+      await logout();
+      
+      // On importe main.dart dynamiquement pour éviter les dépendances circulaires
+      // Mais on ne peut pas importer ici, donc on doit notifier l'application autrement.
+      // Dans Flutter, la façon propre est d'utiliser le navigateur global.
+      forceGlobalLogout();
     }
 
     return response;
+  }
+
+  void forceGlobalLogout() {
+    // Éjection immédiate vers l'écran de connexion via la clé globale
+    final context = navigatorKey.currentContext;
+    if (context != null && context.mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+    }
   }
 }

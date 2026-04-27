@@ -196,21 +196,10 @@ class PushNotificationService {
       var response = await makeRequest(authToken);
       
       if (response.statusCode == 401) {
-        debugPrint("FCM Registration: Token expiré (401). Tentative de rafraîchissement...");
-        final refreshed = await _authService.refreshToken();
-        
-        if (refreshed) {
-          final newToken = await _authService.getToken();
-          if (newToken != null) {
-            response = await makeRequest(newToken);
-            if (response.statusCode == 200) {
-              debugPrint("FCM Registration: Succès après rafraîchissement.");
-              return;
-            }
-          }
-        }
-        
-        debugPrint("FCM Registration: Échec critique après tentative de rafraîchissement (Status: ${response.statusCode}).");
+        debugPrint("FCM Registration: 401 Unauthorized détecté : Éjection forcée.");
+        await _authService.logout();
+        _authService.forceGlobalLogout();
+        return;
       } else if (response.statusCode == 200) {
         debugPrint("FCM Registration: Succès.");
       } else {

@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import secrets
 import bcrypt
@@ -18,7 +18,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 def hash_password(password: str) -> str:
     """Hache un mot de passe en utilisant bcrypt."""
     if not password:
-        return None
+        raise ValueError("Le mot de passe ne peut pas être vide.")
     pwd_bytes = password.encode('utf-8')
     salt = bcrypt.gensalt()
     hashed = bcrypt.hashpw(pwd_bytes, salt)
@@ -40,7 +40,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -50,7 +50,7 @@ from models import RefreshToken
 def create_refresh_token(db: Session, user_id: str) -> str:
     """Génère un token de rafraîchissement et le stocke en base de données."""
     token = secrets.token_urlsafe(32)
-    expires_at = datetime.utcnow() + timedelta(days=30) # Valide 30 jours
+    expires_at = datetime.now(timezone.utc) + timedelta(days=30)  # Valide 30 jours
     
     db_token = RefreshToken(
         user_id=user_id,
@@ -65,33 +65,77 @@ from fastapi import Depends, HTTPException, status, Query
 
 def get_current_user(
     token: str = Depends(oauth2_scheme), 
-    token_query: Optional[str] = Query(None, alias="token"),
     db: Session = Depends(get_db)
 ) -> Profile:
+    """Authentification par header Authorization (routes REST uniquement)."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Token invalide ou expiré",
         headers={"WWW-Authenticate": "Bearer"},
     )
     
-    # Utiliser le token du query param si le header est vide ou invalide
-    # oauth2_scheme peut retourner une chaîne vide ou None avec auto_error=False
+    if not token or not token.strip():
+        raise credentials_exception
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id_str: str = payload.get("sub")
+        token_version = payload.get("version")
+        if user_id_str is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    user = db.query(Profile).filter(Profile.id == user_id_str).first()
+    if user is None:
+        raise credentials_exception
+
+    # Vérification de la version du token (invalidation multi-appareils)
+    if token_version is None or token_version != user.token_version:
+        raise credentials_exception
+    
+    # Vérifier que le compte est actif
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Ce compte a été désactivé."
+        )
+    return user
+
+
+def get_current_user_ws(
+    token: Optional[str] = None, 
+    token_query: Optional[str] = Query(None, alias="token"),
+    db: Session = Depends(get_db)
+) -> Profile:
+    """Authentification pour WebSockets (accepté en query param car les WS 
+    ne supportent pas les headers Authorization). NE PAS utiliser pour les routes REST."""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Token invalide ou expiré",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
     actual_token = token if (token and token.strip()) else token_query
     
     if not actual_token:
-        # Si aucun token n'est fourni, on lève l'exception standard
         raise credentials_exception
 
     try:
         payload = jwt.decode(actual_token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id_str: str = payload.get("sub")
+        token_version = payload.get("version")
         if user_id_str is None:
             raise credentials_exception
-        user_id = user_id_str
     except JWTError:
         raise credentials_exception
 
-    user = db.query(Profile).filter(Profile.id == user_id).first()
+    user = db.query(Profile).filter(Profile.id == user_id_str).first()
     if user is None:
         raise credentials_exception
+
+    # Vérification de la version du token
+    if token_version is None or token_version != user.token_version:
+        raise credentials_exception
+        
     return user

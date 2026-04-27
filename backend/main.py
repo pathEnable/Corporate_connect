@@ -251,18 +251,21 @@ async def startup_event():
 
 # ── Diagnostic & Fichiers statiques ──
 
+from config import IS_PRODUCTION
+from auth import get_current_user as _get_current_user_auth
+
 @app.get("/debug/files")
-async def debug_files():
-    """Route de diagnostic pour vérifier la présence des APK."""
+async def debug_files(current_user: Profile = Depends(_get_current_user_auth)):
+    """Route de diagnostic (protégée, admin uniquement en production)."""
+    if IS_PRODUCTION and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Accès réservé aux administrateurs.")
     uploads_path = os.path.join(BASE_DIR, "uploads")
     exists = os.path.exists(uploads_path)
     files = os.listdir(uploads_path) if exists else []
     return {
-        "base_dir": BASE_DIR,
         "uploads_path": uploads_path,
         "exists": exists,
         "files": files,
-        "cwd": os.getcwd()
     }
 
 # Fichiers statiques (après les routes pour priorité)

@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:convert/convert.dart';
 import 'package:flutter/foundation.dart';
 import 'package:cryptography/cryptography.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:bip39/bip39.dart' as bip39;
 import 'auth_service.dart';
@@ -12,26 +11,28 @@ class EncryptionService {
   factory EncryptionService() => _instance;
   EncryptionService._internal();
 
+  /// Préfixe explicite pour identifier un message chiffré E2EE.
+  /// Remplace l'ancienne heuristique fragile (length > 20 && pas d'espaces).
+  static const encryptedPrefix = 'ENC:';
+
   final _algorithm = X25519();
   final _aesApp = AesGcm.with256bits();
   final _secureStorage = const FlutterSecureStorage();
+
+  /// Détecte si un contenu est un message chiffré E2EE.
+  /// Vérifie d'abord le préfixe explicite, puis tombe en fallback
+  /// sur l'ancienne heuristique pour la rétrocompatibilité.
+  static bool isEncryptedContent(String content) {
+    // Nouveau format : préfixe explicite
+    if (content.startsWith(encryptedPrefix)) return true;
+    // Legacy fallback : heuristique (sera obsolète une fois tous les messages migrés)
+    return content.length > 20 && !content.contains(' ');
+  }
 
   /// Générer ou récupérer la paire de clés locale
   Future<SimpleKeyPair> getLocalKeyPair() async {
     // 1. Tenter de lire depuis le stockage sécurisé
     String? privateKeyBase64 = await _secureStorage.read(key: 'e2ee_private_key');
-
-    // 2. Migration depuis SharedPreferences (Légué)
-    if (privateKeyBase64 == null) {
-      final prefs = await SharedPreferences.getInstance();
-      privateKeyBase64 = prefs.getString('e2ee_private_key');
-      
-      if (privateKeyBase64 != null) {
-        await _secureStorage.write(key: 'e2ee_private_key', value: privateKeyBase64);
-        await prefs.remove('e2ee_private_key');
-        debugPrint("🔐 Clé E2EE migrée vers le stockage sécurisé.");
-      }
-    }
 
     if (privateKeyBase64 != null) {
       final privateKeyBytes = base64Decode(privateKeyBase64);
@@ -110,12 +111,17 @@ class EncryptionService {
     combined.setRange(secretBox.nonce.length, secretBox.nonce.length + secretBox.cipherText.length, secretBox.cipherText);
     combined.setRange(secretBox.nonce.length + secretBox.cipherText.length, combined.length, secretBox.mac.bytes);
 
-    return base64Encode(combined);
+    return '$encryptedPrefix${base64Encode(combined)}';
   }
 
   /// Déchiffrer un message reçu
-  Future<String> decrypt(String combinedBase64, String senderPublicKeyBase64) async {
+  Future<String> decrypt(String encryptedContent, String senderPublicKeyBase64) async {
     try {
+      // Retirer le préfixe ENC: si présent
+      final combinedBase64 = encryptedContent.startsWith(encryptedPrefix)
+          ? encryptedContent.substring(encryptedPrefix.length)
+          : encryptedContent;
+
       final keyPair = await getLocalKeyPair();
       final senderPublicKey = SimplePublicKey(
         base64Decode(senderPublicKeyBase64),
@@ -164,8 +170,14 @@ class EncryptionService {
         
         if (memberKeys.containsKey(senderId)) {
           final String content = msg['content'];
-          if (content.length > 20 && !content.contains(' ')) {
+          // Détection déterministe via préfixe ENC: + fallback legacy
+          if (isEncryptedContent(content)) {
             try {
+              // Retirer le préfixe ENC: si présent
+              final rawBase64 = content.startsWith(encryptedPrefix)
+                  ? content.substring(encryptedPrefix.length)
+                  : content;
+
               final senderPublicKey = SimplePublicKey(
                 base64Decode(memberKeys[senderId]!),
                 type: KeyPairType.x25519,
@@ -176,7 +188,7 @@ class EncryptionService {
                 remotePublicKey: senderPublicKey,
               );
 
-              final combined = base64Decode(content);
+              final combined = base64Decode(rawBase64);
               if (combined.length > 28) { // 12 (nonce) + 16 (mac)
                 final nonce = combined.sublist(0, 12);
                 final macBytes = combined.sublist(combined.length - 16);

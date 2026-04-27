@@ -26,6 +26,7 @@ class Profile(Base):
     public_key = Column(String, nullable=True) # Clé publique pour l'E2EE (Base64)
     is_active = Column(Boolean, default=True) # Pour bannissement
     is_admin = Column(Boolean, default=False) # Pour accès admin
+    token_version = Column(Integer, default=1) # Pour invalider les sessions (logout all devices)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

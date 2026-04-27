@@ -1,10 +1,8 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import '../../services/auth_service.dart';
-import '../../services/api_config.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../providers/chat_provider.dart';
 
-class PollMessageWidget extends StatefulWidget {
+class PollMessageWidget extends ConsumerStatefulWidget {
   final String messageId;
   final String roomId;
   final String question; // Ajouté
@@ -21,10 +19,10 @@ class PollMessageWidget extends StatefulWidget {
   });
 
   @override
-  State<PollMessageWidget> createState() => _PollMessageWidgetState();
+  ConsumerState<PollMessageWidget> createState() => _PollMessageWidgetState();
 }
 
-class _PollMessageWidgetState extends State<PollMessageWidget> {
+class _PollMessageWidgetState extends ConsumerState<PollMessageWidget> {
   bool _isVoting = false;
   Map<String, dynamic> _meta = {};
 
@@ -80,22 +78,10 @@ class _PollMessageWidgetState extends State<PollMessageWidget> {
     if (_isVoting) return;
     setState(() => _isVoting = true);
     try {
-      final token = await AuthService().getToken();
-      final url = '${ApiConfig.baseUrl}/rooms/${widget.roomId}/messages/${widget.messageId}/vote';
-      final resp = await http.post(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({'option_index': optionIndex}),
-      );
-      if (resp.statusCode == 200 || resp.statusCode == 201) {
-        final data = jsonDecode(resp.body);
-        final newVotes = Map<String, dynamic>.from(data['votes'] ?? {});
-        if (mounted) setState(() => _meta['votes'] = newVotes);
-      }
-    } catch (_) {} finally {
+      await ref.read(chatProvider(widget.roomId).notifier).votePoll(widget.messageId, optionIndex);
+    } catch (e) {
+      debugPrint("Error voting: $e");
+    } finally {
       if (mounted) setState(() => _isVoting = false);
     }
   }
@@ -234,17 +220,21 @@ class _PollMessageWidgetState extends State<PollMessageWidget> {
                   children: [
                     // Jauge de progression fluide
                     Positioned.fill(
-                      child: FractionallySizedBox(
-                        alignment: Alignment.centerLeft,
-                        widthFactor: pct > 0 ? pct : 0.0,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 600),
-                          curve: Curves.easeOutQuart,
-                          decoration: BoxDecoration(
-                            color: highlightColor,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                        ),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          return Align(
+                            alignment: Alignment.centerLeft,
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 600),
+                              curve: Curves.easeOutQuart,
+                              width: constraints.maxWidth * (pct > 0 ? pct : 0.0),
+                              decoration: BoxDecoration(
+                                color: highlightColor,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
                     // Contenu

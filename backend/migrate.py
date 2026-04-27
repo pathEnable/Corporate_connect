@@ -19,6 +19,7 @@ def run_migration():
         ('profiles', 'is_online', 'BOOLEAN DEFAULT FALSE'),
         ('profiles', 'presence_status', "VARCHAR DEFAULT 'online'"),
         ('profiles', 'updated_at', 'TIMESTAMPTZ'),
+        ('profiles', 'token_version', 'INTEGER DEFAULT 1'),
 
         # Table: room_members
         ('room_members', 'is_admin_member', 'BOOLEAN DEFAULT FALSE'),

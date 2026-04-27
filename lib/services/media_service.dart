@@ -3,7 +3,6 @@ import 'package:http_parser/http_parser.dart';
 import 'auth_service.dart';
 import 'api_config.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 
@@ -61,11 +60,9 @@ class MediaService {
       if (response.statusCode == 200) return response.data;
     } catch (e) {
       if (e is DioException && e.response?.statusCode == 401) {
-        final refreshed = await _authService.refreshToken();
-        if (refreshed) {
-          final retryResponse = await makeRequest();
-          if (retryResponse.statusCode == 200) return retryResponse.data;
-        }
+        debugPrint("⚠️ 401 Unauthorized lors de l'upload : Éjection forcée");
+        await _authService.logout();
+        _authService.forceGlobalLogout();
       }
       throw Exception('Erreur lors du téléchargement du fichier: $e');
     }
@@ -82,7 +79,7 @@ class MediaService {
     return '${(bytes / 1048576).toStringAsFixed(1)}MB';
   }
 
-  /// Télécharge un média et l'enregistre dans la galerie publique
+  /// Télécharge un média et l'enregistre localement
   Future<String?> saveToGallery(
     String url, 
     String fileName, 
@@ -92,43 +89,29 @@ class MediaService {
     if (kIsWeb) return null;
 
     try {
-      // 1. Demander les permissions
-      if (Platform.isAndroid) {
-        if (await Permission.storage.isDenied) {
-           await Permission.storage.request();
-        }
-        // Pour Android 13+
-        await [Permission.photos, Permission.videos, Permission.audio].request();
-      } else if (Platform.isIOS) {
-        await Permission.photos.request();
+      // 1. Déterminer le dossier de destination (Stockage interne de l'app pour fiabilité)
+      final Directory appDocDir = await getApplicationDocumentsDirectory();
+      final String subFolder = type == 'image' ? 'images' : 'documents';
+      final Directory targetDir = Directory('${appDocDir.path}/CorporateConnect/$subFolder');
+
+      if (!await targetDir.exists()) {
+        await targetDir.create(recursive: true);
       }
 
-      // 2. Déterminer le dossier de destination public
-      Directory? baseDir;
-      if (Platform.isAndroid) {
-        // Dossier standard pour Android (Pictures pour images, Downloads pour le reste)
-        if (type == 'image') {
-          baseDir = Directory('/storage/emulated/0/Pictures/CorporateConnect');
-        } else {
-          baseDir = Directory('/storage/emulated/0/Download/CorporateConnect');
-        }
-      } else {
-        baseDir = await getApplicationDocumentsDirectory(); // iOS est plus restrictif
-      }
-
-      if (!await baseDir.exists()) {
-        await baseDir.create(recursive: true);
-      }
-
-      final String savePath = '${baseDir.path}/$fileName';
+      // Nettoyer le nom du fichier pour éviter les caractères spéciaux
+      final safeFileName = fileName.replaceAll(RegExp(r'[^\w\.-]'), '_');
+      final String savePath = '${targetDir.path}/$safeFileName';
       final File file = File(savePath);
 
       // Si le fichier existe déjà, on ne télécharge pas
-      if (await file.exists()) return savePath;
+      if (await file.exists()) {
+        debugPrint("📄 Fichier déjà présent localement: $savePath");
+        return savePath;
+      }
 
-      // 3. Téléchargement via Dio
+      // 2. Téléchargement via Dio
       final isCloudinary = url.contains('cloudinary.com');
-      debugPrint("📥 saveToGallery: URL=$url | isCloudinary=$isCloudinary");
+      debugPrint("📥 Téléchargement: URL=$url | isCloudinary=$isCloudinary");
       
       Future<void> makeDownload(String downloadUrl, bool useAuth) async {
         final options = useAuth 
@@ -139,50 +122,56 @@ class MediaService {
           downloadUrl,
           savePath,
           options: options,
-          onReceiveProgress: onReceiveProgress,
+          onReceiveProgress: (received, total) {
+            if (onReceiveProgress != null) onReceiveProgress(received, total);
+          },
         );
       }
 
       try {
+        // Tentative directe
         await makeDownload(url, !isCloudinary);
       } catch (e) {
-        // Fallback pour Cloudinary (401)
-        if (isCloudinary && e is DioException && e.response?.statusCode == 401) {
-          debugPrint("🔄 401 sur Cloudinary, tentative via proxy backend...");
+        // Fallback pour Cloudinary (401/404)
+        if (isCloudinary && e is DioException) {
+          debugPrint("🔄 Erreur Cloudinary (${e.response?.statusCode}), tentative via proxy backend...");
           
-          // Nouveau format de proxy : /media/proxy?url=...
           final proxyUrl = '${ApiConfig.baseUrl}/media/proxy?url=${Uri.encodeComponent(url)}';
-          debugPrint("📡 Test proxy: $proxyUrl");
+          debugPrint("📡 Proxy URL: $proxyUrl");
           
           try {
             await makeDownload(proxyUrl, true);
             debugPrint("✅ Téléchargement réussi via proxy backend");
-            return savePath;
           } catch (proxyError) {
             debugPrint("❌ Échec du proxy backend: $proxyError");
-          }
-        }
-
-        // Gestion classique du 401 Backend
-        if (!isCloudinary && e is DioException && e.response?.statusCode == 401) {
-          debugPrint("🔄 401 détecté lors du téléchargement backend, rafraîchissement du token...");
-          final refreshed = await _authService.refreshToken();
-          if (refreshed) {
-            debugPrint("✅ Token rafraîchi, nouvelle tentative...");
-            await makeDownload(url, true);
-          } else {
-            debugPrint("❌ Échec du rafraîchissement du token");
-            rethrow;
+            // Si le proxy échoue, on tente une dernière fois sans auth (au cas où)
+            try {
+              await makeDownload(url, false);
+            } catch (_) {
+              rethrow;
+            }
           }
         } else {
-          debugPrint("❌ Erreur téléchargement (isCloudinary=$isCloudinary): $e");
           rethrow;
         }
       }
 
+      // 3. Optionnel : Si c'est une image, on peut AUSSI l'ajouter à la galerie publique
+      // Note: On importe pas Gal ici pour éviter les dépendances circulaires ou inutiles si non utilisé
+      /*
+      if (type == 'image' && Platform.isAndroid) {
+        try {
+          // Utilisation de gal si disponible
+          // await Gal.putImage(savePath);
+        } catch (e) {
+          debugPrint("⚠️ Impossible d'ajouter à la galerie publique: $e");
+        }
+      }
+      */
+
       return savePath;
     } catch (e) {
-      debugPrint("❌ Erreur lors de la sauvegarde en galerie: $e");
+      debugPrint("❌ Erreur lors du téléchargement/sauvegarde: $e");
       return null;
     }
   }

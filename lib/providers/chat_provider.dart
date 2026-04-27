@@ -4,7 +4,6 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
 import '../models/chat_state.dart';
 import '../services/chat_service.dart';
 import '../services/room_service.dart';
@@ -169,13 +168,9 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
     if (otherUserId.isEmpty) return;
 
     try {
-      final token = await _authService.getToken();
-      final response = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}/profiles/$otherUserId'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final response = await _authService.authenticatedRequest(
+        url: '${ApiConfig.baseUrl}/profiles/$otherUserId',
+        method: 'GET',
       );
 
       if (response.statusCode == 200 && !_isDisposed) {
@@ -447,8 +442,8 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
         markRoomAsRead();
       }
 
-      // 3. Téléchargement auto en arrière-plan pour les médias
-      if (finalMsg['message_type'] == 'image' || finalMsg['message_type'] == 'file') {
+      // 3. Téléchargement auto en arrière-plan (désactivé pour les fichiers 'file' pour économiser les données)
+      if (finalMsg['message_type'] == 'image') {
         _downloadMediaInBackground(finalMsg);
       }
     } else if (message['type'] == 'typing') {
@@ -516,17 +511,8 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
     } else if (message['type'] == 'message_updated') {
       final msgId = message['message_id']?.toString();
       final metadata = message['metadata_'];
-      if (msgId != null && metadata != null && !_isDisposed) {
-        final updated = state.messages.map((m) {
-          final currentId = m['id']?.toString();
-          final currentMsgId = m['message_id']?.toString();
-          if (currentId == msgId || currentMsgId == msgId) {
-            return {...m, 'metadata_': metadata};
-          }
-          return m;
-        }).toList();
-        state = state.copyWith(messages: updated);
-        LocalDatabase.instance.updateMetadata(msgId, metadata);
+      if (msgId != null && metadata is Map<String, dynamic>) {
+        _updateMessageMetadata(msgId, metadata);
       }
     } else if (message['type'] == 'message_deleted') {
       final msgId = message['message_id']?.toString();
@@ -605,6 +591,74 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
       type: 'reaction',
       data: {'message_id': messageId, 'emoji': emoji},
     );
+  }
+
+  /// Voter pour un sondage (optimiste + API)
+  Future<void> votePoll(String messageId, int optionIndex) async {
+    if (_userId == null) return;
+
+    // 1. Mise à jour optimiste locale
+    final updatedMessages = state.messages.map((m) {
+      final currentId = m['id']?.toString();
+      final currentMsgId = m['message_id']?.toString();
+      if (currentId == messageId || currentMsgId == messageId) {
+        final meta = Map<String, dynamic>.from((m['metadata_'] as Map?) ?? {});
+        final votes = Map<String, dynamic>.from((meta['votes'] as Map?) ?? {});
+        
+        votes[_userId!] = optionIndex;
+        meta['votes'] = votes;
+        
+        // Recalculer le total des votes
+        meta['total_votes'] = votes.length;
+        
+        return {...m, 'metadata_': meta};
+      }
+      return m;
+    }).toList();
+
+    if (!_isDisposed) state = state.copyWith(messages: updatedMessages);
+
+    // 2. Appel API pour persistance
+    try {
+      final response = await _authService.authenticatedRequest(
+        url: '${ApiConfig.baseUrl}/rooms/$roomId/messages/$messageId/vote',
+        method: 'POST',
+        body: {'option_index': optionIndex},
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        final newVotes = Map<String, dynamic>.from(data['votes'] ?? {});
+        
+        // Mettre à jour avec les données réelles du serveur si nécessaire
+        // (Bien que le broadcast message_updated s'en chargera aussi)
+        _updateMessageMetadata(messageId, {'votes': newVotes, 'total_votes': newVotes.length});
+      }
+    } catch (e) {
+      debugPrint("❌ Erreur lors du vote: $e");
+    }
+  }
+
+  /// Met à jour les métadonnées d'un message spécifique en mémoire et en DB
+  void _updateMessageMetadata(String messageId, Map<String, dynamic> metadataUpdates) {
+    if (_isDisposed) return;
+    
+    final updated = state.messages.map((m) {
+      final currentId = m['id']?.toString();
+      final currentMsgId = m['message_id']?.toString();
+      if (currentId == messageId || currentMsgId == messageId) {
+        final meta = Map<String, dynamic>.from((m['metadata_'] as Map?) ?? {});
+        meta.addAll(metadataUpdates);
+        
+        // Persister en DB
+        LocalDatabase.instance.updateMetadata(messageId, meta);
+        
+        return {...m, 'metadata_': meta};
+      }
+      return m;
+    }).toList();
+    
+    state = state.copyWith(messages: updated);
   }
 
   /// Supprimer un message (optimiste + WebSocket)
@@ -773,6 +827,15 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
     final messageId = message['id'].toString();
     final url = ApiConfig.getMediaUrl(message['content']);
     
+    if (url.isEmpty) return;
+
+    // Initialiser l'état de téléchargement pour afficher le spinner immédiatement
+    if (!_isDisposed) {
+      final newProgress = Map<String, double>.from(state.downloadProgress);
+      newProgress[messageId] = 0.0; // Indeterminate ou début à 0
+      state = state.copyWith(downloadProgress: newProgress);
+    }
+    
     // Récupérer le nom de fichier original s'il existe
     String fileName = message['content'].split('/').last;
     if (message.containsKey('metadata_') && message['metadata_'] is Map) {
@@ -801,25 +864,32 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
         },
       );
 
-      if (localPath != null && !_isDisposed) {
-        // Mettre à jour UNIQUEMENT le local_path (évite le crash NOT NULL sur sender_id)
-        await LocalDatabase.instance.updateLocalPath(messageId, localPath);
-
-        // Mettre à jour l'état UI
-        final updatedMessages = state.messages.map((msg) {
-          if (msg['id'].toString() == messageId) {
-            return {...msg, 'local_path': localPath};
-          }
-          return msg;
-        }).toList();
-
+      if (!_isDisposed) {
         final newProgress = Map<String, double>.from(state.downloadProgress);
         newProgress.remove(messageId);
 
-        state = state.copyWith(
-          messages: updatedMessages,
-          downloadProgress: newProgress,
-        );
+        if (localPath != null) {
+          // Mettre à jour UNIQUEMENT le local_path
+          await LocalDatabase.instance.updateLocalPath(messageId, localPath);
+
+          // Mettre à jour l'état UI
+          final updatedMessages = state.messages.map((msg) {
+            final currentId = msg['id']?.toString();
+            final currentMsgId = msg['message_id']?.toString();
+            if (currentId == messageId || currentMsgId == messageId) {
+              return {...msg, 'local_path': localPath};
+            }
+            return msg;
+          }).toList();
+
+          state = state.copyWith(
+            messages: updatedMessages,
+            downloadProgress: newProgress,
+          );
+        } else {
+          // Si localPath est null, le téléchargement a échoué (silencieusement)
+          state = state.copyWith(downloadProgress: newProgress);
+        }
       }
     } catch (e) {
       debugPrint("❌ Erreur téléchargement arrière-plan : $e");

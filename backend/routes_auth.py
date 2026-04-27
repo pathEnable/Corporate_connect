@@ -1,4 +1,5 @@
 import secrets
+import re
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from database import get_db, redis_client
@@ -6,10 +7,16 @@ from models import Profile, RefreshToken
 from schemas import RegisterRequest, LoginRequest, OTPRequest, OTPVerify, TokenResponse, ProfileResponse, TokenRefreshRequest
 from auth import hash_password, verify_password, create_access_token, get_current_user, create_refresh_token
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
+from config import IS_PRODUCTION
 from routes_chat import broadcast_to_all_globals
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+# ── Constantes de sécurité ─────────────────────────────────────────────────────
+LOGIN_RATE_LIMIT = 10        # Max tentatives par fenêtre
+LOGIN_RATE_WINDOW = 60       # Fenêtre en secondes
+MIN_PASSWORD_LENGTH = 8
 
 
 async def _broadcast_user_registered(user_data: dict):
@@ -25,6 +32,19 @@ def register(request: RegisterRequest, background_tasks: BackgroundTasks, db: Se
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email ou numéro de téléphone requis."
         )
+
+    # ── Validation de la complexité du mot de passe ──
+    if request.password:
+        if len(request.password) < MIN_PASSWORD_LENGTH:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Le mot de passe doit contenir au moins {MIN_PASSWORD_LENGTH} caractères."
+            )
+        if not re.search(r'[A-Z]', request.password) or not re.search(r'[0-9]', request.password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Le mot de passe doit contenir au moins une majuscule et un chiffre."
+            )
 
     existing = db.query(Profile).filter(
         (Profile.email == request.email) | (Profile.username == request.username)
@@ -48,7 +68,7 @@ def register(request: RegisterRequest, background_tasks: BackgroundTasks, db: Se
     db.commit()
     db.refresh(new_user)
 
-    token = create_access_token(data={"sub": str(new_user.id)})
+    token = create_access_token(data={"sub": str(new_user.id), "version": new_user.token_version})
     refresh_token = create_refresh_token(db, str(new_user.id))
 
     # --- Broadcast temps réel : Notifier tous les utilisateurs connectés ---
@@ -68,14 +88,34 @@ def register(request: RegisterRequest, background_tasks: BackgroundTasks, db: Se
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(request: LoginRequest, db: Session = Depends(get_db)):
-    """Connexion par Email et mot de passe."""
+async def login(request: LoginRequest, http_request: Request, db: Session = Depends(get_db)):
+    """Connexion par Email et mot de passe (rate-limited)."""
     if not request.email or not request.password:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email et mot de passe requis."
         )
 
+    # ── Rate limiting spécifique au login (par IP) ──
+    client_ip = http_request.client.host if http_request.client else "unknown"
+    rate_key = f"login_rate:{client_ip}"
+    try:
+        attempt_count = await redis_client.incr(rate_key)
+        if attempt_count == 1:
+            await redis_client.expire(rate_key, LOGIN_RATE_WINDOW)
+        if attempt_count > LOGIN_RATE_LIMIT:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Trop de tentatives. Réessayez dans {LOGIN_RATE_WINDOW} secondes."
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # Si Redis est down, on laisse passer (graceful degradation)
+
+    # ── Vérification des identifiants ──
+    # Message d'erreur identique pour email inconnu et mot de passe erroné
+    # (évite l'énumération d'utilisateurs)
     user = db.query(Profile).filter(Profile.email == request.email).first()
     if not user or not verify_password(request.password, user.hashed_password):
         raise HTTPException(
@@ -83,7 +123,14 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
             detail="Email ou mot de passe incorrect."
         )
 
-    token = create_access_token(data={"sub": str(user.id)})
+    # ── Vérification du compte actif ──
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Ce compte a été désactivé. Contactez l'administrateur."
+        )
+
+    token = create_access_token(data={"sub": str(user.id), "version": user.token_version})
     refresh_token = create_refresh_token(db, str(user.id))
 
     return TokenResponse(
@@ -114,6 +161,8 @@ async def send_otp(payload: OTPRequest, request: Request):
     await redis_client.set(redis_key, otp_code, ex=300)
     
     # En production : intégrer Twilio ou un service SMS
+    if IS_PRODUCTION:
+        return {"message": "Code OTP envoyé par SMS."}
     return {"message": f"Code OTP envoyé (dev: {otp_code})"}
 
 
@@ -139,7 +188,7 @@ async def verify_otp(payload: OTPVerify, db: Session = Depends(get_db)):
             detail="Aucun compte associé à ce numéro."
         )
 
-    token = create_access_token(data={"sub": str(user.id)})
+    token = create_access_token(data={"sub": str(user.id), "version": user.token_version})
     refresh_token = create_refresh_token(db, str(user.id))
 
     return TokenResponse(
@@ -156,14 +205,26 @@ def logout(payload: TokenRefreshRequest, db: Session = Depends(get_db)):
     if db_token:
         db.delete(db_token)
         db.commit()
-    # Même si le token n'existe pas, on retourne 200 pour éviter d'exposer l'état
     return {"message": "Déconnexion réussie et backend nettoyé."}
+
+@router.post("/logout-all")
+def logout_all_devices(current_user: Profile = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Invalider toutes les sessions actives sur tous les appareils."""
+    # Incrémenter la version du token rend instantanément invalides tous les JWT existants
+    current_user.token_version += 1
+    
+    # Révoquer également tous les refresh tokens existants
+    db.query(RefreshToken).filter(RefreshToken.user_id == current_user.id).delete()
+    
+    db.commit()
+    return {"message": "Déconnexion de tous les appareils réussie."}
+
 @router.post("/refresh", response_model=TokenResponse)
 def refresh_token(request: TokenRefreshRequest, db: Session = Depends(get_db)):
     """Échanger un Refresh Token contre un nouveau duo de tokens."""
     db_token = db.query(RefreshToken).filter(
         RefreshToken.token == request.refresh_token,
-        RefreshToken.expires_at > datetime.utcnow()
+        RefreshToken.expires_at > datetime.now(timezone.utc)
     ).first()
 
     if not db_token:
@@ -178,7 +239,7 @@ def refresh_token(request: TokenRefreshRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Utilisateur non trouvé.")
 
     # Générer de nouveaux tokens
-    new_access_token = create_access_token(data={"sub": str(user.id)})
+    new_access_token = create_access_token(data={"sub": str(user.id), "version": user.token_version})
     # On peut optionnellement générer un nouveau refresh token (rotation) 
     # ou garder le même. Ici on va le faire tourner pour plus de sécurité.
     new_refresh_token = create_refresh_token(db, str(user.id))

@@ -19,11 +19,14 @@ import 'theme/app_theme.dart';
 import 'widgets/call/global_call_listener.dart';
 import 'dart:async';
 import 'package:sentry_flutter/sentry_flutter.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  await initializeDateFormatting('fr_FR', null);
   
   // Activer le mode edge-to-edge
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -148,6 +151,8 @@ class _CorporateConnectAppState extends ConsumerState<CorporateConnectApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Vérifier si on doit verrouiller l'app au démarrage
+    _checkAndLock();
   }
 
   @override

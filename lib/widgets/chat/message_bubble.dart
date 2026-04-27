@@ -658,7 +658,7 @@ class _FileContent extends ConsumerWidget {
     final isDownloading = progress != null;
 
     return InkWell(
-      onTap: () async {
+      onTap: isDownloading ? null : () async {
         if (!kIsWeb && localPath != null && await File(localPath).exists()) {
           try {
             await OpenFilex.open(localPath);
@@ -702,7 +702,7 @@ class _FileContent extends ConsumerWidget {
                     width: 44,
                     height: 44,
                     child: CircularProgressIndicator(
-                      value: progress,
+                      value: progress > 0 ? progress : null,
                       strokeWidth: 2,
                       color: iconColor,
                     ),
