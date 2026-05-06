@@ -11,6 +11,7 @@ import '../main.dart';
 import 'login_screen.dart';
 import 'admin_dashboard_screen.dart';
 import 'notification_settings_screen.dart';
+import 'privacy_settings_screen.dart';
 import '../providers/storage_provider.dart';
 
 class ProfileScreen extends ConsumerWidget {
@@ -212,6 +213,13 @@ class ProfileScreen extends ConsumerWidget {
                 icon: Icons.notifications_none_rounded,
                 title: 'Paramètres système',
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationSettingsScreen())),
+              ),
+              _buildDivider(),
+              _buildSectionTile(
+                theme: theme,
+                icon: Icons.lock_outline_rounded,
+                title: 'Confidentialité',
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacySettingsScreen())),
               ),
               
               if (isAdmin) ...[

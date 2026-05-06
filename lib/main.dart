@@ -12,7 +12,6 @@ import 'services/biometric_service.dart';
 import 'widgets/update_dialog.dart';
 import 'widgets/lock_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shimmer/shimmer.dart';
 import 'providers/settings_provider.dart';
 import 'providers/home_provider.dart';
 import 'theme/app_theme.dart';
@@ -20,6 +19,7 @@ import 'widgets/call/global_call_listener.dart';
 import 'dart:async';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -39,22 +39,43 @@ void main() async {
     systemNavigationBarIconBrightness: Brightness.light,
   ));
 
-  // ══ INIT PARALLÈLE : DB locale + Firebase en même temps (gain ~200ms) ══
+  // ══ SOLUTION C — INIT PARALLÈLE AGRESSIVE ══
+  // On ouvre la DB chiffrée ET on pré-instancie SharedPreferences en même temps.
+  // SharedPrefs est utilisé par homeProvider._init() juste après : le pré-charger
+  // ici évite une seconde attente du système et fait gagner ~150-300ms au total.
   final stopwatch = Stopwatch()..start();
   try {
     await Future.wait([
       if (!kIsWeb) LocalDatabase.instance.database,
-      // placeholder pour d'autres inits futures
-      Future.value(null),
+      SharedPreferences.getInstance(), // Pré-cache SharedPrefs (utilisé par homeProvider)
     ]);
   } catch (e) {
     debugPrint("⚠️ Échec non bloquant lors de l'initialisation parallèle : $e");
   }
+  
+  // Vérifier le verrouillage biométrique AVANT runApp
+  bool initialIsLocked = false;
+  try {
+    initialIsLocked = await BiometricService.instance.isEnabled();
+  } catch (e) {
+    debugPrint("Erreur vérification biométrique au démarrage: $e");
+  }
+  
   stopwatch.stop();
   debugPrint("⚡ DB initialisée en ${stopwatch.elapsedMilliseconds}ms");
 
-  // Container pour accéder aux providers hors arborescence (utilisé pour OfflineSyncService)
+  // Container pour accéder aux providers hors arborescence
   final container = ProviderContainer();
+
+  // ══ SOLUTION A — PRÉCHAUFFAGE DU CACHE AVANT runApp ══
+  // On déclenche homeProvider._init() ICI, avant même que l'arborescence
+  // de widgets n'existe. Quand AuthGate demandera homeNotifier.initFuture,
+  // le chargement SQLite sera déjà en cours (ou terminé), ce qui supprime
+  // le flash "Aucun message" observé au premier rendu de HomeScreen.
+  if (!kIsWeb) {
+    container.read(homeProvider.notifier);
+    debugPrint("⚡ homeProvider pré-initialisé avant runApp");
+  }
 
   // DSN Configuration - à injecter via variables env ou config au besoin
   const sentryDsn = String.fromEnvironment('SENTRY_DSN', defaultValue: '');
@@ -68,8 +89,8 @@ void main() async {
       appRunner: () => runApp(
         UncontrolledProviderScope(
           container: container,
-          child: const AppResetter(
-            child: CorporateConnectApp(),
+          child: AppResetter(
+            child: CorporateConnectApp(initialIsLocked: initialIsLocked),
           ),
         ),
       ),
@@ -78,8 +99,8 @@ void main() async {
     runApp(
       UncontrolledProviderScope(
         container: container,
-        child: const AppResetter(
-          child: CorporateConnectApp(),
+        child: AppResetter(
+          child: CorporateConnectApp(initialIsLocked: initialIsLocked),
         ),
       ),
     );
@@ -135,7 +156,9 @@ Future<void> _initializeBgServices(ProviderContainer container) async {
 }
 
 class CorporateConnectApp extends ConsumerStatefulWidget {
-  const CorporateConnectApp({super.key});
+  final bool initialIsLocked;
+  
+  const CorporateConnectApp({super.key, this.initialIsLocked = false});
 
   @override
   ConsumerState<CorporateConnectApp> createState() => _CorporateConnectAppState();
@@ -143,16 +166,15 @@ class CorporateConnectApp extends ConsumerStatefulWidget {
 
 class _CorporateConnectAppState extends ConsumerState<CorporateConnectApp>
     with WidgetsBindingObserver {
-  bool _isLocked = false;
+  late bool _isLocked;
   // Horodatage de la dernière mise en pause (pour éviter les faux positifs)
   DateTime? _pausedAt;
 
   @override
   void initState() {
     super.initState();
+    _isLocked = widget.initialIsLocked;
     WidgetsBinding.instance.addObserver(this);
-    // Vérifier si on doit verrouiller l'app au démarrage
-    _checkAndLock();
   }
 
   @override
@@ -255,14 +277,29 @@ class _AuthGateState extends ConsumerState<AuthGate> {
   }
 
   Future<void> _checkAuth() async {
-    final loggedIn = await AuthService().isLoggedIn();
+    // ══ SOLUTION A — LANCEMENT PARALLÈLE AVEC GARDE TEMPORELLE ══
+    // Le homeProvider a déjà été déclenché dans main() avant runApp.
+    // Ici on récupère simplement son initFuture (déjà en cours d'exécution).
+    final authFuture = AuthService().isLoggedIn();
 
-    // ══ PRÉ-CHAUFFAGE DU CACHE ══
-    // Si l'utilisateur est connecté, on déclenche immédiatement le chargement
-    // SQLite (< 30ms) EN ARRIÈRE-PLAN pendant la micro-animation de transition.
-    // Quand HomeScreen apparaît, les données sont déjà en mémoire → zéro délai.
+    // Le provider est déjà en cours de chargement (pré-initialisé dans main()).
+    // ref.read() retourne l'instance existante sans la recréer.
+    final homeNotifier = ref.read(homeProvider.notifier);
+    final cacheFuture = homeNotifier.initFuture;
+
+    final loggedIn = await authFuture;
+
     if (loggedIn && !kIsWeb) {
-      ref.read(homeProvider); // Réveille le notifier → _init() → SQLite
+      // On attend la fin du chargement SQLite, avec un timeout défensif de 2s.
+      // Si la DB est anormalement lente, on navigue quand même pour ne pas
+      // bloquer l'utilisateur — Riverpod mettra à jour l'UI dès que les
+      // données arriveront.
+      await cacheFuture.timeout(
+        const Duration(seconds: 2),
+        onTimeout: () {
+          debugPrint("⚠️ Cache SQLite timeout — navigation sans cache complet");
+        },
+      ); 
     }
 
     if (mounted) {
@@ -281,10 +318,8 @@ class _AuthGateState extends ConsumerState<AuthGate> {
         PageRouteBuilder(
           pageBuilder: (_, __, ___) =>
               _isLoggedIn ? const HomeScreen() : const LoginScreen(),
-          transitionsBuilder: (_, animation, __, child) {
-            return FadeTransition(opacity: animation, child: child);
-          },
-          transitionDuration: const Duration(milliseconds: 250),
+          transitionDuration: Duration.zero,
+          reverseTransitionDuration: Duration.zero,
         ),
       );
     }
@@ -306,60 +341,28 @@ class _AuthGateState extends ConsumerState<AuthGate> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final baseColor = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFE0E0E0);
-    final highlightColor = isDark ? const Color(0xFF2C2C2C) : const Color(0xFFF5F5F5);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Shimmer de chargement : ressemble à l'écran Home pour une transition douce
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF040301) : Colors.white,
-      body: SafeArea(
+      body: Center(
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Barre d'app fictive
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Shimmer.fromColors(
-                baseColor: baseColor,
-                highlightColor: highlightColor,
-                child: Row(
-                  children: [
-                    Container(width: 160, height: 22, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
-                    const Spacer(),
-                    Container(width: 36, height: 36, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
-                  ],
-                ),
-              ),
+            // Logo ou Icône simple au lieu de skeletons
+            Icon(
+              Icons.forum_rounded,
+              size: 80,
+              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
             ),
-            const Divider(height: 1),
-            // Liste de conversations fictives (skeleton)
-            Expanded(
-              child: Shimmer.fromColors(
-                baseColor: baseColor,
-                highlightColor: highlightColor,
-                child: ListView.builder(
-                  itemCount: 8,
-                  itemBuilder: (_, i) => Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    child: Row(
-                      children: [
-                        Container(width: 52, height: 52, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(height: 14, width: double.infinity, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
-                              const SizedBox(height: 8),
-                              Container(height: 12, width: 200, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+            const SizedBox(height: 24),
+            Text(
+              'Corporate Connect',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.2,
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
               ),
             ),
           ],

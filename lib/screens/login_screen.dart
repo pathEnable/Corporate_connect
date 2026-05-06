@@ -13,8 +13,7 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _LoginScreenState extends State<LoginScreen> {
   final AuthService _authService = AuthService();
   bool _isLoading = false;
   bool _obscurePassword = true;
@@ -23,24 +22,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
-  // Controllers Phone
-  final _phoneController = TextEditingController();
-  final _otpController = TextEditingController();
-  bool _otpSent = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-  }
-
   @override
   void dispose() {
-    _tabController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
-    _phoneController.dispose();
-    _otpController.dispose();
     super.dispose();
   }
 
@@ -49,49 +34,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     setState(() => _isLoading = true);
     try {
       await _authService.loginWithEmail(_emailController.text, _passwordController.text);
-      if (mounted) {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString()),
-            backgroundColor: Colors.redAccent,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _sendOtp() async {
-    if (_phoneController.text.isEmpty) return;
-    setState(() => _isLoading = true);
-    try {
-      await _authService.sendOtp(_phoneController.text);
-      if (mounted) setState(() => _otpSent = true);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString()),
-            backgroundColor: Colors.redAccent,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _verifyOtp() async {
-    setState(() => _isLoading = true);
-    try {
-      await _authService.verifyOtp(_phoneController.text, _otpController.text);
       if (mounted) {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));
       }
@@ -161,44 +103,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               ),
               const SizedBox(height: 48),
 
-              // Tab Bar
-              Container(
-                height: 50,
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1A1A1A) : Colors.grey[100],
-                  borderRadius: BorderRadius.zero, // Flat design
-                  border: Border.all(color: colorScheme.primary.withValues(alpha: 0.1)),
-                ),
-                child: TabBar(
-                  controller: _tabController,
-                  indicator: BoxDecoration(
-                    color: colorScheme.primary,
-                    borderRadius: BorderRadius.zero, // Flat design
-                  ),
-                  labelColor: isDark ? Colors.black : Colors.white,
-                  unselectedLabelColor: theme.hintColor,
-                  dividerColor: Colors.transparent,
-                  indicatorSize: TabBarIndicatorSize.tab,
-                  labelStyle: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5),
-                  tabs: const [
-                    Tab(text: 'EMAIL PRO'),
-                    Tab(text: 'TÉLÉPHONE'),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 32),
-
-              // Tab Views
-              SizedBox(
-                height: 280,
-                child: TabBarView(
-                  controller: _tabController,
-                  children: [
-                    _buildEmailTab(theme),
-                    _buildPhoneTab(theme),
-                  ],
-                ),
-              ),
+              // Formulaire Email Direct (Anciennement TabBarView)
+              _buildEmailForm(theme),
 
                 const SizedBox(height: 16),
                 // Bouton d'inscription
@@ -226,7 +132,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     );
   }
 
-  Widget _buildEmailTab(ThemeData theme) {
+  Widget _buildEmailForm(ThemeData theme) {
     return Column(
       children: [
         TextField(
@@ -264,49 +170,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           ),
           onPressed: _isLoading ? null : _loginWithEmail,
           child: _isLoading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('SE CONNECTER'),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPhoneTab(ThemeData theme) {
-    return Column(
-      children: [
-        TextField(
-          controller: _phoneController,
-          keyboardType: TextInputType.phone,
-          decoration: InputDecoration(
-            labelText: 'Numéro de téléphone',
-            prefixIcon: const Icon(Icons.phone_outlined),
-            filled: true,
-            fillColor: theme.brightness == Brightness.dark ? const Color(0xFF1A1A1A) : Colors.grey[50],
-            border: const OutlineInputBorder(borderRadius: BorderRadius.zero),
-          ),
-        ),
-        if (_otpSent) ...[
-          const SizedBox(height: 16),
-          TextField(
-            controller: _otpController,
-            keyboardType: TextInputType.number,
-            decoration: InputDecoration(
-              labelText: 'Code OTP',
-              prefixIcon: const Icon(Icons.pin_outlined),
-              filled: true,
-              fillColor: theme.brightness == Brightness.dark ? const Color(0xFF1A1A1A) : Colors.grey[50],
-              border: const OutlineInputBorder(borderRadius: BorderRadius.zero),
-            ),
-          ),
-        ],
-        const SizedBox(height: 32),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            minimumSize: const Size(double.infinity, 56),
-            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-          ),
-          onPressed: _isLoading ? null : (_otpSent ? _verifyOtp : _sendOtp),
-          child: _isLoading
-              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : Text(_otpSent ? 'VÉRIFIER LE CODE' : 'ENVOYER LE CODE SMS'),
         ),
       ],
     );

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../providers/settings_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'privacy_settings_screen.dart';
 import '../widgets/premium_background.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -156,6 +157,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   },
                   child: Text('VIDER', style: TextStyle(color: theme.colorScheme.error, fontWeight: FontWeight.bold)),
                 ),
+              ),
+              Divider(indent: 72, color: theme.dividerColor.withValues(alpha: 0.1)),
+              ListTile(
+                leading: Icon(Icons.lock_outline_rounded, color: theme.colorScheme.primary),
+                title: const Text('Confidentialité', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text('Verrouillage biométrique et vie privée', style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.6))),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacySettingsScreen())),
               ),
               Divider(indent: 72, color: theme.dividerColor.withValues(alpha: 0.1)),
 

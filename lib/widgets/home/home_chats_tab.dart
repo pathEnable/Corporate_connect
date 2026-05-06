@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/home_provider.dart';
-import '../ui_helpers.dart';
 import 'room_tile.dart';
 import 'status_list_section.dart';
 
@@ -13,9 +12,8 @@ class HomeChatsTab extends ConsumerWidget {
     final theme = Theme.of(context);
     final state = ref.watch(homeProvider);
 
-    if (state.isLoadingRooms) {
-      return const ShimmerLoading();
-    }
+    // On ne montre plus de skeleton/shimmer. Si le cache est vide, 
+    // l'UI montrera la vue vide propre après un délai imperceptible.
 
     return RefreshIndicator(
       onRefresh: () => ref.read(homeProvider.notifier).refreshRooms(),

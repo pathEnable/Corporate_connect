@@ -19,6 +19,9 @@ class HomeNotifier extends Notifier<HomeState> {
   final StatusService _statusService = StatusService();
   bool _isDisposed = false;
   StreamSubscription? _globalEventsSub;
+  final Completer<void> _initCompleter = Completer<void>();
+
+  Future<void> get initFuture => _initCompleter.future;
 
   @override
   HomeState build() {
@@ -38,10 +41,10 @@ class HomeNotifier extends Notifier<HomeState> {
       _globalEventsSub?.cancel();
     });
     
-    // Chargement initial (appelé une seule fois grâce à keepAlive)
+    // Chargement initial
     _init();
     
-    return HomeState();
+    return HomeState(isLoadingRooms: false); // On commence sans spinner
   }
 
   Future<void> _init() async {
@@ -60,8 +63,14 @@ class HomeNotifier extends Notifier<HomeState> {
           isLoadingStatus: true,
         );
       }
+      if (!_initCompleter.isCompleted) {
+        _initCompleter.complete();
+      }
     } catch (e) {
-      debugPrint("⚠️ Erreur cache rooms SQLite: $e");
+      debugPrint("❌ Erreur SQLite HomeNotifier: $e");
+      if (!_initCompleter.isCompleted) {
+        _initCompleter.complete();
+      }
     }
 
     // ═══ PHASE 2 : WS Global + Sync API en arrière-plan (non bloquant) ═══
@@ -98,37 +107,66 @@ class HomeNotifier extends Notifier<HomeState> {
           );
 
           // Mise à jour instantanée de l'UI
-          _updateRoomInState(roomId, content, timestamp, senderName, incrementUnread: true);
+          updateRoomMetadata(
+            roomId: roomId,
+            lastMessage: content,
+            lastMessageAt: timestamp,
+            senderName: senderName,
+            incrementUnread: true,
+          );
         }
       }
     });
   }
 
-  /// Met à jour un salon dans l'état actuel et re-trie la liste par date
-  void _updateRoomInState(String roomId, String lastMessage, String lastMessageAt, String? senderName, {bool incrementUnread = false}) {
-    final updatedRooms = state.rooms.map((room) {
-      if (room['id'] == roomId) {
-        return {
-          ...room,
-          'last_message': lastMessage,
-          'last_message_time': lastMessageAt,
-          'last_sender_name': senderName,
-          'unread_count': incrementUnread ? ((room['unread_count'] ?? 0) as int) + 1 : room['unread_count'],
-        };
-      }
-      return room;
-    }).toList();
+  /// Met à jour les métadonnées d'un salon (dernier message, temps, etc.)
+  /// et re-trie la liste pour faire remonter la discussion en haut (style WhatsApp).
+  void updateRoomMetadata({
+    required String roomId,
+    required String lastMessage,
+    required String lastMessageAt,
+    String? senderName,
+    bool incrementUnread = false,
+  }) {
+    if (_isDisposed) return;
 
-    // Trier par dernier message (le plus récent en premier)
-    updatedRooms.sort((a, b) {
+    // 1. Mise à jour en base de données (persistance)
+    LocalDatabase.instance.updateRoomLastMessage(
+      roomId: roomId,
+      lastMessage: lastMessage,
+      lastMessageAt: lastMessageAt,
+      lastSenderName: senderName,
+      incrementUnread: incrementUnread,
+    );
+
+    // 2. Mise à jour de l'état (UI réactive)
+    final rooms = List<Map<String, dynamic>>.from(state.rooms);
+    final index = rooms.indexWhere((r) => r['id'] == roomId);
+
+    if (index != -1) {
+      // Salon existant : on le met à jour
+      final room = rooms[index];
+      rooms[index] = {
+        ...room,
+        'last_message': lastMessage,
+        'last_message_time': lastMessageAt,
+        'last_sender_name': senderName,
+        'unread_count': incrementUnread ? ((room['unread_count'] ?? 0) as int) + 1 : room['unread_count'],
+      };
+    } else {
+      // Salon manquant (ex: nouveau salon créé) : on rafraîchit tout pour être sûr
+      refreshRooms();
+      return;
+    }
+
+    // 3. Tri : Le plus récent en haut
+    rooms.sort((a, b) {
       final aTime = a['last_message_time']?.toString() ?? '';
       final bTime = b['last_message_time']?.toString() ?? '';
       return bTime.compareTo(aTime);
     });
 
-    if (!_isDisposed) {
-      state = state.copyWith(rooms: updatedRooms);
-    }
+    state = state.copyWith(rooms: rooms);
   }
 
   Future<void> markStatusAsRead(String id) async {

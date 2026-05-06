@@ -435,6 +435,27 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
 
       if (!_isDisposed) {
         state = state.copyWith(messages: newMessages);
+        
+        // --- MISE À JOUR DYNAMIQUE HOME (STYLE WHATSAPP) ---
+        String displayContent = finalMsg['content'] ?? '';
+        final mType = finalMsg['message_type'];
+        if (mType == 'image') {
+          displayContent = '📷 Photo';
+        } else if (mType == 'file') {
+          displayContent = '📄 Fichier';
+        } else if (mType == 'audio') {
+          displayContent = '🎵 Audio';
+        }
+
+        final senderName = state.members[finalMsg['sender_id']];
+
+        ref.read(homeProvider.notifier).updateRoomMetadata(
+          roomId: roomId,
+          lastMessage: displayContent,
+          lastMessageAt: finalMsg['created_at'] ?? DateTime.now().toIso8601String(),
+          senderName: senderName,
+          incrementUnread: finalMsg['sender_id'] != _userId,
+        );
       }
 
       // Marquer comme lu si on reçoit le message de quelqu'un d'autre
@@ -771,6 +792,24 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
 
     if (!_isDisposed) {
       state = state.copyWith(messages: [...state.messages, tempMsg]);
+      
+      // --- MISE À JOUR DYNAMIQUE HOME (STYLE WHATSAPP) ---
+      String displayContent = content;
+      if (type == 'image') {
+        displayContent = '📷 Photo';
+      } else if (type == 'file') {
+        displayContent = '📄 Fichier';
+      } else if (type == 'audio') {
+        displayContent = '🎵 Audio';
+      }
+
+      ref.read(homeProvider.notifier).updateRoomMetadata(
+        roomId: roomId,
+        lastMessage: displayContent,
+        lastMessageAt: tempMsg['created_at'] as String,
+        senderName: 'Vous', // Optionnel, ou null pour ne pas changer le nom si on préfère
+        incrementUnread: false,
+      );
     }
     
     _chatService.sendMessage(contentToSend, type: type, data: finalExtraData);
