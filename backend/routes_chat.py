@@ -6,6 +6,7 @@ from typing import Dict, Set, Optional, List, Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query, status, HTTPException, Body
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from database import get_db
 from models import Message, Room, RoomMember, Profile
 from security_utils import encrypt_data, decrypt_data
@@ -57,14 +58,16 @@ async def vote_poll(
     if not msg:
         raise HTTPException(status_code=404, detail="Sondage introuvable.")
 
-    meta = msg.metadata_ or {}
-    votes: dict = meta.get("votes", {})
+    # Enregistrer ou modifier le vote (on travaille sur une copie pour s'assurer que SQLAlchemy détecte le changement)
+    meta = dict(msg.metadata_) if msg.metadata_ else {}
+    votes = dict(meta.get("votes", {}))
     user_key = str(current_user.id)
-
-    # Enregistrer ou modifier le vote
+    print(f"DEBUG: User {current_user.username} ({user_key}) voting for option {body.option_index}. Existing votes: {votes}")
     votes[user_key] = body.option_index
     meta["votes"] = votes
+    
     msg.metadata_ = meta
+    flag_modified(msg, "metadata_")
     db.commit()
     db.refresh(msg)
 
@@ -108,7 +111,7 @@ async def update_task(
     if not msg:
         raise HTTPException(status_code=404, detail="Tâche introuvable.")
 
-    meta = msg.metadata_ or {}
+    meta = dict(msg.metadata_) if msg.metadata_ else {}
     meta["is_done"] = body.is_done
     if body.is_done:
         meta["completed_by"] = str(current_user.id)
@@ -119,6 +122,7 @@ async def update_task(
         meta.pop("completed_at", None)
 
     msg.metadata_ = meta
+    flag_modified(msg, "metadata_")
     db.commit()
     db.refresh(msg)
 

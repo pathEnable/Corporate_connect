@@ -4,9 +4,11 @@ class ChatState {
   final bool isConnected;
   final Set<String> typingUsers;
   final Map<String, String> members; // ID -> Nom
+  final Map<String, String?> memberAvatars; // ID -> Avatar URL
   final Map<String, String> memberKeys;
   final bool otherUserOnline;
   final String? otherUserStatus; // 'online', 'busy', 'dnd', 'meeting', 'remote'
+  final String? otherUserAvatarUrl;
 
   ChatState({
     required this.messages,
@@ -14,9 +16,11 @@ class ChatState {
     this.isConnected = false,
     required this.typingUsers,
     required this.members,
+    this.memberAvatars = const {},
     required this.memberKeys,
     this.otherUserOnline = false,
     this.otherUserStatus,
+    this.otherUserAvatarUrl,
     this.downloadProgress = const {},
   });
 
@@ -28,9 +32,11 @@ class ChatState {
     bool? isConnected,
     Set<String>? typingUsers,
     Map<String, String>? members,
+    Map<String, String?>? memberAvatars,
     Map<String, String>? memberKeys,
     bool? otherUserOnline,
     String? otherUserStatus,
+    String? otherUserAvatarUrl,
     Map<String, double>? downloadProgress,
   }) {
     return ChatState(
@@ -39,9 +45,11 @@ class ChatState {
       isConnected: isConnected ?? this.isConnected,
       typingUsers: typingUsers ?? this.typingUsers,
       members: members ?? this.members,
+      memberAvatars: memberAvatars ?? this.memberAvatars,
       memberKeys: memberKeys ?? this.memberKeys,
       otherUserOnline: otherUserOnline ?? this.otherUserOnline,
       otherUserStatus: otherUserStatus ?? this.otherUserStatus,
+      otherUserAvatarUrl: otherUserAvatarUrl ?? this.otherUserAvatarUrl,
       downloadProgress: downloadProgress ?? this.downloadProgress,
     );
   }

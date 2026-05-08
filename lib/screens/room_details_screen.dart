@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/local_database.dart';
-import '../services/media_service.dart';
+import '../services/api_config.dart';
 import '../providers/profile_provider.dart';
 import '../providers/room_details_provider.dart';
 import '../widgets/premium_background.dart';
@@ -14,6 +14,7 @@ class RoomDetailsScreen extends ConsumerStatefulWidget {
   final String roomId;
   final String roomName;
   final bool isGroup;
+  final String? avatarUrl;
   final List<Map<String, dynamic>> members;
 
   const RoomDetailsScreen({
@@ -21,6 +22,7 @@ class RoomDetailsScreen extends ConsumerStatefulWidget {
     required this.roomId,
     required this.roomName,
     required this.isGroup,
+    this.avatarUrl,
     required this.members,
   });
 
@@ -148,15 +150,7 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen>
               children: [
                 Hero(
                   tag: 'room_avatar_${widget.roomId}',
-                  child: CircleAvatar(
-                    radius: 50,
-                    backgroundColor: theme.colorScheme.primary,
-                    child: Icon(
-                      widget.isGroup ? Icons.groups_rounded : Icons.person_rounded,
-                      size: 50,
-                      color: Colors.black,
-                    ),
-                  ),
+                  child: _buildHeaderAvatar(theme),
                 ),
                 const SizedBox(height: 60),
               ],
@@ -311,18 +305,7 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen>
 
               return ListTile(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                leading: CircleAvatar(
-                  backgroundColor: isAdmin
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.surface.withValues(alpha: 0.2),
-                  child: Text(
-                    (member['full_name'] ?? 'U')[0].toUpperCase(),
-                    style: TextStyle(
-                      color: isAdmin ? Colors.black : theme.colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
+                leading: _buildMemberAvatar(theme, member, isAdmin),
                 title: Text(
                   isMe ? "${member['full_name']} (Vous)" : member['full_name'],
                   style: const TextStyle(fontWeight: FontWeight.w700),
@@ -372,6 +355,95 @@ class _RoomDetailsScreenState extends ConsumerState<RoomDetailsScreen>
           .read(roomDetailsProvider(widget.roomId).notifier)
           .addMembers(widget.roomId, selectedIds);
     }
+  }
+
+  Widget _buildHeaderAvatar(ThemeData theme) {
+    return Container(
+      width: 100,
+      height: 100,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: theme.colorScheme.primary.withValues(alpha: 0.1),
+        border: Border.all(
+          color: theme.colorScheme.primary.withValues(alpha: 0.2),
+          width: 2,
+        ),
+      ),
+      child: widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty
+          ? ClipOval(
+              child: Image(
+        image: AuthenticatedImageProvider(ApiConfig.getMediaUrl(widget.avatarUrl!)),
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) =>
+                    _buildHeaderFallback(theme),
+              ),
+            )
+          : _buildHeaderFallback(theme),
+    );
+  }
+
+  Widget _buildHeaderFallback(ThemeData theme) {
+    if (widget.isGroup) {
+      return Center(
+        child: Icon(
+          Icons.groups_rounded,
+          size: 50,
+          color: theme.colorScheme.primary,
+        ),
+      );
+    }
+
+    final initial = widget.roomName.isNotEmpty 
+        ? widget.roomName[0].toUpperCase() 
+        : '?';
+
+    return Center(
+      child: Text(
+        initial,
+        style: TextStyle(
+          color: theme.colorScheme.primary,
+          fontSize: 40,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMemberAvatar(ThemeData theme, Map<String, dynamic> member, bool isAdmin) {
+    final String? avatarUrl = member['avatar_url'];
+    final String initial = (member['full_name'] ?? 'U')[0].toUpperCase();
+
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: isAdmin
+            ? theme.colorScheme.primary
+            : theme.colorScheme.surface.withValues(alpha: 0.2),
+      ),
+      child: avatarUrl != null && avatarUrl.isNotEmpty
+          ? ClipOval(
+              child: Image(
+                image: AuthenticatedImageProvider(ApiConfig.getMediaUrl(avatarUrl)),
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => _buildMemberFallback(theme, initial, isAdmin),
+              ),
+            )
+          : _buildMemberFallback(theme, initial, isAdmin),
+    );
+  }
+
+  Widget _buildMemberFallback(ThemeData theme, String initial, bool isAdmin) {
+    return Center(
+      child: Text(
+        initial,
+        style: TextStyle(
+          color: isAdmin ? Colors.black : theme.colorScheme.primary,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
   }
 }
 
@@ -498,24 +570,17 @@ class _MediaTabState extends State<_MediaTab> {
         ),
         itemCount: _messages.length,
         itemBuilder: (context, index) {
-          final url = _messages[index]['content'];
-          return FutureBuilder<String>(
-            future: MediaService().getDownloadUrl(url),
-            builder: (context, snap) {
-              if (snap.hasData) {
-                return GestureDetector(
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => ImageViewerScreen(imageUrl: snap.data!)),
-                  ),
-                  child: Hero(
-                    tag: snap.data!,
-                    child: AuthenticatedNetworkImage(imageUrl: snap.data!, fit: BoxFit.cover),
-                  ),
-                );
-              }
-              return Container(color: Colors.grey.withValues(alpha: 0.1));
-            },
+          final rawUrl = _messages[index]['content'];
+          final snapUrl = ApiConfig.getMediaUrl(rawUrl);
+          return GestureDetector(
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => ImageViewerScreen(imageUrl: snapUrl)),
+            ),
+            child: Hero(
+              tag: snapUrl,
+              child: AuthenticatedNetworkImage(imageUrl: snapUrl, fit: BoxFit.cover),
+            ),
           );
         },
       );

@@ -5,6 +5,7 @@ import '../providers/settings_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'privacy_settings_screen.dart';
+import 'notification_settings_screen.dart';
 import '../widgets/premium_background.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -140,6 +141,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 subtitle: Text(settingsState.ringtoneName, style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.6))),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => _showRingtonePicker(context, ref, settingsState.ringtoneName),
+              ),
+              ListTile(
+                leading: Icon(Icons.notifications_none_rounded, color: theme.colorScheme.primary),
+                title: const Text('Paramètres avancés', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text('Gérer les canaux de notification système', style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.6))),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationSettingsScreen())),
               ),
               Divider(indent: 72, color: theme.dividerColor.withValues(alpha: 0.1)),
 

@@ -67,6 +67,22 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
       _presenceTimer?.cancel();
       _typingClearTimer?.cancel();
     });
+
+    // 🚀 INITIALISATION INSTANTANÉE (Éviter flickering & assurer Hero smooth)
+    String? initialAvatar;
+    try {
+      final homeRooms = ref.read(homeProvider).rooms;
+      final room = homeRooms.firstWhere(
+        (r) => r['id'] == roomId,
+        orElse: () => {},
+      );
+      if (room.isNotEmpty) {
+        initialAvatar = room['avatar_url'] ?? room['avatar'];
+      }
+    } catch (e) {
+      debugPrint("⚠️ Erreur lecture avatar homeProvider: $e");
+    }
+
     _init();
 
     return ChatState(
@@ -74,7 +90,8 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
       typingUsers: const {},
       members: const {},
       memberKeys: const {},
-      isLoading: false,
+      isLoading: true,
+      otherUserAvatarUrl: initialAvatar,
     );
   }
 
@@ -101,15 +118,17 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
       final members = await _roomService.getRoomMembers(roomId);
       final keys = <String, String>{};
       final names = <String, String>{};
+      final avatars = <String, String?>{};
       for (var m in members) {
         final id = m['id'].toString();
         if (m['public_key'] != null) {
           keys[id] = m['public_key'];
         }
         names[id] = m['username'] ?? m['full_name'] ?? 'Inconnu';
+        avatars[id] = m['avatar_url'] ?? m['avatar'];
       }
       if (!_isDisposed) {
-        state = state.copyWith(memberKeys: keys, members: names);
+        state = state.copyWith(memberKeys: keys, members: names, memberAvatars: avatars);
       }
       
       // Déchiffrement du cache local dès qu'on a les clés
@@ -175,10 +194,19 @@ class ChatNotifier extends FamilyNotifier<ChatState, String> {
 
       if (response.statusCode == 200 && !_isDisposed) {
         final data = jsonDecode(response.body);
+        final avatarUrl = data['avatar_url'] as String?;
+        
         state = state.copyWith(
           otherUserOnline: data['is_online'] == true,
           otherUserStatus: data['presence_status'] ?? 'online',
+          otherUserAvatarUrl: avatarUrl,
         );
+
+        // Si c'est un chat privé et qu'on n'a pas d'avatar pour la room, 
+        // on met à jour la room avec l'avatar du profil
+        if (avatarUrl != null) {
+          LocalDatabase.instance.updateRoomAvatar(roomId, avatarUrl);
+        }
       }
     } catch (e) {
       debugPrint("❌ Erreur fetch présence: $e");

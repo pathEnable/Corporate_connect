@@ -19,6 +19,7 @@ import '../../services/media_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/api_config.dart';
 import '../../screens/media_preview_screen.dart';
+import 'reply_preview.dart';
 
 class MessageInput extends ConsumerStatefulWidget {
   final String roomId;
@@ -217,7 +218,11 @@ class _MessageInputState extends ConsumerState<MessageInput> {
           if (_mentionSuggestions.isNotEmpty)
             _buildMentionSuggestions(theme),
           if (widget.editingMessage != null) _buildEditHeader(theme),
-          if (widget.replyingTo != null && widget.editingMessage == null) _buildReplyHeader(theme),
+          if (widget.replyingTo != null && widget.editingMessage == null) 
+            ReplyPreview(
+              message: widget.replyingTo!,
+              onCancel: widget.onCancelReply,
+            ),
           if (_isUploading) _buildUploadingBar(theme),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -283,83 +288,69 @@ class _MessageInputState extends ConsumerState<MessageInput> {
     );
   }
 
-  Widget _buildReplyHeader(ThemeData theme) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8, left: 4, right: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.primary.withAlpha(10),
-        borderRadius: BorderRadius.circular(12),
-        border: Border(left: BorderSide(color: theme.colorScheme.primary, width: 3)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.reply_rounded, size: 16, color: theme.colorScheme.primary),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "En réponse à",
-                  style: TextStyle(fontSize: 12, color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  widget.replyingTo!['content'] ?? "Fichier",
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.close_rounded, size: 18),
-            onPressed: widget.onCancelReply,
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildEditHeader(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
     return Container(
-      margin: const EdgeInsets.only(bottom: 8, left: 4, right: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       decoration: BoxDecoration(
-        color: Colors.blue.withAlpha(10),
-        borderRadius: BorderRadius.circular(12),
-        border: const Border(left: BorderSide(color: Colors.blue, width: 3)),
+        color: isDark ? Colors.blue.withValues(alpha: 0.1) : Colors.blue.withValues(alpha: 0.05),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        border: Border.all(
+          color: isDark ? Colors.blue.withValues(alpha: 0.2) : Colors.blue.withValues(alpha: 0.1),
+          width: 1,
+        ),
       ),
-      child: Row(
-        children: [
-          const Icon(Icons.edit_rounded, size: 16, color: Colors.blue),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  "Modifier le message",
-                  style: TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.bold),
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        child: IntrinsicHeight(
+          child: Row(
+            children: [
+              Container(
+                width: 4,
+                margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
+                decoration: BoxDecoration(
+                  color: Colors.blue,
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                Text(
-                  widget.editingMessage!['content'] ?? "",
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.edit_rounded, color: Colors.blue, size: 18),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        "Modifier le message",
+                        style: TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        widget.editingMessage!['content'] ?? "",
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
+                      ),
+                    ],
+                  ),
                 ),
-              ],
-            ),
+              ),
+              IconButton(
+                icon: Icon(Icons.close_rounded, size: 20, color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
+                onPressed: () {
+                  _controller.clear();
+                  widget.onCancelEdit?.call();
+                },
+                visualDensity: VisualDensity.compact,
+              ),
+              const SizedBox(width: 4),
+            ],
           ),
-          IconButton(
-            icon: const Icon(Icons.close_rounded, size: 18),
-            onPressed: () {
-              _controller.clear();
-              widget.onCancelEdit?.call();
-            },
-          ),
-        ],
+        ),
       ),
     );
   }

@@ -39,7 +39,7 @@ class LocalDatabase {
     try {
       return await openDatabase(
         path,
-        version: 13,
+        version: 14,
         password: dbPassword, // Paramètre SQLCipher pour chiffrer les fichiers .db
         onCreate: _createDB,
         onUpgrade: _upgradeDB,
@@ -155,6 +155,9 @@ class LocalDatabase {
       await db.execute("ALTER TABLE messages ADD COLUMN metadata_ TEXT");
       await db.execute("ALTER TABLE messages ADD COLUMN reactions TEXT");
     }
+    if (oldVersion < 14) {
+      await db.execute("ALTER TABLE rooms ADD COLUMN avatar_url TEXT");
+    }
   }
 
   Future<void> _createDB(Database db, int version) async {
@@ -200,7 +203,8 @@ class LocalDatabase {
         last_message TEXT,
         last_message_at TEXT,
         unread_count INTEGER DEFAULT 0,
-        last_sender_name TEXT
+        last_sender_name TEXT,
+        avatar_url TEXT
       )
     ''');
 
@@ -250,7 +254,7 @@ class LocalDatabase {
           'is_read': (msg['is_read'] == true || msg['is_read'] == 1) ? 1 : 0,
           'reply_to_id': msg['reply_to_id'],
           'reply_to_content': msg['reply_to_content'],
-          'caption': msg['caption'] ?? (msg['data'] != null ? msg['data']['caption'] : null),
+          'caption': msg['caption'] ?? msg['metadata_']?['caption'] ?? (msg['data'] != null ? msg['data']['caption'] : null),
           'local_path': msg['local_path'],
           'metadata_': msg['metadata_'] != null ? jsonEncode(msg['metadata_']) : null,
           'reactions': msg['reactions'] != null ? jsonEncode(msg['reactions']) : null,
@@ -400,19 +404,33 @@ class LocalDatabase {
     final db = await instance.database;
     final batch = db.batch();
     for (var room in rooms) {
-      batch.insert(
-        'rooms',
-        {
-          'id': room['id'],
-          'name': room['name'],
-          'is_group': room['is_group'] == true ? 1 : 0,
-          'last_message': room['last_message'],
-          'last_message_at': room['last_message_time'] ?? room['last_message_at'],
-          'unread_count': room['unread_count'] ?? 0,
-          'last_sender_name': room['last_sender_name'],
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      // On utilise ON CONFLICT (UPSERT) pour ne pas écraser l'avatar_url 
+      // si l'API renvoie null (ce qui arrive souvent dans la liste globale)
+      // mais qu'on l'a déjà récupéré via ChatNotifier.
+      batch.execute('''
+        INSERT INTO rooms (id, name, is_group, last_message, last_message_at, unread_count, last_sender_name, avatar_url)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          name = excluded.name,
+          is_group = excluded.is_group,
+          last_message = excluded.last_message,
+          last_message_at = excluded.last_message_at,
+          unread_count = excluded.unread_count,
+          last_sender_name = excluded.last_sender_name,
+          avatar_url = CASE 
+            WHEN excluded.avatar_url IS NOT NULL THEN excluded.avatar_url 
+            ELSE rooms.avatar_url 
+          END
+      ''', [
+        room['id'],
+        room['name'],
+        room['is_group'] == true ? 1 : 0,
+        room['last_message'],
+        room['last_message_time'] ?? room['last_message_at'],
+        room['unread_count'] ?? 0,
+        room['last_sender_name'],
+        room['avatar_url'] ?? room['avatar'],
+      ]);
     }
     await batch.commit(noResult: true);
   }
@@ -462,6 +480,18 @@ class LocalDatabase {
       whereArgs: [roomId],
     );
    }
+
+  /// Met à jour l'URL de l'avatar d'un salon
+  Future<void> updateRoomAvatar(String roomId, String avatarUrl) async {
+    if (kIsWeb) return;
+    final db = await instance.database;
+    await db.update(
+      'rooms',
+      {'avatar_url': avatarUrl},
+      where: 'id = ?',
+      whereArgs: [roomId],
+    );
+  }
 
   Future<void> saveProfiles(List<Map<String, dynamic>> profiles) async {
     if (kIsWeb) return;

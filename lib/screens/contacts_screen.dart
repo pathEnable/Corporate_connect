@@ -8,7 +8,7 @@ import '../services/auth_service.dart';
 import '../services/room_service.dart';
 import '../services/api_config.dart';
 import '../services/local_database.dart';
-import '../services/media_service.dart';
+
 import 'chat_screen.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -61,7 +61,7 @@ class ContactsScreen extends ConsumerStatefulWidget {
 class _ContactsScreenState extends ConsumerState<ContactsScreen> {
   final AuthService _authService = AuthService();
   final RoomService _roomService = RoomService();
-  final MediaService _mediaService = MediaService();
+
   final TextEditingController _searchController = TextEditingController();
 
   List<Map<String, dynamic>> _contacts = [];
@@ -409,7 +409,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                                 _ContactAvatar(
                                   avatarUrl: avatarUrl,
                                   initial: initial,
-                                  mediaService: _mediaService,
+
                                 ),
                                 // Pastille de présence
                                 Positioned(
@@ -499,47 +499,42 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
 class _ContactAvatar extends StatelessWidget {
   final String? avatarUrl;
   final String initial;
-  final MediaService mediaService;
 
   const _ContactAvatar({
     required this.avatarUrl,
     required this.initial,
-    required this.mediaService,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final bool hasAvatar = avatarUrl != null && avatarUrl!.isNotEmpty;
 
-    if (avatarUrl == null || avatarUrl!.isEmpty) {
-      return CircleAvatar(
-        radius: 26,
-        backgroundColor: theme.colorScheme.primary,
-        child: Text(initial,
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-      );
-    }
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: theme.colorScheme.primary,
+      ),
+      child: hasAvatar
+          ? ClipOval(
+              child: Image(
+                image: AuthenticatedImageProvider(ApiConfig.getMediaUrl(avatarUrl!)),
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => _buildFallback(),
+              ),
+            )
+          : _buildFallback(),
+    );
+  }
 
-    return FutureBuilder<String>(
-      future: mediaService.getDownloadUrl(avatarUrl!),
-      builder: (context, snapshot) {
-        if (snapshot.hasData) {
-          return CircleAvatar(
-            radius: 26,
-            backgroundImage: AuthenticatedImageProvider(snapshot.data!),
-            backgroundColor: theme.colorScheme.primary.withAlpha(40),
-          );
-        }
-        return CircleAvatar(
-          radius: 26,
-          backgroundColor: theme.colorScheme.primary.withAlpha(40),
-          child: const SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        );
-      },
+  Widget _buildFallback() {
+    return Center(
+      child: Text(
+        initial,
+        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+      ),
     );
   }
 }

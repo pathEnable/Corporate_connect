@@ -69,6 +69,14 @@ class MediaService {
     throw Exception('Erreur lors du téléchargement du fichier');
   }
 
+  Future<String?> getAuthenticatedUrl(String? path) async {
+    if (path == null || path.isEmpty) return null;
+    if (path.startsWith('http')) return path;
+    
+    // On utilise ApiConfig pour construire l'URL propre (gère le /media et le baseUrl)
+    return ApiConfig.getMediaUrl(path);
+  }
+
   Future<String> getDownloadUrl(String relativeUrl) async {
     return ApiConfig.getMediaUrl(relativeUrl);
   }

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../widgets/authenticated_image.dart';
 import 'package:flutter/services.dart';
 import '../../screens/chat_screen.dart';
-import '../../services/media_service.dart';
+import '../../services/api_config.dart';
 import '../ui_helpers.dart';
 
 class HomeRoomTile extends StatelessWidget {
@@ -14,7 +14,7 @@ class HomeRoomTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final bool isGroup = room['is_group'] == true;
-    final String? avatarPath = room['avatar_url'];
+    final String? avatarPath = room['avatar_url'] ?? room['avatar'];
     final bool hasUnread = (room['unread_count'] ?? 0) > 0;
 
     return InkWell(
@@ -166,36 +166,42 @@ class _RoomAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     
+    final bool hasAvatar = avatarPath != null && avatarPath!.isNotEmpty;
+
     return Container(
-      decoration: const BoxDecoration(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
         shape: BoxShape.circle,
+        color: isGroup ? theme.colorScheme.primary : theme.colorScheme.primaryContainer,
       ),
-      child: avatarPath == null || avatarPath!.isEmpty
-          ? CircleAvatar(
-              radius: 28,
-              backgroundColor: isGroup ? theme.colorScheme.primary : theme.colorScheme.primaryContainer,
-              child: Icon(
-                isGroup ? Icons.groups_rounded : Icons.person_rounded,
-                color: isGroup ? Colors.white : theme.colorScheme.primary,
-                size: 28,
+      child: hasAvatar
+          ? ClipOval(
+              child: Image(
+                image: AuthenticatedImageProvider(ApiConfig.getMediaUrl(avatarPath!)),
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => _buildFallback(theme),
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return _buildFallback(theme);
+                },
               ),
             )
-          : FutureBuilder<String>(
-              future: MediaService().getDownloadUrl(avatarPath!),
-              builder: (context, snapshot) {
-                if (snapshot.hasData) {
-                  return CircleAvatar(
-                    radius: 28,
-                    backgroundColor: theme.colorScheme.primary.withAlpha(40),
-                    backgroundImage: AuthenticatedImageProvider(snapshot.data!),
-                  );
-                }
-                return CircleAvatar(
-                  radius: 28,
-                  backgroundColor: theme.colorScheme.primary.withAlpha(40),
-                  child: const CircularProgressIndicator(strokeWidth: 2),
-                );
-              },
+          : _buildFallback(theme),
+    );
+  }
+
+  Widget _buildFallback(ThemeData theme) {
+    return Center(
+      child: isGroup
+          ? const Icon(Icons.groups_rounded, color: Colors.white, size: 28)
+          : Text(
+              initial,
+              style: TextStyle(
+                color: theme.colorScheme.primary,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
             ),
     );
   }

@@ -5,13 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../providers/profile_provider.dart';
-import '../services/media_service.dart';
+import '../services/api_config.dart';
 import '../theme/app_theme.dart';
 import '../main.dart';
 import 'login_screen.dart';
 import 'admin_dashboard_screen.dart';
-import 'notification_settings_screen.dart';
-import 'privacy_settings_screen.dart';
 import '../providers/storage_provider.dart';
 
 class ProfileScreen extends ConsumerWidget {
@@ -206,20 +204,6 @@ class ProfileScreen extends ConsumerWidget {
                 title: 'Email',
                 subtitle: email,
                 onTap: () {}, // Email généralement fixé ou géré différemment
-              ),
-              _buildDivider(),
-              _buildSectionTile(
-                theme: theme,
-                icon: Icons.notifications_none_rounded,
-                title: 'Paramètres système',
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationSettingsScreen())),
-              ),
-              _buildDivider(),
-              _buildSectionTile(
-                theme: theme,
-                icon: Icons.lock_outline_rounded,
-                title: 'Confidentialité',
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacySettingsScreen())),
               ),
               
               if (isAdmin) ...[
@@ -615,30 +599,33 @@ class _LargeAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (avatarUrl == null || avatarUrl!.isEmpty) {
-      return CircleAvatar(
-        radius: 70,
-        backgroundColor: primaryColor.withValues(alpha: 0.1),
-        child: Text(initial, style: TextStyle(fontSize: 48, color: primaryColor, fontWeight: FontWeight.w400)),
-      );
-    }
+    final bool hasAvatar = avatarUrl != null && avatarUrl!.isNotEmpty;
 
-    return FutureBuilder<String>(
-      future: MediaService().getDownloadUrl(avatarUrl!),
-      builder: (context, snapshot) {
-        if (snapshot.hasData) {
-          return CircleAvatar(
-            radius: 70,
-            backgroundColor: primaryColor.withValues(alpha: 0.1),
-            backgroundImage: AuthenticatedImageProvider(snapshot.data!),
-          );
-        }
-        return CircleAvatar(
-          radius: 70,
-          backgroundColor: primaryColor.withValues(alpha: 0.1),
-          child: const CircularProgressIndicator(strokeWidth: 2),
-        );
-      },
+    return Container(
+      width: 140,
+      height: 140,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: primaryColor.withValues(alpha: 0.1),
+      ),
+      child: hasAvatar
+          ? ClipOval(
+              child: Image(
+                image: AuthenticatedImageProvider(ApiConfig.getMediaUrl(avatarUrl!)),
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => _buildFallback(),
+              ),
+            )
+          : _buildFallback(),
+    );
+  }
+
+  Widget _buildFallback() {
+    return Center(
+      child: Text(
+        initial,
+        style: TextStyle(fontSize: 48, color: primaryColor, fontWeight: FontWeight.w400),
+      ),
     );
   }
 }

@@ -195,12 +195,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             Navigator.push(context, FadeSlideRoute(page: const SearchScreen()));
           },
         ),
-        IconButton(
+        PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert_rounded),
-          onPressed: () {
+          offset: const Offset(0, 45),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          onSelected: (value) {
             HapticFeedback.lightImpact();
-            Navigator.push(context, FadeSlideRoute(page: const SettingsScreen()));
+            if (value == 'settings') {
+              Navigator.push(context, FadeSlideRoute(page: const SettingsScreen()));
+            }
           },
+          itemBuilder: (context) => [
+            const PopupMenuItem(
+              value: 'settings',
+              child: Row(
+                children: [
+                  Icon(Icons.settings_rounded, size: 20),
+                  SizedBox(width: 12),
+                  Text('Paramètres'),
+                ],
+              ),
+            ),
+          ],
         ),
       ],
     );

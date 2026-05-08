@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,6 +8,8 @@ import '../services/room_service.dart';
 import '../services/status_service.dart';
 import '../services/local_database.dart';
 import '../services/global_presence_service.dart';
+import '../services/auth_service.dart';
+import '../services/api_config.dart';
 import 'migration_provider.dart';
 
 
@@ -17,7 +20,9 @@ final homeProvider = NotifierProvider<HomeNotifier, HomeState>(() {
 class HomeNotifier extends Notifier<HomeState> {
   final RoomService _roomService = RoomService();
   final StatusService _statusService = StatusService();
+  final AuthService _authService = AuthService();
   bool _isDisposed = false;
+  String? _currentUserId;
   StreamSubscription? _globalEventsSub;
   final Completer<void> _initCompleter = Completer<void>();
 
@@ -49,6 +54,7 @@ class HomeNotifier extends Notifier<HomeState> {
 
   Future<void> _init() async {
     final prefs = await SharedPreferences.getInstance();
+    _currentUserId = prefs.getString('user_id');
     final viewedIds = prefs.getStringList('viewed_status_ids')?.toSet() ?? {};
 
     // ═══ PHASE 1 : Cache INSTANTANÉ depuis SQLite (< 30ms) ═══
@@ -193,9 +199,73 @@ class HomeNotifier extends Notifier<HomeState> {
         // Mise à jour silencieuse : on ne remplace que si les données ont réellement changé
         state = state.copyWith(rooms: rooms, isLoadingRooms: false);
       }
+      // Enrichir les avatars en arrière-plan (non bloquant)
+      _enrichRoomAvatars();
     } catch (e) {
       debugPrint("⚠️ Erreur sync rooms API: $e");
       if (!_isDisposed) state = state.copyWith(isLoadingRooms: false);
+    }
+  }
+
+  /// Récupère les avatars des interlocuteurs pour les conversations privées.
+  /// L'API /rooms ne retourne pas d'avatar_url, donc on enrichit depuis /profiles.
+  Future<void> _enrichRoomAvatars() async {
+    if (_currentUserId == null || _isDisposed) return;
+
+    final rooms = List<Map<String, dynamic>>.from(state.rooms);
+    final avatarUpdates = <String, String>{}; // roomId -> avatarUrl
+
+    for (final room in rooms) {
+      if (_isDisposed) return;
+
+      // Skip les groupes et les rooms qui ont déjà un avatar
+      if (room['is_group'] == true) continue;
+      final existing = room['avatar_url']?.toString() ?? '';
+      if (existing.isNotEmpty) continue;
+
+      try {
+        // 1. Récupérer les membres de la room
+        final members = await _roomService.getRoomMembers(room['id']);
+
+        // 2. Trouver l'autre utilisateur
+        final otherMember = members.firstWhere(
+          (m) => m['id'].toString() != _currentUserId,
+          orElse: () => <String, dynamic>{},
+        );
+        if (otherMember.isEmpty) continue;
+
+        // 3. Récupérer son profil pour avoir l'avatar_url
+        final response = await _authService.authenticatedRequest(
+          url: '${ApiConfig.baseUrl}/profiles/${otherMember['id']}',
+          method: 'GET',
+        );
+
+        if (response.statusCode == 200) {
+          final profile = jsonDecode(response.body);
+          final avatarUrl = profile['avatar_url']?.toString();
+          if (avatarUrl != null && avatarUrl.isNotEmpty) {
+            avatarUpdates[room['id']] = avatarUrl;
+            // Persister en SQLite sur mobile
+            if (!kIsWeb) {
+              LocalDatabase.instance.updateRoomAvatar(room['id'], avatarUrl);
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint("⚠️ Avatar enrichment error for room ${room['id']}: $e");
+      }
+    }
+
+    // Appliquer toutes les mises à jour en une seule fois
+    if (avatarUpdates.isNotEmpty && !_isDisposed) {
+      final updatedRooms = state.rooms.map((room) {
+        final newAvatar = avatarUpdates[room['id']];
+        if (newAvatar != null) {
+          return {...room, 'avatar_url': newAvatar};
+        }
+        return room;
+      }).toList();
+      state = state.copyWith(rooms: updatedRooms);
     }
   }
 

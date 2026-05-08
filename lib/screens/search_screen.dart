@@ -3,6 +3,7 @@ import '../widgets/authenticated_image.dart';
 import '../services/search_service.dart';
 import '../services/room_service.dart';
 import '../widgets/premium_background.dart';
+import '../services/api_config.dart';
 import 'chat_screen.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -146,17 +147,7 @@ class _SearchScreenState extends State<SearchScreen> {
                             ),
                             ..._profiles.map((p) => ListTile(
                               contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-                              leading: CircleAvatar(
-                                radius: 24,
-                                backgroundColor: theme.colorScheme.primary,
-                                backgroundImage: p['avatar'] != null ? AuthenticatedImageProvider(p['avatar']) : null,
-                                child: p['avatar'] == null
-                                    ? Text(
-                                        p['name'][0].toUpperCase(), 
-                                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)
-                                      )
-                                    : null,
-                              ),
+                              leading: _buildProfileAvatar(theme, p),
                               title: Text(p['name'], style: const TextStyle(fontWeight: FontWeight.w600)),
                               subtitle: Text(
                                 '@${p['username']}', 
@@ -230,6 +221,37 @@ class _SearchScreenState extends State<SearchScreen> {
                           ],
                         ],
                       ),
+      ),
+    );
+  }
+  Widget _buildProfileAvatar(ThemeData theme, Map<String, dynamic> profile) {
+    final String? avatarUrl = profile['avatar'];
+    final String initial = profile['name'][0].toUpperCase();
+
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: theme.colorScheme.primary,
+      ),
+      child: avatarUrl != null && avatarUrl.isNotEmpty
+          ? ClipOval(
+              child: Image(
+                image: AuthenticatedImageProvider(ApiConfig.getMediaUrl(avatarUrl)),
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => _buildFallback(initial),
+              ),
+            )
+          : _buildFallback(initial),
+    );
+  }
+
+  Widget _buildFallback(String initial) {
+    return Center(
+      child: Text(
+        initial,
+        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
       ),
     );
   }

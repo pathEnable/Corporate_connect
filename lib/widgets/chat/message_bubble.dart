@@ -34,6 +34,9 @@ class MessageBubble extends StatefulWidget {
   final String? roomId;
   final String? messageId;
   final Map<String, dynamic>? metadata;
+  final String? senderName;
+  final String? senderAvatar;
+  final bool showSenderName;
 
   const MessageBubble({
     super.key,
@@ -56,6 +59,9 @@ class MessageBubble extends StatefulWidget {
     this.roomId,
     this.messageId,
     this.metadata,
+    this.senderName,
+    this.senderAvatar,
+    this.showSenderName = false,
   });
 
   @override
@@ -84,7 +90,7 @@ class _MessageBubbleState extends State<MessageBubble> {
         widget.reactions!.entries.any((e) => (e.value as List).isNotEmpty);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
       child: Column(
         crossAxisAlignment: widget.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
@@ -100,6 +106,21 @@ class _MessageBubbleState extends State<MessageBubble> {
                     size: const Size(8, 12),
                   ),
                 ),
+
+              // Miniature de la photo de profil (Groupes)
+              if (widget.showSenderName && !widget.isMe)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8, bottom: 2),
+                  child: CircleAvatar(
+                    radius: 16,
+                    backgroundColor: Colors.grey[300],
+                    backgroundImage: widget.senderAvatar != null ? NetworkImage(widget.senderAvatar!) : null,
+                    child: widget.senderAvatar == null 
+                        ? Text(widget.senderName?[0].toUpperCase() ?? '?', style: const TextStyle(fontSize: 12, color: Colors.white)) 
+                        : null,
+                  ),
+                ),
+
               Flexible(
                 child: Stack(
                   clipBehavior: Clip.none,
@@ -134,96 +155,92 @@ class _MessageBubbleState extends State<MessageBubble> {
                         ),
                         child: IntrinsicWidth(
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (widget.replyToContent != null)
-                                  Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Container(
-                                      padding: const EdgeInsets.all(8),
-                                      margin: const EdgeInsets.only(bottom: 4),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withAlpha(20),
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border(left: BorderSide(color: replyBorderColor, width: 4)),
-                                      ),
-                                      child: Text(
-                                        widget.replyToContent!.length > 60 ? '${widget.replyToContent!.substring(0, 60)}...' : widget.replyToContent!,
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontStyle: FontStyle.italic,
-                                          color: textColor.withAlpha(180),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                
-                                // Contenu Principal
-                                Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: _buildMainContent(context, textColor, isDark),
-                                ),
-
-                                // Légende (si présente pour les médias)
-                                if (widget.caption != null && widget.caption!.isNotEmpty && widget.type != 'text')
-                                  Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(top: 4.0),
-                                      child: _buildExpandableText(widget.caption!, textColor, theme, fontSize: 14.5),
-                                    ),
-                                  ),
-
-                                // Pied de bulle : Heure + Modifié + Statut
-                                const SizedBox(height: 2),
-                                Align(
-                                  alignment: Alignment.bottomRight,
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      if (widget.metadata?['edited'] == true)
-                                        Padding(
-                                          padding: const EdgeInsets.only(right: 4),
-                                          child: Text(
-                                            'modifié',
-                                            style: TextStyle(
-                                              color: (isDark && widget.isMe) ? Colors.white54 : Colors.black45,
-                                              fontSize: 10,
-                                              fontStyle: FontStyle.italic,
+                            padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
+                            child: widget.type == 'text' 
+                              ? Stack(
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 2.0),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (widget.showSenderName && widget.senderName != null)
+                                            Padding(
+                                              padding: const EdgeInsets.only(bottom: 4),
+                                              child: Text(
+                                                widget.senderName!,
+                                                style: TextStyle(
+                                                  fontSize: 12.5,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: theme.brightness == Brightness.dark ? Colors.orange[300] : Colors.orange[800],
+                                                ),
+                                              ),
                                             ),
+                                          if (widget.replyToContent != null)
+                                            _buildReplyPreview(replyBorderColor, textColor),
+                                          
+                                          // On ajoute des espaces insécables à la fin pour réserver la place de l'heure
+                                          _buildExpandableText(
+                                            "${widget.content} \u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0", 
+                                            textColor, 
+                                            theme
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Positioned(
+                                      bottom: 0,
+                                      right: 0,
+                                      child: _buildTimestampRow(isDark),
+                                    ),
+                                  ],
+                                )
+                              : Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (widget.showSenderName && widget.senderName != null)
+                                      Padding(
+                                        padding: const EdgeInsets.only(bottom: 4),
+                                        child: Text(
+                                          widget.senderName!,
+                                          style: TextStyle(
+                                            fontSize: 12.5,
+                                            fontWeight: FontWeight.bold,
+                                            color: theme.brightness == Brightness.dark ? Colors.orange[300] : Colors.orange[800],
                                           ),
                                         ),
-                                      Text(
-                                        _formatTime(widget.timestamp),
-                                        style: TextStyle(
-                                          color: (isDark && widget.isMe) ? Colors.white70 : Colors.black54,
-                                          fontSize: 10,
+                                      ),
+                                    if (widget.replyToContent != null)
+                                      _buildReplyPreview(replyBorderColor, textColor),
+                                    
+                                    // Contenu Principal
+                                    _buildMainContent(context, textColor, isDark),
+  
+                                    // Légende (si présente pour les médias)
+                                    if (widget.caption != null && widget.caption!.isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 4.0),
+                                        child: _buildExpandableText(
+                                          "${widget.caption!} \u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0", 
+                                          textColor, 
+                                          theme, 
+                                          fontSize: 14.5
                                         ),
                                       ),
-                                      if (widget.isMe) ...[
-                                            const SizedBox(width: 4),
-                                            Icon(
-                                              widget.status == 'pending' 
-                                                  ? Icons.access_time_rounded 
-                                                  : Icons.done_all_rounded,
-                                              size: 13,
-                                              color: widget.isRead 
-                                                  ? Colors.blue 
-                                                  : ((isDark && widget.isMe) ? Colors.white70 : Colors.black54),
-                                            ),
-                                          ],
-                                    ],
-                                  ),
+  
+                                    const SizedBox(height: 2),
+                                    Align(
+                                      alignment: Alignment.bottomRight,
+                                      child: _buildTimestampRow(isDark),
+                                    ),
+                                  ],
                                 ),
-                            ],
                           ),
                         ),
                       ),
                     ),
-                  ),
 
                     // Réactions style WhatsApp : pilule chevauchant le bas de la bulle
                     if (hasReactions)
@@ -353,7 +370,71 @@ class _MessageBubbleState extends State<MessageBubble> {
     }
   }
 
-  Widget _buildExpandableText(String text, Color textColor, ThemeData theme, {double fontSize = 15.5}) {
+  Widget _buildReplyPreview(Color replyBorderColor, Color textColor) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(8),
+      margin: const EdgeInsets.only(bottom: 6, top: 2),
+      decoration: BoxDecoration(
+        color: widget.isMe 
+            ? Colors.black.withValues(alpha: 0.05) 
+            : Colors.black.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(8),
+        border: Border(left: BorderSide(color: replyBorderColor, width: 4)),
+      ),
+      child: Text(
+        widget.replyToContent!,
+        style: TextStyle(
+          fontSize: 13,
+          color: textColor.withValues(alpha: 0.7),
+          height: 1.2,
+        ),
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+
+  Widget _buildTimestampRow(bool isDark) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (widget.metadata?['edited'] == true)
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: Text(
+              'modifié',
+              style: TextStyle(
+                color: (isDark && widget.isMe) ? Colors.white54 : Colors.black45,
+                fontSize: 9,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+        Text(
+          _formatTime(widget.timestamp),
+          style: TextStyle(
+            color: (isDark && widget.isMe) ? Colors.white60 : Colors.black45,
+            fontSize: 9,
+          ),
+        ),
+        if (widget.isMe) ...[
+          const SizedBox(width: 3),
+          Icon(
+            widget.status == 'pending' 
+                ? Icons.access_time_rounded 
+                : Icons.done_all_rounded,
+            size: 12,
+            color: widget.isRead 
+                ? Colors.blue 
+                : ((isDark && widget.isMe) ? Colors.white60 : Colors.black45),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildExpandableText(String text, Color textColor, ThemeData theme, {double fontSize = 15.0}) {
     final bool isLong = text.length > 400;
     final String displayContent = (isLong && !_isExpanded)
         ? '${text.substring(0, 400)}...'
@@ -674,13 +755,13 @@ class _FileContent extends ConsumerWidget {
           ref.read(chatProvider(message['room_id']).notifier).downloadMedia(message);
         }
       },
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(10),
       child: Container(
         constraints: const BoxConstraints(maxWidth: 250),
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         decoration: BoxDecoration(
-          color: isMe ? Colors.black.withAlpha(20) : Colors.black.withAlpha(10),
-          borderRadius: BorderRadius.circular(12),
+          color: isMe ? Colors.white.withAlpha(40) : Colors.black.withAlpha(15),
+          borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -695,7 +776,7 @@ class _FileContent extends ConsumerWidget {
                     color: iconColor.withAlpha(40),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(icon, color: iconColor, size: 28),
+                  child: Icon(icon, color: iconColor, size: 24),
                 ),
                 if (isDownloading)
                   SizedBox(
@@ -763,21 +844,22 @@ class TailPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    var paint = Paint()..color = color;
-    var path = Path();
-    
+    Paint paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    Path path = Path();
+
     if (isMe) {
-      path.moveTo(0, 0); 
-      path.lineTo(size.width, 0); 
-      path.lineTo(0, size.height); 
+      path.moveTo(0, 0);
+      path.lineTo(size.width, 0);
+      path.quadraticBezierTo(size.width * 0.2, size.height * 0.2, 0, size.height * 0.8);
       path.close();
     } else {
-      path.moveTo(size.width, 0); 
-      path.lineTo(0, 0); 
-      path.lineTo(size.width, size.height); 
+      path.moveTo(size.width, 0);
+      path.lineTo(0, 0);
+      path.quadraticBezierTo(size.width * 0.8, size.height * 0.2, size.width, size.height * 0.8);
       path.close();
     }
-    
     canvas.drawPath(path, paint);
   }
 
