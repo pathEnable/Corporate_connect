@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../widgets/authenticated_image.dart';
+import '../../services/api_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 
@@ -168,10 +169,13 @@ class _StatusCircle extends StatelessWidget {
                 opacity: isViewed ? 0.7 : 1.0,
                 child: CircleAvatar(
                   radius: 28,
-                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                  backgroundImage: firstStatus.userAvatar != null ? AuthenticatedImageProvider(firstStatus.userAvatar!) : null,
+                  backgroundColor: theme.colorScheme.primary.withAlpha(30),
+                  backgroundImage: firstStatus.userAvatar != null ? AuthenticatedImageProvider(ApiConfig.getMediaUrl(firstStatus.userAvatar!)) : null,
                   child: firstStatus.userAvatar == null 
-                    ? Icon(Icons.person_rounded, color: theme.colorScheme.onSurface.withValues(alpha: 0.3)) 
+                    ? Text(
+                        firstStatus.userName.isNotEmpty ? firstStatus.userName[0].toUpperCase() : '?',
+                        style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 18),
+                      ) 
                     : null,
                 ),
               ),

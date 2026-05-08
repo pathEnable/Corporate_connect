@@ -11,6 +11,7 @@ import '../services/api_config.dart';
 import '../services/local_database.dart';
 import '../services/offline_sync_service.dart';
 import '../widgets/premium_background.dart';
+import '../widgets/authenticated_image.dart';
 import 'chat_screen.dart';
 
 class NewGroupScreen extends ConsumerStatefulWidget {
@@ -429,14 +430,11 @@ class _NewGroupScreenState extends ConsumerState<NewGroupScreen> {
               children: [
                 Stack(
                   children: [
-                    CircleAvatar(
-                      radius: 28,
-                      backgroundColor: theme.colorScheme.primary,
-                      child: Text(
-                        (contact['full_name'] ?? 'U')[0].toUpperCase(),
-                        style: const TextStyle(
-                            color: Colors.black, fontWeight: FontWeight.bold),
-                      ),
+                    _buildContactAvatar(
+                      contact['full_name'] ?? 'U',
+                      contact['avatar_url'],
+                      28,
+                      theme.colorScheme.primary,
                     ),
                     Positioned(
                       right: 0,
@@ -472,22 +470,19 @@ class _NewGroupScreenState extends ConsumerState<NewGroupScreen> {
 
   Widget _buildContactTile(
       Map<String, dynamic> contact, bool isSelected, ThemeData theme) {
+    final String? avatarUrl = contact['avatar_url'];
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
       leading: Stack(
         children: [
-          CircleAvatar(
-            radius: 24,
-            backgroundColor: isSelected
+          _buildContactAvatar(
+            contact['full_name'] ?? 'U',
+            avatarUrl,
+            24,
+            isSelected
                 ? theme.colorScheme.primary
                 : theme.colorScheme.surface.withValues(alpha: 0.5),
-            child: Text(
-              (contact['full_name'] ?? 'U')[0].toUpperCase(),
-              style: TextStyle(
-                color: isSelected ? Colors.black : theme.colorScheme.primary,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            textColor: isSelected ? Colors.black : theme.colorScheme.primary,
           ),
           if (isSelected)
             Positioned(
@@ -512,6 +507,36 @@ class _NewGroupScreenState extends ConsumerState<NewGroupScreen> {
             color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
       ),
       onTap: () => _toggleContact(contact),
+    );
+  }
+
+  Widget _buildContactAvatar(String name, String? avatarUrl, double radius, Color bgColor, {Color textColor = Colors.black}) {
+    final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
+    if (avatarUrl != null && avatarUrl.isNotEmpty) {
+      return Container(
+        width: radius * 2,
+        height: radius * 2,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: bgColor,
+        ),
+        child: ClipOval(
+          child: AuthenticatedNetworkImage(
+            imageUrl: ApiConfig.getMediaUrl(avatarUrl),
+            fit: BoxFit.cover,
+            width: radius * 2,
+            height: radius * 2,
+            errorWidget: (context, url, error) => Center(
+              child: Text(initial, style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ),
+      );
+    }
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: bgColor,
+      child: Text(initial, style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
     );
   }
 }

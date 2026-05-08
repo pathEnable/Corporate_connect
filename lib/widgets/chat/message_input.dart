@@ -20,6 +20,7 @@ import '../../services/auth_service.dart';
 import '../../services/api_config.dart';
 import '../../screens/media_preview_screen.dart';
 import 'reply_preview.dart';
+import '../authenticated_image.dart';
 
 class MessageInput extends ConsumerStatefulWidget {
   final String roomId;
@@ -166,11 +167,19 @@ class _MessageInputState extends ConsumerState<MessageInput> {
       return;
     }
     
+    String? replyContent = widget.replyingTo?['content'];
+    if (widget.replyingTo != null && 
+        (widget.replyingTo!['message_type'] == 'image' || 
+         (replyContent?.contains('res.cloudinary.com') ?? false) ||
+         (replyContent?.contains('firebasestorage.googleapis.com') ?? false))) {
+      replyContent = "📷 Photo";
+    }
+
     final extraData = widget.replyingTo != null 
         ? {
             'reply_to_id': widget.replyingTo!['id'] ?? widget.replyingTo!['message_id'],
             'metadata_': {
-              'reply_to_content': widget.replyingTo!['content'],
+              'reply_to_content': replyContent,
             }
           } 
         : null;
@@ -275,10 +284,15 @@ class _MessageInputState extends ConsumerState<MessageInput> {
             leading: CircleAvatar(
               radius: 12,
               backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.2),
-              child: Text(
-                name.isNotEmpty ? name[0].toUpperCase() : '?',
-                style: TextStyle(fontSize: 10, color: theme.colorScheme.primary),
-              ),
+              backgroundImage: member['avatar_url'] != null && member['avatar_url'].toString().isNotEmpty
+                  ? AuthenticatedImageProvider(ApiConfig.getMediaUrl(member['avatar_url']))
+                  : null,
+              child: (member['avatar_url'] == null || member['avatar_url'].toString().isEmpty)
+                  ? Text(
+                      name.isNotEmpty ? name[0].toUpperCase() : '?',
+                      style: TextStyle(fontSize: 10, color: theme.colorScheme.primary),
+                    )
+                  : null,
             ),
             title: Text(name, style: const TextStyle(fontSize: 14)),
             onTap: () => _insertMention(member),
@@ -653,8 +667,6 @@ class _MessageInputState extends ConsumerState<MessageInput> {
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     _AttachmentOption(icon: Icons.poll_rounded, color: Colors.teal, label: 'Sondage', onTap: () { Navigator.pop(context); _showPollModal(); }),
-                    _AttachmentOption(icon: Icons.check_circle_outline_rounded, color: Colors.green, label: 'Tâche', onTap: () { Navigator.pop(context); _showTaskModal(); }),
-                    _AttachmentOption(icon: Icons.event_rounded, color: Colors.redAccent, label: 'Réunion', onTap: () { Navigator.pop(context); _showMeetingModal(); }),
                     _AttachmentOption(icon: Icons.schedule_rounded, color: Colors.indigo, label: 'Prog.', onTap: () { Navigator.pop(context); _showScheduleModal(); }),
                   ],
                 ),
@@ -850,17 +862,6 @@ class _MessageInputState extends ConsumerState<MessageInput> {
     );
   }
 
-  void _showTaskModal() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-        child: _CreateTaskModal(roomId: widget.roomId),
-      ),
-    );
-  }
 
   void _showScheduleModal() {
     final content = _controller.text.trim();
@@ -939,144 +940,6 @@ class _MessageInputState extends ConsumerState<MessageInput> {
     );
   }
 
-  void _showMeetingModal() {
-    final titleCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
-    DateTime? startDate;
-    DateTime? endDate;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) {
-          final theme = Theme.of(context);
-          return Container(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
-            ),
-            child: Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(2)),
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    children: [
-                      Icon(Icons.event_rounded, color: theme.colorScheme.primary),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Planifier une réunion',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: titleCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'Titre de la réunion',
-                      prefixIcon: const Icon(Icons.title_rounded),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: descCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'Description (optionnelle)',
-                      prefixIcon: const Icon(Icons.description_rounded),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ListTile(
-                    title: Text(startDate != null ? 'Début: ${startDate!.day}/${startDate!.month} ${startDate!.hour}:${startDate!.minute.toString().padLeft(2, '0')}' : 'Sélectionner le début'),
-                    leading: const Icon(Icons.play_circle_outline_rounded),
-                    onTap: () async {
-                      final d = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime.now(), lastDate: DateTime(2030));
-                      if (d == null) return;
-                      if (!context.mounted) return;
-                      final t = await showTimePicker(context: context, initialTime: TimeOfDay.now());
-                      if (t == null) return;
-                      setModalState(() {
-                        startDate = DateTime(d.year, d.month, d.day, t.hour, t.minute);
-                        endDate = startDate!.add(const Duration(hours: 1)); // Default end
-                      });
-                    },
-                  ),
-                  ListTile(
-                    title: Text(endDate != null ? 'Fin: ${endDate!.day}/${endDate!.month} ${endDate!.hour}:${endDate!.minute.toString().padLeft(2, '0')}' : 'Sélectionner la fin'),
-                    leading: const Icon(Icons.stop_circle_outlined),
-                    onTap: () async {
-                      final d = await showDatePicker(context: context, initialDate: startDate ?? DateTime.now(), firstDate: DateTime.now(), lastDate: DateTime(2030));
-                      if (d == null) return;
-                      if (!context.mounted) return;
-                      final t = await showTimePicker(context: context, initialTime: TimeOfDay.now());
-                      if (t == null) return;
-                      setModalState(() => endDate = DateTime(d.year, d.month, d.day, t.hour, t.minute));
-                    },
-                  ),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        backgroundColor: theme.colorScheme.primary,
-                        foregroundColor: theme.colorScheme.onPrimary,
-                      ),
-                      onPressed: () {
-                        if (titleCtrl.text.trim().isEmpty || startDate == null) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Veuillez définir un titre et une date de début.')),
-                          );
-                          return;
-                        }
-                        Navigator.pop(context);
-                        _sendMeeting(titleCtrl.text.trim(), descCtrl.text.trim(), startDate!, endDate);
-                      },
-                      child: const Text('PLANIFIER', style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  void _sendMeeting(String title, String desc, DateTime start, DateTime? end) {
-    HapticFeedback.mediumImpact();
-    final metadata = {
-      'title': title,
-      'description': desc,
-      'start_date': start.toIso8601String(),
-      'end_date': end?.toIso8601String(),
-    };
-    ref.read(chatProvider(widget.roomId).notifier).sendMessage(
-          'Rejoignez ma réunion : $title',
-          'meeting',
-          extraData: {'metadata_': metadata}, // use metadata_ explicitly if backend requires it, or just use extraData
-        );
-  }
 }
 
 class _RecordingBlinkDot extends StatefulWidget {
@@ -1207,119 +1070,6 @@ class _CreatePollModalState extends ConsumerState<_CreatePollModal> {
   }
 }
 
-class _CreateTaskModal extends ConsumerStatefulWidget {
-  final String roomId;
-  const _CreateTaskModal({required this.roomId});
-
-  @override
-  ConsumerState<_CreateTaskModal> createState() => _CreateTaskModalState();
-}
-
-class _CreateTaskModalState extends ConsumerState<_CreateTaskModal> {
-  final _titleController = TextEditingController();
-  final _descController = TextEditingController();
-  String? _selectedAssigneeId;
-  DateTime? _deadline;
-
-  void _submit() {
-    final title = _titleController.text.trim();
-    if (title.isEmpty) return;
-
-    final chatState = ref.read(chatProvider(widget.roomId));
-    final assigneeName = _selectedAssigneeId != null ? chatState.members[_selectedAssigneeId] : null;
-
-    ref.read(chatProvider(widget.roomId).notifier).sendMessage(
-      title,
-      'task',
-      extraData: {
-        'metadata_': {
-          'description': _descController.text.trim(),
-          'status': 'todo',
-          'assignee_id': _selectedAssigneeId,
-          'assignee_name': assigneeName,
-          'deadline': _deadline != null ? "${_deadline!.day}/${_deadline!.month}/${_deadline!.year}" : null,
-          'is_done': false,
-        }
-      }
-    );
-    Navigator.pop(context);
-  }
-
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _descController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final chatState = ref.watch(chatProvider(widget.roomId));
-    final members = chatState.members;
-
-    return Container(
-      padding: EdgeInsets.only(
-        left: 24,
-        right: 24,
-        top: 24,
-        bottom: 24 + MediaQuery.of(context).viewInsets.bottom,
-      ),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(width: 40, height: 4, alignment: Alignment.center, margin: const EdgeInsets.only(bottom: 24), decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(2))),
-          const Text("Nouvelle tâche", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-          const SizedBox(height: 24),
-          TextField(controller: _titleController, decoration: const InputDecoration(labelText: "Titre de la tâche", border: OutlineInputBorder(), prefixIcon: Icon(Icons.title))),
-          const SizedBox(height: 16),
-          TextField(controller: _descController, maxLines: 2, decoration: const InputDecoration(labelText: "Description (optionnel)", border: OutlineInputBorder(), prefixIcon: Icon(Icons.description))),
-          const SizedBox(height: 16),
-          
-          // Sélection de l'assigné
-          DropdownButtonFormField<String>(
-            initialValue: _selectedAssigneeId,
-            decoration: const InputDecoration(labelText: "Assigner à", border: OutlineInputBorder(), prefixIcon: Icon(Icons.person)),
-            items: [
-              const DropdownMenuItem(value: null, child: Text("Tout le monde")),
-              ...members.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))),
-            ],
-            onChanged: (val) => setState(() => _selectedAssigneeId = val),
-          ),
-          const SizedBox(height: 16),
-
-          // Sélection de la deadline
-          InkWell(
-            onTap: () async {
-              final date = await showDatePicker(
-                context: context,
-                initialDate: _deadline ?? DateTime.now(),
-                firstDate: DateTime.now(),
-                lastDate: DateTime.now().add(const Duration(days: 365)),
-              );
-              if (date != null) setState(() => _deadline = date);
-            },
-            child: InputDecorator(
-              decoration: const InputDecoration(labelText: "Date limite", border: OutlineInputBorder(), prefixIcon: Icon(Icons.calendar_today)),
-              child: Text(_deadline == null ? "Aucune" : "${_deadline!.day}/${_deadline!.month}/${_deadline!.year}"),
-            ),
-          ),
-          
-          const SizedBox(height: 32),
-          FilledButton(
-            onPressed: _submit,
-            style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-            child: const Text("Créer et Envoyer"),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _ScheduleModal extends StatefulWidget {
   final String roomId;

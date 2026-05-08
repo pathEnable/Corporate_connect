@@ -11,6 +11,8 @@ import '../../providers/call_provider.dart';
 import '../../models/call_state.dart';
 import '../../screens/call_screen.dart';
 import '../../services/global_presence_service.dart';
+import '../../services/api_config.dart';
+import '../../widgets/authenticated_image.dart';
 
 /// Écoute globale de TOUS les événements d'appel :
 ///   - WebSocket global : call_offer, call_answered, call_rejected, call_ended, call_cancel
@@ -262,9 +264,11 @@ class _IncomingCallScreen extends ConsumerWidget {
         children: [
           // Arrière-plan flouté
           if (hasAvatar)
-            Image.network(
-              callState.otherUserAvatar!,
+            AuthenticatedNetworkImage(
+              imageUrl: ApiConfig.getMediaUrl(callState.otherUserAvatar!),
               fit: BoxFit.cover,
+              width: double.infinity,
+              height: double.infinity,
             )
           else
             Container(
@@ -308,7 +312,7 @@ class _IncomingCallScreen extends ConsumerWidget {
                       radius: 65,
                       backgroundColor: const Color(0xFF2A2A4A),
                       backgroundImage: hasAvatar
-                          ? NetworkImage(callState.otherUserAvatar!)
+                          ? AuthenticatedImageProvider(ApiConfig.getMediaUrl(callState.otherUserAvatar!))
                           : null,
                       child: !hasAvatar
                           ? const Icon(Icons.person,

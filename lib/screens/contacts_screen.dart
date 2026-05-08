@@ -515,25 +515,26 @@ class _ContactAvatar extends StatelessWidget {
       height: 52,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: theme.colorScheme.primary,
+        color: theme.colorScheme.primary.withAlpha(30),
       ),
       child: hasAvatar
           ? ClipOval(
-              child: Image(
-                image: AuthenticatedImageProvider(ApiConfig.getMediaUrl(avatarUrl!)),
+              child: AuthenticatedNetworkImage(
+                imageUrl: ApiConfig.getMediaUrl(avatarUrl!),
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => _buildFallback(),
+                errorWidget: (context, url, error) => _buildFallback(theme),
+                placeholder: (context, url) => _buildFallback(theme),
               ),
             )
-          : _buildFallback(),
+          : _buildFallback(theme),
     );
   }
 
-  Widget _buildFallback() {
+  Widget _buildFallback(ThemeData theme) {
     return Center(
       child: Text(
         initial,
-        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+        style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 18),
       ),
     );
   }

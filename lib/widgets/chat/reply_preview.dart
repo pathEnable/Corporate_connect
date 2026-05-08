@@ -66,7 +66,11 @@ class ReplyPreview extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        message['content'] ?? (message['message_type'] == 'image' ? '📸 Image' : 'Fichier'),
+                        (message['message_type'] == 'image' || 
+                         (message['content']?.toString().contains('res.cloudinary.com') ?? false) ||
+                         (message['content']?.toString().contains('firebasestorage.googleapis.com') ?? false))
+                            ? '📷 Photo'
+                            : (message['content'] ?? 'Fichier'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(

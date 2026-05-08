@@ -404,19 +404,28 @@ class LocalDatabase {
     final db = await instance.database;
     final batch = db.batch();
     for (var room in rooms) {
-      // On utilise ON CONFLICT (UPSERT) pour ne pas écraser l'avatar_url 
-      // si l'API renvoie null (ce qui arrive souvent dans la liste globale)
-      // mais qu'on l'a déjà récupéré via ChatNotifier.
+      // Standardize the timestamp field
+      final lastMsgTime = (room['last_message_time'] ?? room['last_message_at'])?.toString() ?? '';
+      
       batch.execute('''
         INSERT INTO rooms (id, name, is_group, last_message, last_message_at, unread_count, last_sender_name, avatar_url)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           name = excluded.name,
           is_group = excluded.is_group,
-          last_message = excluded.last_message,
-          last_message_at = excluded.last_message_at,
+          last_message = CASE 
+            WHEN excluded.last_message_at >= rooms.last_message_at OR rooms.last_message_at IS NULL THEN excluded.last_message 
+            ELSE rooms.last_message 
+          END,
+          last_message_at = CASE 
+            WHEN excluded.last_message_at >= rooms.last_message_at OR rooms.last_message_at IS NULL THEN excluded.last_message_at 
+            ELSE rooms.last_message_at 
+          END,
           unread_count = excluded.unread_count,
-          last_sender_name = excluded.last_sender_name,
+          last_sender_name = CASE 
+            WHEN excluded.last_message_at >= rooms.last_message_at OR rooms.last_message_at IS NULL THEN excluded.last_sender_name 
+            ELSE rooms.last_sender_name 
+          END,
           avatar_url = CASE 
             WHEN excluded.avatar_url IS NOT NULL THEN excluded.avatar_url 
             ELSE rooms.avatar_url 
@@ -426,7 +435,7 @@ class LocalDatabase {
         room['name'],
         room['is_group'] == true ? 1 : 0,
         room['last_message'],
-        room['last_message_time'] ?? room['last_message_at'],
+        lastMsgTime,
         room['unread_count'] ?? 0,
         room['last_sender_name'],
         room['avatar_url'] ?? room['avatar'],
@@ -458,14 +467,16 @@ class LocalDatabase {
   }) async {
     if (kIsWeb) return;
     final db = await instance.database;
+    
+    // On n'update que si le message est plus récent que celui en base
     await db.rawUpdate(
       '''UPDATE rooms SET 
-         last_message = ?, 
-         last_message_at = ?,
-         last_sender_name = ?
+         last_message = CASE WHEN ? >= last_message_at OR last_message_at IS NULL THEN ? ELSE last_message END, 
+         last_message_at = CASE WHEN ? >= last_message_at OR last_message_at IS NULL THEN ? ELSE last_message_at END,
+         last_sender_name = CASE WHEN ? >= last_message_at OR last_message_at IS NULL THEN ? ELSE last_sender_name END
          ${incrementUnread ? ', unread_count = unread_count + 1' : ''}
          WHERE id = ?''',
-      [lastMessage, lastMessageAt, lastSenderName, roomId],
+      [lastMessageAt, lastMessage, lastMessageAt, lastMessageAt, lastMessageAt, lastSenderName, roomId],
     );
   }
 

@@ -606,14 +606,15 @@ class _LargeAvatar extends StatelessWidget {
       height: 140,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: primaryColor.withValues(alpha: 0.1),
+        color: primaryColor.withAlpha(30),
       ),
       child: hasAvatar
           ? ClipOval(
-              child: Image(
-                image: AuthenticatedImageProvider(ApiConfig.getMediaUrl(avatarUrl!)),
+              child: AuthenticatedNetworkImage(
+                imageUrl: ApiConfig.getMediaUrl(avatarUrl!),
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => _buildFallback(),
+                errorWidget: (context, url, error) => _buildFallback(),
+                placeholder: (context, url) => _buildFallback(),
               ),
             )
           : _buildFallback(),

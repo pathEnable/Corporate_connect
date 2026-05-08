@@ -166,11 +166,7 @@ class HomeNotifier extends Notifier<HomeState> {
     }
 
     // 3. Tri : Le plus récent en haut
-    rooms.sort((a, b) {
-      final aTime = a['last_message_time']?.toString() ?? '';
-      final bTime = b['last_message_time']?.toString() ?? '';
-      return bTime.compareTo(aTime);
-    });
+    _sortRooms(rooms);
 
     state = state.copyWith(rooms: rooms);
   }
@@ -191,11 +187,7 @@ class HomeNotifier extends Notifier<HomeState> {
       LocalDatabase.instance.saveRooms(rooms);
       
       if (!_isDisposed) {
-        rooms.sort((a, b) {
-          final aTime = a['last_message_time']?.toString() ?? '';
-          final bTime = b['last_message_time']?.toString() ?? '';
-          return bTime.compareTo(aTime);
-        });
+        _sortRooms(rooms);
         // Mise à jour silencieuse : on ne remplace que si les données ont réellement changé
         state = state.copyWith(rooms: rooms, isLoadingRooms: false);
       }
@@ -324,6 +316,14 @@ class HomeNotifier extends Notifier<HomeState> {
     } catch (e) {
       state = state.copyWith(errorMessage: "Erreur lors de la création du statut");
     }
+  }
+
+  void _sortRooms(List<Map<String, dynamic>> rooms) {
+    rooms.sort((a, b) {
+      final aTime = (a['last_message_time'] ?? a['last_message_at'])?.toString() ?? '';
+      final bTime = (b['last_message_time'] ?? b['last_message_at'])?.toString() ?? '';
+      return bTime.compareTo(aTime);
+    });
   }
 }
 

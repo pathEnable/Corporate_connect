@@ -73,6 +73,19 @@ class CallService {
       return [];
     }
   }
+
+  Future<bool> clearCallHistory() async {
+    try {
+      final response = await AuthService().authenticatedRequest(
+        url: '${ApiConfig.baseUrl}/calls/history',
+        method: 'DELETE',
+      );
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      debugPrint("Erreur clearCallHistory: $e");
+      return false;
+    }
+  }
 }
 
 final callService = CallService();

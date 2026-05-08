@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../widgets/authenticated_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../services/api_config.dart';
 
 
 
@@ -158,8 +159,14 @@ class StatusTabScreen extends ConsumerWidget {
               ),
               child: CircleAvatar(
                 radius: 26,
-                backgroundImage: first.userAvatar != null ? AuthenticatedImageProvider(first.userAvatar!) : null,
-                child: first.userAvatar == null ? const Icon(Icons.person) : null,
+                backgroundColor: theme.colorScheme.primary.withAlpha(30),
+                backgroundImage: first.userAvatar != null ? AuthenticatedImageProvider(ApiConfig.getMediaUrl(first.userAvatar!)) : null,
+                child: first.userAvatar == null 
+                    ? Text(
+                        first.userName.isNotEmpty ? first.userName[0].toUpperCase() : '?',
+                        style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
+                      ) 
+                    : null,
               ),
             ),
             title: Text(first.userName, style: const TextStyle(fontWeight: FontWeight.bold)),

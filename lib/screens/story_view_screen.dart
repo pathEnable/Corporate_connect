@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/status_model.dart';
 import '../providers/home_provider.dart';
 import '../widgets/authenticated_image.dart';
+import '../services/api_config.dart';
 
 class StoryViewScreen extends ConsumerStatefulWidget {
   final List<StatusModel> stories;
@@ -119,14 +120,11 @@ class _StoryViewScreenState extends ConsumerState<StoryViewScreen> with SingleTi
                   final s = widget.stories[index];
                   if (s.mediaUrl != null && s.mediaUrl!.isNotEmpty) {
                     return Center(
-                      child: Image.network(
-                        s.mediaUrl!,
+                      child: AuthenticatedNetworkImage(
+                        imageUrl: ApiConfig.getMediaUrl(s.mediaUrl!),
                         fit: BoxFit.contain,
                         width: double.infinity,
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return const Center(child: CircularProgressIndicator(color: Colors.white));
-                        },
+                        placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: Colors.white)),
                       ),
                     );
                   } else {
@@ -209,7 +207,7 @@ class _StoryViewScreenState extends ConsumerState<StoryViewScreen> with SingleTi
                   children: [
                     CircleAvatar(
                       radius: 20,
-                      backgroundImage: story.userAvatar != null ? AuthenticatedImageProvider(story.userAvatar!) : null,
+                      backgroundImage: story.userAvatar != null ? AuthenticatedImageProvider(ApiConfig.getMediaUrl(story.userAvatar!)) : null,
                       child: story.userAvatar == null ? const Icon(Icons.person) : null,
                     ),
                     const SizedBox(width: 12),

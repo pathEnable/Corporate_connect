@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../services/api_config.dart';
+import '../widgets/authenticated_image.dart';
 import '../../providers/chat_provider.dart';
 
 class PollMessageWidget extends ConsumerStatefulWidget {
@@ -98,7 +100,7 @@ class _PollMessageWidgetState extends ConsumerState<PollMessageWidget> {
     return colors[id.hashCode % colors.length];
   }
 
-  Widget _buildAvatarsStack(List<String> voters, ThemeData theme) {
+  Widget _buildAvatarsStack(List<String> voters, ThemeData theme, Map<String, String?> memberAvatars, Map<String, String> members) {
     final displayVoters = voters.take(3).toList();
     final remaining = voters.length - displayVoters.length;
     
@@ -116,7 +118,7 @@ class _PollMessageWidgetState extends ConsumerState<PollMessageWidget> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: theme.brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade200,
-                  border: Border.all(color: widget.isMe ? theme.colorScheme.primary.withAlpha(50) : theme.colorScheme.surface, width: 1.5),
+                  border: Border.all(color: theme.colorScheme.surface, width: 1.5),
                 ),
                 child: Text(
                   '+$remaining', 
@@ -131,17 +133,31 @@ class _PollMessageWidgetState extends ConsumerState<PollMessageWidget> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: widget.isMe ? Colors.teal.shade50 : theme.colorScheme.surface, 
+                    color: theme.colorScheme.surface, 
                     width: 1.5,
                   ),
                 ),
-                child: CircleAvatar(
-                  radius: 10,
-                  backgroundColor: _getColorForVoter(displayVoters[i]),
-                  child: Text(
-                     displayVoters[i].length > 1 ? displayVoters[i].substring(0, 1).toUpperCase() : "?",
-                     style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
+                child: Builder(
+                  builder: (context) {
+                    final voterId = displayVoters[i];
+                    final avatarUrl = memberAvatars[voterId];
+                    final name = members[voterId] ?? "Utilisateur";
+                    final initial = name.isNotEmpty ? name.substring(0, 1).toUpperCase() : "?";
+                    
+                    return CircleAvatar(
+                      radius: 10,
+                      backgroundColor: _getColorForVoter(voterId),
+                      backgroundImage: (avatarUrl != null && avatarUrl.isNotEmpty) 
+                        ? AuthenticatedImageProvider(ApiConfig.getMediaUrl(avatarUrl)) 
+                        : null,
+                      child: (avatarUrl == null || avatarUrl.isEmpty) 
+                        ? Text(
+                            initial,
+                            style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold),
+                          )
+                        : null,
+                    );
+                  }
                 ),
               ),
             )
@@ -153,6 +169,7 @@ class _PollMessageWidgetState extends ConsumerState<PollMessageWidget> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final chatState = ref.watch(chatProvider(widget.roomId));
     final isDark = theme.brightness == Brightness.dark;
 
 
@@ -270,7 +287,7 @@ class _PollMessageWidgetState extends ConsumerState<PollMessageWidget> {
                           ),
                           // Avatars
                           if (count > 0) ...[
-                            _buildAvatarsStack(votersForOption, theme),
+                            _buildAvatarsStack(votersForOption, theme, chatState.memberAvatars, chatState.members),
                           ],
                         ],
                       ),

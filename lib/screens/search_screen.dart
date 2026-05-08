@@ -133,126 +133,124 @@ class _SearchScreenState extends State<SearchScreen> {
                         padding: const EdgeInsets.only(bottom: 24),
                         children: [
                           if (_profiles.isNotEmpty) ...[
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
-                              child: Text(
-                                'CONTACTS', 
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold, 
-                                  fontSize: 12, 
-                                  color: theme.colorScheme.primary, 
-                                  letterSpacing: 1.2
-                                ),
-                              ),
-                            ),
-                            ..._profiles.map((p) => ListTile(
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-                              leading: _buildProfileAvatar(theme, p),
-                              title: Text(p['name'], style: const TextStyle(fontWeight: FontWeight.w600)),
-                              subtitle: Text(
-                                '@${p['username']}', 
-                                style: TextStyle(color: theme.colorScheme.onSurface.withAlpha(150), fontSize: 13)
-                              ),
-                              onTap: () async {
-                                final String targetUserId = p['id'];
-                                final String targetUserName = p['name'];
-                                final navigator = Navigator.of(context);
-                                final messenger = ScaffoldMessenger.of(context);
-                                try {
-                                  final room = await _roomService.createPrivateRoom(targetUserId);
-                                  if (!mounted) return;
-                                  navigator.pushReplacement(
-                                    MaterialPageRoute(
-                                      builder: (_) => ChatScreen(
-                                        roomId: room['id'],
-                                        roomName: targetUserName,
-                                      ),
-                                    ),
-                                  );
-                                } catch (e) {
-                                  if (mounted) {
-                                    messenger.showSnackBar(
-                                      SnackBar(content: Text("Erreur: $e")),
-                                    );
-                                  }
-                                }
-                              },
-                            )),
-                          ],
-                          if (_rooms.isNotEmpty) ...[
-                            const Divider(height: 32),
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-                              child: Text(
-                                'GROUPES', 
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold, 
-                                  fontSize: 12, 
-                                  color: theme.colorScheme.primary, 
-                                  letterSpacing: 1.2
-                                ),
-                              ),
-                            ),
-                            ..._rooms.map((r) => ListTile(
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-                              leading: CircleAvatar(
-                                radius: 24,
-                                backgroundColor: theme.colorScheme.primary.withAlpha(30),
-                                child: Icon(Icons.groups_rounded, color: theme.colorScheme.primary, size: 24),
-                              ),
-                              title: Text(r['name'] ?? 'Groupe', style: const TextStyle(fontWeight: FontWeight.w600)),
-                              subtitle: Text(
-                                r['is_group'] == true ? 'Canal de groupe' : 'Discussion privée',
-                                style: TextStyle(color: theme.colorScheme.onSurface.withAlpha(150), fontSize: 13)
-                              ),
-                              onTap: () {
-                                Navigator.pushReplacement(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => ChatScreen(
-                                      roomId: r['id'],
-                                      roomName: r['name'] ?? 'Discussion',
-                                      isGroup: r['is_group'] ?? false,
-                                    ),
-                                  ),
-                                );
-                              },
-                            )),
-                          ],
-                        ],
-                      ),
-      ),
-    );
-  }
-  Widget _buildProfileAvatar(ThemeData theme, Map<String, dynamic> profile) {
-    final String? avatarUrl = profile['avatar'];
-    final String initial = profile['name'][0].toUpperCase();
-
-    return Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: theme.colorScheme.primary,
-      ),
-      child: avatarUrl != null && avatarUrl.isNotEmpty
-          ? ClipOval(
-              child: Image(
-                image: AuthenticatedImageProvider(ApiConfig.getMediaUrl(avatarUrl)),
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => _buildFallback(initial),
-              ),
-            )
-          : _buildFallback(initial),
-    );
-  }
-
-  Widget _buildFallback(String initial) {
-    return Center(
-      child: Text(
-        initial,
-        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
-      ),
-    );
-  }
+                             Padding(
+                               padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+                               child: Text(
+                                 'CONTACTS', 
+                                 style: TextStyle(
+                                   fontWeight: FontWeight.bold, 
+                                   fontSize: 12, 
+                                   color: theme.colorScheme.primary, 
+                                   letterSpacing: 1.2
+                                 ),
+                               ),
+                             ),
+                             ..._profiles.map((p) => ListTile(
+                               contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+                               leading: _buildAvatar(theme, p['name'] ?? 'Utilisateur', p['avatar_url'], false),
+                               title: Text(p['name'] ?? 'Inconnu', style: const TextStyle(fontWeight: FontWeight.w600)),
+                               subtitle: Text(
+                                 p['username'] != null ? '@${p['username']}' : '', 
+                                 style: TextStyle(color: theme.colorScheme.onSurface.withAlpha(150), fontSize: 13)
+                               ),
+                               onTap: () async {
+                                 final String targetUserId = p['id'];
+                                 final String targetUserName = p['name'] ?? 'Inconnu';
+                                 final navigator = Navigator.of(context);
+                                 final messenger = ScaffoldMessenger.of(context);
+                                 try {
+                                   final room = await _roomService.createPrivateRoom(targetUserId);
+                                   if (!mounted) return;
+                                   navigator.pushReplacement(
+                                     MaterialPageRoute(
+                                       builder: (_) => ChatScreen(
+                                         roomId: room['id'],
+                                         roomName: targetUserName,
+                                       ),
+                                     ),
+                                   );
+                                 } catch (e) {
+                                   if (mounted) {
+                                     messenger.showSnackBar(
+                                       SnackBar(content: Text("Erreur: $e")),
+                                     );
+                                   }
+                                 }
+                               },
+                             )),
+                           ],
+                           if (_rooms.isNotEmpty) ...[
+                             const Divider(height: 32),
+                             Padding(
+                               padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                               child: Text(
+                                 'GROUPES', 
+                                 style: TextStyle(
+                                   fontWeight: FontWeight.bold, 
+                                   fontSize: 12, 
+                                   color: theme.colorScheme.primary, 
+                                   letterSpacing: 1.2
+                                 ),
+                               ),
+                             ),
+                             ..._rooms.map((r) => ListTile(
+                               contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+                               leading: _buildAvatar(theme, r['name'] ?? 'Groupe', r['avatar_url'], r['is_group'] ?? true),
+                               title: Text(r['name'] ?? 'Groupe', style: const TextStyle(fontWeight: FontWeight.w600)),
+                               subtitle: Text(
+                                 r['is_group'] == true ? 'Canal de groupe' : 'Discussion privée',
+                                 style: TextStyle(color: theme.colorScheme.onSurface.withAlpha(150), fontSize: 13)
+                               ),
+                               onTap: () {
+                                 Navigator.pushReplacement(
+                                   context,
+                                   MaterialPageRoute(
+                                     builder: (_) => ChatScreen(
+                                       roomId: r['id'],
+                                       roomName: r['name'] ?? 'Discussion',
+                                       isGroup: r['is_group'] ?? false,
+                                     ),
+                                   ),
+                                 );
+                               },
+                             )),
+                           ],
+                         ],
+                       ),
+       ),
+     );
+   }
+ 
+   Widget _buildAvatar(ThemeData theme, String name, String? avatarUrl, bool isGroup) {
+     final String initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
+ 
+     return Container(
+       width: 48,
+       height: 48,
+       decoration: BoxDecoration(
+         shape: BoxShape.circle,
+         color: theme.colorScheme.primary.withAlpha(30),
+       ),
+       child: avatarUrl != null && avatarUrl.isNotEmpty
+           ? ClipOval(
+               child: Image(
+                 image: AuthenticatedImageProvider(ApiConfig.getMediaUrl(avatarUrl)),
+                 fit: BoxFit.cover,
+                 errorBuilder: (context, error, stackTrace) => _buildFallback(theme, initial, isGroup),
+               ),
+             )
+           : _buildFallback(theme, initial, isGroup),
+     );
+   }
+ 
+   Widget _buildFallback(ThemeData theme, String initial, bool isGroup) {
+     return Center(
+       child: isGroup 
+           ? Icon(Icons.groups_rounded, color: theme.colorScheme.primary, size: 24)
+           : Text(
+               initial,
+               style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 18),
+             ),
+     );
+   }
 }

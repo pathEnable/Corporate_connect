@@ -108,14 +108,13 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
               ? const Icon(Icons.groups_rounded, color: Colors.white, size: 24)
               : avatarUrl != null && avatarUrl.isNotEmpty
                   ? ClipOval(
-                      child: Image(
-                        image: AuthenticatedImageProvider(
-                          ApiConfig.getMediaUrl(avatarUrl),
-                        ),
+                      child: AuthenticatedNetworkImage(
+                        imageUrl: ApiConfig.getMediaUrl(avatarUrl),
                         fit: BoxFit.cover,
                         width: 40,
                         height: 40,
-                        errorBuilder: (_, __, ___) => _buildInitials(),
+                        errorWidget: (_, __, ___) => _buildInitials(),
+                        placeholder: (_, __) => _buildInitials(),
                       ),
                     )
                   : _buildInitials(),

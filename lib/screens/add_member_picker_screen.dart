@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../services/auth_service.dart';
 import '../services/api_config.dart';
 import '../widgets/premium_background.dart';
+import '../widgets/authenticated_image.dart';
 
 class AddMemberPickerScreen extends StatefulWidget {
   final List<String> existingMemberIds;
@@ -171,13 +172,11 @@ class _AddMemberPickerScreenState extends State<AddMemberPickerScreen> {
               children: [
                 Stack(
                   children: [
-                    CircleAvatar(
-                      radius: 28,
-                      backgroundColor: theme.colorScheme.primary,
-                      child: Text(
-                        (contact['full_name'] ?? 'U')[0].toUpperCase(),
-                        style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-                      ),
+                    _buildContactAvatar(
+                      contact['full_name'] ?? 'U',
+                      contact['avatar_url'],
+                      28,
+                      theme.colorScheme.primary,
                     ),
                     Positioned(
                       right: 0,
@@ -212,16 +211,12 @@ class _AddMemberPickerScreenState extends State<AddMemberPickerScreen> {
       contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
       leading: Stack(
         children: [
-          CircleAvatar(
-            radius: 24,
-            backgroundColor: isSelected ? theme.colorScheme.primary : theme.colorScheme.surface.withValues(alpha: 0.5),
-            child: Text(
-              (contact['full_name'] ?? 'U')[0].toUpperCase(),
-              style: TextStyle(
-                color: isSelected ? Colors.black : theme.colorScheme.primary,
-                fontWeight: FontWeight.bold
-              ),
-            ),
+          _buildContactAvatar(
+            contact['full_name'] ?? 'U',
+            contact['avatar_url'],
+            24,
+            isSelected ? theme.colorScheme.primary : theme.colorScheme.surface.withValues(alpha: 0.5),
+            textColor: isSelected ? Colors.black : theme.colorScheme.primary,
           ),
           if (isSelected)
             Positioned(
@@ -241,6 +236,36 @@ class _AddMemberPickerScreenState extends State<AddMemberPickerScreen> {
         style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withValues(alpha: 0.6))
       ),
       onTap: () => _toggleContact(contact),
+    );
+  }
+
+  Widget _buildContactAvatar(String name, String? avatarUrl, double radius, Color bgColor, {Color textColor = Colors.black}) {
+    final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
+    if (avatarUrl != null && avatarUrl.isNotEmpty) {
+      return Container(
+        width: radius * 2,
+        height: radius * 2,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: bgColor,
+        ),
+        child: ClipOval(
+          child: AuthenticatedNetworkImage(
+            imageUrl: ApiConfig.getMediaUrl(avatarUrl),
+            fit: BoxFit.cover,
+            width: radius * 2,
+            height: radius * 2,
+            errorWidget: (context, url, error) => Center(
+              child: Text(initial, style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ),
+      );
+    }
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: bgColor,
+      child: Text(initial, style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
     );
   }
 }

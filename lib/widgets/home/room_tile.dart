@@ -173,18 +173,15 @@ class _RoomAvatar extends StatelessWidget {
       height: 56,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: isGroup ? theme.colorScheme.primary : theme.colorScheme.primaryContainer,
+        color: theme.colorScheme.primary.withAlpha(30),
       ),
       child: hasAvatar
           ? ClipOval(
-              child: Image(
-                image: AuthenticatedImageProvider(ApiConfig.getMediaUrl(avatarPath!)),
+              child: AuthenticatedNetworkImage(
+                imageUrl: ApiConfig.getMediaUrl(avatarPath!),
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => _buildFallback(theme),
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return _buildFallback(theme);
-                },
+                placeholder: (context, url) => _buildFallback(theme),
+                errorWidget: (context, url, error) => _buildFallback(theme),
               ),
             )
           : _buildFallback(theme),
@@ -194,7 +191,7 @@ class _RoomAvatar extends StatelessWidget {
   Widget _buildFallback(ThemeData theme) {
     return Center(
       child: isGroup
-          ? const Icon(Icons.groups_rounded, color: Colors.white, size: 28)
+          ? Icon(Icons.groups_rounded, color: theme.colorScheme.primary, size: 28)
           : Text(
               initial,
               style: TextStyle(

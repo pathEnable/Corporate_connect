@@ -10,6 +10,8 @@ class CallLogModel {
   final String callType;
   final String? callerName;
   final String? receiverName;
+  final String? callerAvatar;
+  final String? receiverAvatar;
 
   CallLogModel({
     required this.id,
@@ -23,6 +25,8 @@ class CallLogModel {
     required this.callType,
     this.callerName,
     this.receiverName,
+    this.callerAvatar,
+    this.receiverAvatar,
   });
 
   factory CallLogModel.fromJson(Map<String, dynamic> json) {
@@ -38,6 +42,8 @@ class CallLogModel {
       callType: json['call_type'] as String? ?? 'audio',
       callerName: json['caller_name'] as String?,
       receiverName: json['receiver_name'] as String?,
+      callerAvatar: json['caller_avatar'] as String?,
+      receiverAvatar: json['receiver_avatar'] as String?,
     );
   }
 }

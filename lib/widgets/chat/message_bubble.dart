@@ -1,3 +1,4 @@
+import '../../services/api_config.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/chat_provider.dart';
@@ -111,13 +112,38 @@ class _MessageBubbleState extends State<MessageBubble> {
               if (widget.showSenderName && !widget.isMe)
                 Padding(
                   padding: const EdgeInsets.only(right: 8, bottom: 2),
-                  child: CircleAvatar(
-                    radius: 16,
-                    backgroundColor: Colors.grey[300],
-                    backgroundImage: widget.senderAvatar != null ? NetworkImage(widget.senderAvatar!) : null,
-                    child: widget.senderAvatar == null 
-                        ? Text(widget.senderName?[0].toUpperCase() ?? '?', style: const TextStyle(fontSize: 12, color: Colors.white)) 
-                        : null,
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.grey[300],
+                    ),
+                    child: widget.senderAvatar != null 
+                      ? ClipOval(
+                          child: AuthenticatedNetworkImage(
+                            imageUrl: ApiConfig.getMediaUrl(widget.senderAvatar!),
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => Center(
+                              child: Text(
+                                widget.senderName?[0].toUpperCase() ?? '?', 
+                                style: const TextStyle(fontSize: 12, color: Colors.white)
+                              ),
+                            ),
+                            errorWidget: (context, url, error) => Center(
+                              child: Text(
+                                widget.senderName?[0].toUpperCase() ?? '?', 
+                                style: const TextStyle(fontSize: 12, color: Colors.white)
+                              ),
+                            ),
+                          ),
+                        )
+                      : Center(
+                          child: Text(
+                            widget.senderName?[0].toUpperCase() ?? '?', 
+                            style: const TextStyle(fontSize: 12, color: Colors.white)
+                          ),
+                        ),
                   ),
                 ),
 
@@ -371,6 +397,14 @@ class _MessageBubbleState extends State<MessageBubble> {
   }
 
   Widget _buildReplyPreview(Color replyBorderColor, Color textColor) {
+    String displayContent = widget.replyToContent!;
+    
+    // Si le contenu est une URL brute (Cloudinary ou Firebase), on affiche "Photo"
+    if (displayContent.contains('res.cloudinary.com') || 
+        displayContent.contains('firebasestorage.googleapis.com')) {
+      displayContent = "📷 Photo";
+    }
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(8),
@@ -383,7 +417,7 @@ class _MessageBubbleState extends State<MessageBubble> {
         border: Border(left: BorderSide(color: replyBorderColor, width: 4)),
       ),
       child: Text(
-        widget.replyToContent!,
+        displayContent,
         style: TextStyle(
           fontSize: 13,
           color: textColor.withValues(alpha: 0.7),

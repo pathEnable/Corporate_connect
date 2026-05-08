@@ -354,3 +354,21 @@ def get_call_history(current_user: Profile = Depends(get_current_user), db: Sess
         ))
 
     return response_calls
+
+@router.delete("/history")
+async def clear_call_history(
+    current_user: Profile = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Supprime tout l'historique d'appels de l'utilisateur (appels émis et reçus).
+    """
+    try:
+        db.query(CallLog).filter(
+            (CallLog.caller_id == current_user.id) | (CallLog.receiver_id == current_user.id)
+        ).delete(synchronize_session=False)
+        db.commit()
+        return {"detail": "Historique d'appels supprimé avec succès"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la suppression: {str(e)}")

@@ -7,6 +7,8 @@ import '../models/call_state.dart';
 import '../providers/call_provider.dart';
 import '../screens/home_screen.dart';
 import '../services/agora_service.dart';
+import '../services/api_config.dart';
+import '../widgets/authenticated_image.dart';
 
 /// Écran d'appel principal avec états visuels dynamiques.
 /// 
@@ -115,9 +117,11 @@ class _CallScreenState extends ConsumerState<CallScreen> with TickerProviderStat
       fit: StackFit.expand,
       children: [
         if (hasAvatar)
-          Image.network(
-            callState.otherUserAvatar!,
+          AuthenticatedNetworkImage(
+            imageUrl: ApiConfig.getMediaUrl(callState.otherUserAvatar!),
             fit: BoxFit.cover,
+            width: double.infinity,
+            height: double.infinity,
           )
         else
           Container(color: const Color(0xFF0F172A)), // Deep slate fallback
@@ -393,7 +397,7 @@ class _CallScreenState extends ConsumerState<CallScreen> with TickerProviderStat
           radius: radius,
           backgroundColor: const Color(0xFF2A2A4A),
           backgroundImage: callState.otherUserAvatar != null && callState.otherUserAvatar!.isNotEmpty
-              ? NetworkImage(callState.otherUserAvatar!)
+              ? AuthenticatedImageProvider(ApiConfig.getMediaUrl(callState.otherUserAvatar!))
               : null,
           child: callState.otherUserAvatar == null || callState.otherUserAvatar!.isEmpty
               ? Icon(Icons.person, size: radius, color: Colors.white54)
