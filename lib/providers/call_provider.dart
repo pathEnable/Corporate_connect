@@ -97,9 +97,13 @@ class CallNotifier extends Notifier<CallState> {
     // Jouer la tonalité d'attente (tut... tut...)
     _ringtoneService.playWaitingTone();
 
-    // ✅ BUG FIX : L'appelant N'ENTRE PAS dans Agora ici.
-    // Il attend que le destinataire décroche (événement WS call_answered)
-    // pour rejoindre le canal, via onCallAnswered().
+    // ⚡ OPTIMISATION : Pré-initialiser le moteur Agora pendant la sonnerie
+    // Le moteur sera déjà prêt quand le destinataire décrochera,
+    // ce qui réduit la latence au moment de onCallAnswered().
+    if (result['app_id'] != null) {
+      debugPrint('⚡ Pré-chauffage moteur Agora pendant la sonnerie...');
+      _agoraService.initEngine(result['app_id'] as String).ignore();
+    }
 
     // Timer timeout : si pas de réponse après 40s, annuler
     _timeoutTimer = Timer(_callTimeout, () {
@@ -166,8 +170,8 @@ class CallNotifier extends Notifier<CallState> {
     }
 
     try {
-      // Arrêter la sonnerie
-      await _ringtoneService.stop();
+      // Arrêter la sonnerie immédiatement
+      _ringtoneService.stop();
 
       // Demander les permissions
       final granted = await _requestPermissions(state.isVideo);
@@ -181,37 +185,44 @@ class CallNotifier extends Notifier<CallState> {
       }
 
       state = state.copyWith(phase: CallPhase.connecting);
-      _startConnectingTimeout(); // Démarrer la sécurité
+      _startConnectingTimeout();
 
-      // Appeler le backend pour accepter
-      debugPrint('📞 Acceptation de l\'appel via API...');
-      final result = await _signalingService.answerCall(
+      // ⚡ OPTIMISATION : Lancer l'appel API ET la pré-init Agora EN PARALLÈLE
+      // On connaît déjà l'appId (stocké dans state.appId si disponible) pour
+      // pré-chauffer le moteur pendant que l'API répond.
+      debugPrint('📞 Acceptation API + pré-init Agora en parallèle...');
+      final resultFuture = _signalingService.answerCall(
         callId: state.callId!,
         channelName: state.channelName ?? '',
       );
+
+      // Si on a déjà l'appId, on pré-initialise le moteur maintenant
+      if (state.appId != null) {
+        _agoraService.initEngine(state.appId!).ignore();
+      }
+
+      final result = await resultFuture;
 
       if (result == null) {
         throw Exception('Le serveur n\'a pas répondu à l\'acceptation');
       }
 
-      // Mettre à jour les infos Agora
+      // Mettre à jour les infos Agora reçues du backend
       state = state.copyWith(
         agoraToken: result['agora_token'],
         appId: result['app_id'],
         channelName: result['channel_name'],
       );
 
-      // Initialiser Agora et rejoindre le canal
-      debugPrint('📞 Initialisation Agora...');
+      // Rejoindre le canal (le moteur est déjà initialisé si l'appId était connu)
+      debugPrint('📞 Rejoindre canal Agora...');
       await _initAgoraAndJoin();
-      
-      _connectingTimeout?.cancel(); // Annuler car succès
+
+      _connectingTimeout?.cancel();
       return true;
     } catch (e) {
       debugPrint('❌ Erreur critique lors de l\'acceptation: $e');
       _connectingTimeout?.cancel();
-      
-      // ✅ FIX GHOST STATE : Garantir qu'on sort de l'état 'connecting'
       state = state.copyWith(
         phase: CallPhase.ended,
         errorMessage: 'Erreur: ${e.toString().replaceAll('Exception: ', '')}',
@@ -239,17 +250,26 @@ class CallNotifier extends Notifier<CallState> {
   Future<void> onCallAnswered() async {
     if (state.phase != CallPhase.outgoingRinging) return;
 
-    debugPrint('📞 Appel accepté — rejoindre le canal Agora');
+    debugPrint('📞 Appel accepté — rejoindre le canal Agora immédiatement');
+    // Stop non-bloquant pour éviter la latence
     _ringtoneService.stop();
     _timeoutTimer?.cancel();
 
-    // Passer en mode connexion
+    // Passer en mode connexion immédiatement
     state = state.copyWith(phase: CallPhase.connecting);
 
-    // Rejoindre Agora maintenant que les deux sont prêts
+    // ⚡ OPTIMISATION : Pré-init du moteur Agora si l'appId est connu
+    // (l'appId a été reçu au moment de initiateCall())
+    if (state.appId != null && !_agoraService.isInitialized) {
+      debugPrint('⚡ Pré-chauffage Agora déclenché dès réception du call_answered');
+      // On lance la pré-init sans await — _initAgoraAndJoin() détectera
+      // que le moteur est déjà initialisé et sautera cette étape
+      _agoraService.initEngine(state.appId!);
+    }
+
+    // Rejoindre Agora (le moteur est déjà chaud si pré-init ci-dessus)
     try {
       await _initAgoraAndJoin();
-      // La phase passe à connected via onUserJoined dans _initAgoraAndJoin()
     } catch (e) {
       debugPrint('❌ Erreur Agora (appelant après acceptation): $e');
       state = state.copyWith(

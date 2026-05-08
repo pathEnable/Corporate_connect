@@ -52,7 +52,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
     final theme = Theme.of(context);
     
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Confidentialité', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.03),
